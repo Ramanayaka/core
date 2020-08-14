@@ -19,17 +19,16 @@
 
 #include <svtools/statusbarcontroller.hxx>
 #include <com/sun/star/beans/PropertyValue.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/frame/XDispatchProvider.hpp>
+#include <com/sun/star/frame/XFrame.hpp>
 #include <com/sun/star/lang/DisposedException.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/util/URLTransformer.hpp>
+#include <com/sun/star/ui/XStatusbarItem.hpp>
 #include <cppuhelper/queryinterface.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/window.hxx>
 #include <vcl/status.hxx>
-#include <svtools/imgdef.hxx>
-#include <svtools/miscopt.hxx>
 #include <toolkit/helper/vclunohelper.hxx>
 #include <comphelper/processfactory.hxx>
 
@@ -131,39 +130,39 @@ void SAL_CALL StatusbarController::initialize( const Sequence< Any >& aArguments
         bInitialized = m_bInitialized;
     }
 
-    if ( !bInitialized )
+    if ( bInitialized )
+        return;
+
+    SolarMutexGuard aSolarMutexGuard;
+    m_bInitialized = true;
+
+    PropertyValue aPropValue;
+    for ( const auto& rArgument : aArguments )
     {
-        SolarMutexGuard aSolarMutexGuard;
-        m_bInitialized = true;
-
-        PropertyValue aPropValue;
-        for ( int i = 0; i < aArguments.getLength(); i++ )
+        if ( rArgument >>= aPropValue )
         {
-            if ( aArguments[i] >>= aPropValue )
+            if ( aPropValue.Name == "Frame" )
+                aPropValue.Value >>= m_xFrame;
+            else if ( aPropValue.Name == "CommandURL" )
+                aPropValue.Value >>= m_aCommandURL;
+            else if ( aPropValue.Name == "ServiceManager" )
             {
-                if ( aPropValue.Name == "Frame" )
-                    aPropValue.Value >>= m_xFrame;
-                else if ( aPropValue.Name == "CommandURL" )
-                    aPropValue.Value >>= m_aCommandURL;
-                else if ( aPropValue.Name == "ServiceManager" )
-                {
-                    Reference<XMultiServiceFactory> xMSF;
-                    aPropValue.Value >>= xMSF;
-                    if( xMSF.is() )
-                        m_xContext = comphelper::getComponentContext(xMSF);
-                }
-                else if ( aPropValue.Name == "ParentWindow" )
-                    aPropValue.Value >>= m_xParentWindow;
-                else if ( aPropValue.Name == "Identifier" )
-                    aPropValue.Value >>= m_nID;
-                else if ( aPropValue.Name == "StatusbarItem" )
-                    aPropValue.Value >>= m_xStatusbarItem;
+                Reference<XMultiServiceFactory> xMSF;
+                aPropValue.Value >>= xMSF;
+                if( xMSF.is() )
+                    m_xContext = comphelper::getComponentContext(xMSF);
             }
+            else if ( aPropValue.Name == "ParentWindow" )
+                aPropValue.Value >>= m_xParentWindow;
+            else if ( aPropValue.Name == "Identifier" )
+                aPropValue.Value >>= m_nID;
+            else if ( aPropValue.Name == "StatusbarItem" )
+                aPropValue.Value >>= m_xStatusbarItem;
         }
-
-        if ( !m_aCommandURL.isEmpty() )
-            m_aListenerMap.insert( URLToDispatchMap::value_type( m_aCommandURL, Reference< XDispatch >() ));
     }
+
+    if ( !m_aCommandURL.isEmpty() )
+        m_aListenerMap.emplace( m_aCommandURL, Reference< XDispatch >() );
 }
 
 void SAL_CALL StatusbarController::update()
@@ -181,7 +180,7 @@ void SAL_CALL StatusbarController::update()
 // XComponent
 void SAL_CALL StatusbarController::dispose()
 {
-    Reference< XComponent > xThis( static_cast< OWeakObject* >(this), UNO_QUERY );
+    Reference< XComponent > xThis = this;
 
     {
         SolarMutexGuard aSolarMutexGuard;
@@ -193,16 +192,15 @@ void SAL_CALL StatusbarController::dispose()
     m_aListenerContainer.disposeAndClear( aEvent );
 
     SolarMutexGuard aSolarMutexGuard;
-    Reference< XStatusListener > xStatusListener( static_cast< OWeakObject* >( this ), UNO_QUERY );
+    Reference< XStatusListener > xStatusListener = this;
     Reference< XURLTransformer > xURLTransformer = getURLTransformer();
-    URLToDispatchMap::iterator pIter = m_aListenerMap.begin();
     css::util::URL aTargetURL;
-    while ( pIter != m_aListenerMap.end() )
+    for (auto const& listener : m_aListenerMap)
     {
         try
         {
-            Reference< XDispatch > xDispatch( pIter->second );
-            aTargetURL.Complete = pIter->first;
+            Reference< XDispatch > xDispatch(listener.second);
+            aTargetURL.Complete = listener.first;
             xURLTransformer->parseStrict( aTargetURL );
 
             if ( xDispatch.is() && xStatusListener.is() )
@@ -211,8 +209,6 @@ void SAL_CALL StatusbarController::dispose()
         catch ( Exception& )
         {
         }
-
-        ++pIter;
     }
 
     // clear hash map
@@ -258,13 +254,11 @@ void SAL_CALL StatusbarController::disposing( const EventObject& Source )
     if ( !xDispatch.is() )
         return;
 
-    URLToDispatchMap::iterator pIter = m_aListenerMap.begin();
-    while ( pIter != m_aListenerMap.end() )
+    for (auto & listener : m_aListenerMap)
     {
         // Compare references and release dispatch references if they are equal.
-        if ( xDispatch == pIter->second )
-            pIter->second.clear();
-        ++pIter;
+        if ( xDispatch == listener.second )
+            listener.second.clear();
     }
 }
 
@@ -357,7 +351,7 @@ void StatusbarController::addStatusListener( const OUString& aCommandURL )
         if ( !m_bInitialized )
         {
             // Put into the unordered_map of status listener. Will be activated when initialized is called
-            m_aListenerMap.insert( URLToDispatchMap::value_type( aCommandURL, Reference< XDispatch >() ));
+            m_aListenerMap.emplace( aCommandURL, Reference< XDispatch >() );
             return;
         }
         else
@@ -371,7 +365,7 @@ void StatusbarController::addStatusListener( const OUString& aCommandURL )
                 xURLTransformer->parseStrict( aTargetURL );
                 xDispatch = xDispatchProvider->queryDispatch( aTargetURL, OUString(), 0 );
 
-                xStatusListener.set( static_cast< OWeakObject* >( this ), UNO_QUERY );
+                xStatusListener = this;
                 URLToDispatchMap::iterator aIter = m_aListenerMap.find( aCommandURL );
                 if ( aIter != m_aListenerMap.end() )
                 {
@@ -388,7 +382,7 @@ void StatusbarController::addStatusListener( const OUString& aCommandURL )
                     }
                 }
                 else
-                    m_aListenerMap.insert( URLToDispatchMap::value_type( aCommandURL, xDispatch ));
+                    m_aListenerMap.emplace( aCommandURL, xDispatch );
             }
         }
     }
@@ -419,16 +413,15 @@ void StatusbarController::bindListener()
         Reference< XDispatchProvider > xDispatchProvider( m_xFrame, UNO_QUERY );
         if ( m_xContext.is() && xDispatchProvider.is() )
         {
-            xStatusListener.set( static_cast< OWeakObject* >( this ), UNO_QUERY );
-            URLToDispatchMap::iterator pIter = m_aListenerMap.begin();
-            while ( pIter != m_aListenerMap.end() )
+            xStatusListener = this;
+            for (auto & listener : m_aListenerMap)
             {
                 Reference< XURLTransformer > xURLTransformer = getURLTransformer();
                 css::util::URL aTargetURL;
-                aTargetURL.Complete = pIter->first;
+                aTargetURL.Complete = listener.first;
                 xURLTransformer->parseStrict( aTargetURL );
 
-                Reference< XDispatch > xDispatch( pIter->second );
+                Reference< XDispatch > xDispatch(listener.second);
                 if ( xDispatch.is() )
                 {
                     // We already have a dispatch object => we have to requery.
@@ -442,7 +435,7 @@ void StatusbarController::bindListener()
                     }
                 }
 
-                pIter->second.clear();
+                listener.second.clear();
                 xDispatch.clear();
 
                 // Query for dispatch object. Old dispatch will be released with this, too.
@@ -453,11 +446,10 @@ void StatusbarController::bindListener()
                 catch ( Exception& )
                 {
                 }
-                pIter->second = xDispatch;
+                listener.second = xDispatch;
 
                 Listener aListener( aTargetURL, xDispatch );
                 aDispatchVector.push_back( aListener );
-                ++pIter;
             }
         }
     }
@@ -534,19 +526,19 @@ void StatusbarController::execute( const css::uno::Sequence< css::beans::Propert
         }
     }
 
-    if ( xDispatch.is() && xURLTransformer.is() )
-    {
-        try
-        {
-            css::util::URL aTargetURL;
+    if ( !(xDispatch.is() && xURLTransformer.is()) )
+        return;
 
-            aTargetURL.Complete = aCommandURL;
-            xURLTransformer->parseStrict( aTargetURL );
-            xDispatch->dispatch( aTargetURL, aArgs );
-        }
-        catch ( DisposedException& )
-        {
-        }
+    try
+    {
+        css::util::URL aTargetURL;
+
+        aTargetURL.Complete = aCommandURL;
+        xURLTransformer->parseStrict( aTargetURL );
+        xDispatch->dispatch( aTargetURL, aArgs );
+    }
+    catch ( DisposedException& )
+    {
     }
 }
 

@@ -8,37 +8,37 @@
  *
  */
 
-#include "docsh.hxx"
-#include "reffact.hxx"
-
-#include "CovarianceDialog.hxx"
+#include <reffact.hxx>
+#include <CovarianceDialog.hxx>
+#include <scresid.hxx>
+#include <strings.hrc>
 
 ScCovarianceDialog::ScCovarianceDialog(
                         SfxBindings* pSfxBindings, SfxChildWindow* pChildWindow,
-                        vcl::Window* pParent, ScViewData* pViewData ) :
+                        weld::Window* pParent, ScViewData* pViewData ) :
     ScMatrixComparisonGenerator(
             pSfxBindings, pChildWindow, pParent, pViewData,
-            "CovarianceDialog", "modules/scalc/ui/covariancedialog.ui" )
+            "modules/scalc/ui/covariancedialog.ui", "CovarianceDialog")
 {}
 
-sal_Int16 ScCovarianceDialog::GetUndoNameId()
+const char* ScCovarianceDialog::GetUndoNameId()
 {
     return STR_COVARIANCE_UNDO_NAME;
 }
 
-bool ScCovarianceDialog::Close()
+void ScCovarianceDialog::Close()
 {
-    return DoClose( ScCovarianceDialogWrapper::GetChildWindowId() );
+    DoClose( ScCovarianceDialogWrapper::GetChildWindowId() );
 }
 
-const OUString ScCovarianceDialog::getLabel()
+OUString ScCovarianceDialog::getLabel()
 {
     return ScResId(STR_COVARIANCE_LABEL);
 }
 
-const OUString ScCovarianceDialog::getTemplate()
+OUString ScCovarianceDialog::getTemplate()
 {
-    return OUString("=COVAR(%VAR1%; %VAR2%)");
+    return "=COVAR(%VAR1%; %VAR2%)";
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

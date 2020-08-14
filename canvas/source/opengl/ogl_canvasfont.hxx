@@ -13,8 +13,8 @@
 #include <cppuhelper/compbase.hxx>
 #include <cppuhelper/basemutex.hxx>
 
-#include <com/sun/star/rendering/XCanvas.hpp>
 #include <com/sun/star/rendering/XCanvasFont.hpp>
+#include <com/sun/star/geometry/Matrix2D.hpp>
 
 #include <rtl/ref.hxx>
 
@@ -50,8 +50,11 @@ namespace oglcanvas
 
         const css::geometry::Matrix2D& getFontMatrix() const { return maFontMatrix; }
 
+        sal_uInt32 getEmphasisMark() const { return mnEmphasisMark; }
+
     private:
         css::rendering::FontRequest    maFontRequest;
+        sal_uInt32                     mnEmphasisMark;
         css::geometry::Matrix2D        maFontMatrix;
     };
 }

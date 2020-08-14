@@ -12,7 +12,6 @@
 
 #include <formula/grammar.hxx>
 #include <tools/color.hxx>
-#include "rangelst.hxx"
 #include "conditio.hxx"
 #include "document.hxx"
 
@@ -21,7 +20,6 @@
 
 //TODO: merge this with conditio.hxx
 
-class ScDocument;
 class ScFormulaCell;
 class ScTokenArray;
 struct ScDataBarInfo;
@@ -45,14 +43,16 @@ class SC_DLLPUBLIC ScColorScaleEntry
 {
 private:
     double mnVal;
-    Color maColor;
     std::unique_ptr<ScFormulaCell> mpCell;
     std::unique_ptr<ScFormulaListener> mpListener;
-    ScColorScaleEntryType meType;
     ScConditionalFormat* mpFormat;
+    Color maColor;
+    ScColorScaleEntryType meType;
+
+    void setListener();
 
 public:
-    ScColorScaleEntry(double nVal, const Color& rCol);
+    ScColorScaleEntry(double nVal, const Color& rCol, ScColorScaleEntryType eType = COLORSCALE_VALUE);
     ScColorScaleEntry();
     ScColorScaleEntry(const ScColorScaleEntry& rEntry);
     ScColorScaleEntry(ScDocument* pDoc, const ScColorScaleEntry& rEntry);
@@ -65,10 +65,10 @@ public:
     void SetFormula(const OUString& rFormula, ScDocument* pDoc, const ScAddress& rAddr,
             formula::FormulaGrammar::Grammar eGrammar = formula::FormulaGrammar::GRAM_DEFAULT);
 
-    void UpdateReference( sc::RefUpdateContext& rCxt );
-    void UpdateInsertTab( sc::RefUpdateInsertTabContext& rCxt );
-    void UpdateDeleteTab( sc::RefUpdateDeleteTabContext& rCxt );
-    void UpdateMoveTab( sc::RefUpdateMoveTabContext& rCxt );
+    void UpdateReference( const sc::RefUpdateContext& rCxt );
+    void UpdateInsertTab( const sc::RefUpdateInsertTabContext& rCxt );
+    void UpdateDeleteTab( const sc::RefUpdateDeleteTabContext& rCxt );
+    void UpdateMoveTab( const sc::RefUpdateMoveTabContext& rCxt );
 
     const ScTokenArray* GetFormula() const;
     OUString GetFormula( formula::FormulaGrammar::Grammar eGrammar ) const;
@@ -77,6 +77,7 @@ public:
     void SetType( ScColorScaleEntryType eType );
 
     void SetRepaintCallback(ScConditionalFormat* pParent);
+    void SetRepaintCallback(const std::function<void()>& func);
 };
 
 namespace databar
@@ -181,8 +182,8 @@ struct SC_DLLPUBLIC ScDataBarFormatData
      */
     bool mbOnlyBar;
 
-    std::unique_ptr<ScColorScaleEntry> mpUpperLimit;
-    std::unique_ptr<ScColorScaleEntry> mpLowerLimit;
+    std::unique_ptr<ScColorScaleEntry, o3tl::default_delete<ScColorScaleEntry>> mpUpperLimit;
+    std::unique_ptr<ScColorScaleEntry, o3tl::default_delete<ScColorScaleEntry>> mpLowerLimit;
 };
 
 enum ScIconSetType
@@ -247,9 +248,9 @@ private:
     mutable std::unique_ptr<ScColorFormatCache> mpCache;
 };
 
-typedef std::vector<std::unique_ptr<ScColorScaleEntry>> ScColorScaleEntries;
+typedef std::vector<std::unique_ptr<ScColorScaleEntry, o3tl::default_delete<ScColorScaleEntry>>> ScColorScaleEntries;
 
-class SC_DLLPUBLIC ScColorScaleFormat : public ScColorFormat
+class SC_DLLPUBLIC ScColorScaleFormat final : public ScColorFormat
 {
 private:
     ScColorScaleEntries maColorScales;
@@ -258,7 +259,7 @@ private:
     double GetMaxValue() const;
 
     void calcMinMax(double& nMin, double& nMax) const;
-    double CalcValue(double nMin, double nMax, ScColorScaleEntries::const_iterator& rItr) const;
+    double CalcValue(double nMin, double nMax, const ScColorScaleEntries::const_iterator& rItr) const;
 public:
     ScColorScaleFormat(ScDocument* pDoc);
     ScColorScaleFormat(ScDocument* pDoc, const ScColorScaleFormat& rFormat);
@@ -267,7 +268,7 @@ public:
 
     virtual void SetParent(ScConditionalFormat* pParent) override;
 
-    Color* GetColor(const ScAddress& rAddr) const;
+    std::optional<Color> GetColor(const ScAddress& rAddr) const;
     void AddEntry(ScColorScaleEntry* pEntry);
 
     virtual void UpdateReference( sc::RefUpdateContext& rCxt ) override;
@@ -275,7 +276,7 @@ public:
     virtual void UpdateDeleteTab( sc::RefUpdateDeleteTabContext& rCxt ) override;
     virtual void UpdateMoveTab( sc::RefUpdateMoveTabContext& rCxt ) override;
 
-    virtual condformat::ScFormatEntryType GetType() const override;
+    virtual Type GetType() const override;
     ScColorScaleEntries::iterator begin();
     ScColorScaleEntries::const_iterator begin() const;
     ScColorScaleEntries::iterator end();
@@ -293,7 +294,7 @@ public:
     void EnsureSize();
 };
 
-class SC_DLLPUBLIC ScDataBarFormat : public ScColorFormat
+class SC_DLLPUBLIC ScDataBarFormat final : public ScColorFormat
 {
 public:
     ScDataBarFormat(ScDocument* pDoc);
@@ -302,7 +303,7 @@ public:
 
     virtual void SetParent(ScConditionalFormat* pParent) override;
 
-    ScDataBarInfo* GetDataBarInfo(const ScAddress& rAddr) const;
+    std::unique_ptr<ScDataBarInfo> GetDataBarInfo(const ScAddress& rAddr) const;
 
     void SetDataBarData( ScDataBarFormatData* pData );
     const ScDataBarFormatData* GetDataBarData() const;
@@ -313,7 +314,7 @@ public:
     virtual void UpdateDeleteTab( sc::RefUpdateDeleteTabContext& rCxt ) override;
     virtual void UpdateMoveTab( sc::RefUpdateMoveTabContext& rCxt ) override;
 
-    virtual condformat::ScFormatEntryType GetType() const override;
+    virtual Type GetType() const override;
 
     /**
      * Makes sure that the mpFormatData does not contain valid entries.
@@ -336,15 +337,15 @@ struct ScIconSetFormatData
      * Specifies whether the icons should be shown in reverse order
      */
     bool mbReverse;
-    typedef std::vector<std::unique_ptr<ScColorScaleEntry>> Entries_t;
+    typedef std::vector<std::unique_ptr<ScColorScaleEntry, o3tl::default_delete<ScColorScaleEntry>>> Entries_t;
     Entries_t m_Entries;
     bool mbCustom;
     // the std::pair points to exactly one image
     // std..pair::second == -1 means no image
     std::vector<std::pair<ScIconSetType, sal_Int32> > maCustomVector;
 
-    ScIconSetFormatData():
-        eIconSetType(IconSet_3Arrows),
+    ScIconSetFormatData(ScIconSetType eType = IconSet_3Arrows):
+        eIconSetType(eType),
         mbShowValue(true),
         mbReverse(false),
         mbCustom(false)
@@ -354,7 +355,7 @@ struct ScIconSetFormatData
     ScIconSetFormatData& operator=(ScIconSetFormatData const&) = delete; //TODO?
 };
 
-class SC_DLLPUBLIC ScIconSetFormat : public ScColorFormat
+class SC_DLLPUBLIC ScIconSetFormat final : public ScColorFormat
 {
 public:
     ScIconSetFormat(ScDocument* pDoc);
@@ -364,7 +365,7 @@ public:
 
     virtual void SetParent(ScConditionalFormat* pParent) override;
 
-    ScIconSetInfo* GetIconSetInfo(const ScAddress& rAddr) const;
+    std::unique_ptr<ScIconSetInfo> GetIconSetInfo(const ScAddress& rAddr) const;
 
     void SetIconSetData( ScIconSetFormatData* pData );
     const ScIconSetFormatData* GetIconSetData() const;
@@ -375,9 +376,12 @@ public:
     virtual void UpdateDeleteTab( sc::RefUpdateDeleteTabContext& rCxt ) override;
     virtual void UpdateMoveTab( sc::RefUpdateMoveTabContext& rCxt ) override;
 
-    virtual condformat::ScFormatEntryType GetType() const override;
+    virtual Type GetType() const override;
 
     static const ScIconSetMap g_IconSetMap[];
+    static const char* getIconSetName( ScIconSetType eType );
+    static sal_Int32 getIconSetElements( ScIconSetType eType );
+    static OUString getIconName(ScIconSetType eType, sal_Int32 nIndex);
     static BitmapEx& getBitmap(sc::IconSetBitmapMap& rBitmapMap, ScIconSetType eType, sal_Int32 nIndex);
 
     typedef ScIconSetFormatData::Entries_t::iterator iterator;
@@ -400,7 +404,7 @@ private:
 
     double GetMinValue() const;
     double GetMaxValue() const;
-    double CalcValue(double nMin, double nMax, ScIconSetFormat::const_iterator& itr) const;
+    double CalcValue(double nMin, double nMax, const ScIconSetFormat::const_iterator& itr) const;
 
     std::unique_ptr<ScIconSetFormatData> mpFormatData;
 };

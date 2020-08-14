@@ -20,13 +20,13 @@
 #define INCLUDED_CHART2_SOURCE_MODEL_MAIN_PAGEBACKGROUND_HXX
 
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/util/XCloneable.hpp>
-#include "MutexContainer.hxx"
-#include "OPropertySet.hxx"
+#include <com/sun/star/util/XModifyBroadcaster.hpp>
+#include <com/sun/star/util/XModifyListener.hpp>
+#include <MutexContainer.hxx>
+#include <OPropertySet.hxx>
 #include <cppuhelper/implbase.hxx>
 
-#include "ModifyListenerHelper.hxx"
 #include <comphelper/uno3.hxx>
 
 namespace chart
@@ -42,7 +42,7 @@ typedef ::cppu::WeakImplHelper<
     PageBackground_Base;
 }
 
-class PageBackground :
+class PageBackground final :
     public MutexContainer,
     public impl::PageBackground_Base,
     public ::property::OPropertySet
@@ -59,7 +59,7 @@ public:
     /// merge XInterface implementations
      DECLARE_XINTERFACE()
 
-protected:
+private:
     explicit PageBackground( const PageBackground & rOther );
 
     // ____ OPropertySet ____
@@ -93,7 +93,6 @@ protected:
     virtual void firePropertyChangeEvent() override;
     using OPropertySet::disposing;
 
-private:
     css::uno::Reference< css::util::XModifyListener > m_xModifyEventForwarder;
 };
 

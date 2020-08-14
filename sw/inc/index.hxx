@@ -20,18 +20,14 @@
 #define INCLUDED_SW_INC_INDEX_HXX
 
 #include <sal/types.h>
-#include <swdllapi.h>
+#include "swdllapi.h"
 
 #include <iostream>
 
 class SwIndexReg;
 struct SwPosition;
 
-namespace sw {
-namespace mark {
-class IMark;
-}
-}
+namespace sw::mark { class IMark; }
 
 /// Marks a character position inside a document model node.
 class SAL_WARN_UNUSED SW_DLLPUBLIC SwIndex

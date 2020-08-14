@@ -20,7 +20,7 @@
 #include <memory>
 #include "eformshelper.hxx"
 #include "formstrings.hxx"
-#include "formresid.hrc"
+#include <strings.hrc>
 #include "modulepcr.hxx"
 #include "propeventtranslation.hxx"
 #include "formbrowsertools.hxx"
@@ -31,7 +31,6 @@
 #include <com/sun/star/xsd/DataTypeClass.hpp>
 #include <com/sun/star/form/binding/XListEntrySink.hpp>
 #include <tools/diagnose_ex.h>
-#include <rtl/ustrbuf.hxx>
 
 #include <algorithm>
 #include <o3tl/functional.hxx>
@@ -57,12 +56,10 @@ namespace pcr
 
         OUString composeModelElementUIName( const OUString& _rModelName, const OUString& _rElementName )
         {
-            OUStringBuffer aBuffer;
-            aBuffer.append( "[" );
-            aBuffer.append( _rModelName );
-            aBuffer.append( "] " );
-            aBuffer.append( _rElementName );
-            return aBuffer.makeStringAndClear();
+            OUString a = "["
+                       + _rModelName + "] "
+                       + _rElementName;
+            return a;
         }
     }
 
@@ -95,7 +92,7 @@ namespace pcr
         }
         catch( const Exception& )
         {
-            OSL_FAIL( "EFormsHelper::isEForm: caught an exception!" );
+            TOOLS_WARN_EXCEPTION( "extensions.propctrlr", "EFormsHelper::isEForm" );
         }
         return false;
     }
@@ -123,14 +120,14 @@ namespace pcr
             OSL_VERIFY( m_xControlModel->getPropertyValue( PROPERTY_CLASSID ) >>= nControlType );
 
             // some lists
-            sal_Int16 nNumericCompatibleTypes[] = { DataTypeClass::DECIMAL, DataTypeClass::FLOAT, DataTypeClass::DOUBLE, 0 };
-            sal_Int16 nDateCompatibleTypes[] = { DataTypeClass::DATE, 0 };
-            sal_Int16 nTimeCompatibleTypes[] = { DataTypeClass::TIME, 0 };
-            sal_Int16 nCheckboxCompatibleTypes[] = { DataTypeClass::BOOLEAN, DataTypeClass::STRING, DataTypeClass::anyURI, 0 };
-            sal_Int16 nRadiobuttonCompatibleTypes[] = { DataTypeClass::STRING, DataTypeClass::anyURI, 0 };
-            sal_Int16 nFormattedCompatibleTypes[] = { DataTypeClass::DECIMAL, DataTypeClass::FLOAT, DataTypeClass::DOUBLE, DataTypeClass::DATETIME, DataTypeClass::DATE, DataTypeClass::TIME, 0 };
+            sal_Int16 const nNumericCompatibleTypes[] = { DataTypeClass::DECIMAL, DataTypeClass::FLOAT, DataTypeClass::DOUBLE, 0 };
+            sal_Int16 const nDateCompatibleTypes[] = { DataTypeClass::DATE, 0 };
+            sal_Int16 const nTimeCompatibleTypes[] = { DataTypeClass::TIME, 0 };
+            sal_Int16 const nCheckboxCompatibleTypes[] = { DataTypeClass::BOOLEAN, DataTypeClass::STRING, DataTypeClass::anyURI, 0 };
+            sal_Int16 const nRadiobuttonCompatibleTypes[] = { DataTypeClass::STRING, DataTypeClass::anyURI, 0 };
+            sal_Int16 const nFormattedCompatibleTypes[] = { DataTypeClass::DECIMAL, DataTypeClass::FLOAT, DataTypeClass::DOUBLE, DataTypeClass::DATETIME, DataTypeClass::DATE, DataTypeClass::TIME, 0 };
 
-            sal_Int16* pCompatibleTypes = nullptr;
+            sal_Int16 const * pCompatibleTypes = nullptr;
             switch ( nControlType )
             {
             case FormComponentType::SPINBUTTON:
@@ -164,7 +161,7 @@ namespace pcr
                         break;
                     }
                 }
-                SAL_FALLTHROUGH;
+                [[fallthrough]];
             }
             case FormComponentType::LISTBOX:
             case FormComponentType::COMBOBOX:
@@ -188,7 +185,7 @@ namespace pcr
         }
         catch( const Exception& )
         {
-            OSL_FAIL( "EFormsHelper::canBindToDataType: caught an exception!" );
+            TOOLS_WARN_EXCEPTION( "extensions.propctrlr", "EFormsHelper::canBindToDataType" );
         }
 
         return bCan;
@@ -205,7 +202,7 @@ namespace pcr
         }
         catch( const Exception& )
         {
-            OSL_FAIL( "EFormsHelper::isListEntrySink: caught an exception!" );
+            TOOLS_WARN_EXCEPTION( "extensions.propctrlr", "EFormsHelper::isListEntrySink" );
         }
         return bIs;
     }
@@ -295,25 +292,25 @@ namespace pcr
 
     void EFormsHelper::getFormModelNames( std::vector< OUString >& /* [out] */ _rModelNames ) const
     {
-        if ( m_xDocument.is() )
-        {
-            try
-            {
-                _rModelNames.resize( 0 );
+        if ( !m_xDocument.is() )
+            return;
 
-                Reference< XNameContainer > xForms( m_xDocument->getXForms() );
-                OSL_ENSURE( xForms.is(), "EFormsHelper::getFormModelNames: invalid forms container!" );
-                if ( xForms.is() )
-                {
-                    Sequence< OUString > aModelNames = xForms->getElementNames();
-                    _rModelNames.resize( aModelNames.getLength() );
-                    std::copy( aModelNames.begin(), aModelNames.end(), _rModelNames.begin() );
-                }
-            }
-            catch( const Exception& )
+        try
+        {
+            _rModelNames.resize( 0 );
+
+            Reference< XNameContainer > xForms( m_xDocument->getXForms() );
+            OSL_ENSURE( xForms.is(), "EFormsHelper::getFormModelNames: invalid forms container!" );
+            if ( xForms.is() )
             {
-                OSL_FAIL( "EFormsHelper::getFormModelNames: caught an exception!" );
+                Sequence< OUString > aModelNames = xForms->getElementNames();
+                _rModelNames.resize( aModelNames.getLength() );
+                std::copy( aModelNames.begin(), aModelNames.end(), _rModelNames.begin() );
             }
+        }
+        catch( const Exception& )
+        {
+            TOOLS_WARN_EXCEPTION( "extensions.propctrlr", "EFormsHelper::getFormModelNames" );
         }
     }
 
@@ -338,7 +335,7 @@ namespace pcr
         }
         catch( const Exception& )
         {
-            OSL_FAIL( "EFormsHelper::getBindingNames: caught an exception!" );
+            TOOLS_WARN_EXCEPTION( "extensions.propctrlr", "EFormsHelper::getBindingNames" );
         }
     }
 
@@ -355,7 +352,7 @@ namespace pcr
         }
         catch( const Exception& )
         {
-            OSL_FAIL( "EFormsHelper::getFormModelByName: caught an exception!" );
+            TOOLS_WARN_EXCEPTION( "extensions.propctrlr", "EFormsHelper::getFormModelByName" );
         }
         return xReturn;
     }
@@ -374,7 +371,7 @@ namespace pcr
         }
         catch( const Exception& )
         {
-            OSL_FAIL( "EFormsHelper::getCurrentFormModel: caught an exception!" );
+            TOOLS_WARN_EXCEPTION( "extensions.propctrlr", "EFormsHelper::getCurrentFormModel" );
         }
         return xModel;
     }
@@ -391,7 +388,7 @@ namespace pcr
         }
         catch( const Exception& )
         {
-            OSL_FAIL( "EFormsHelper::getCurrentFormModel: caught an exception!" );
+            TOOLS_WARN_EXCEPTION( "extensions.propctrlr", "EFormsHelper::getCurrentFormModel" );
         }
         return sModelName;
     }
@@ -408,7 +405,7 @@ namespace pcr
         }
         catch( const Exception& )
         {
-            OSL_FAIL( "EFormsHelper::getCurrentBinding: caught an exception!" );
+            TOOLS_WARN_EXCEPTION( "extensions.propctrlr", "EFormsHelper::getCurrentBinding" );
         }
 
         return xBinding;
@@ -426,7 +423,7 @@ namespace pcr
         }
         catch( const Exception& )
         {
-            OSL_FAIL( "EFormsHelper::getCurrentBindingName: caught an exception!" );
+            TOOLS_WARN_EXCEPTION( "extensions.propctrlr", "EFormsHelper::getCurrentBindingName" );
         }
         return sBindingName;
     }
@@ -444,7 +441,7 @@ namespace pcr
         }
         catch( const Exception& )
         {
-            OSL_FAIL( "EFormsHelper::getCurrentListSourceBinding: caught an exception!" );
+            TOOLS_WARN_EXCEPTION( "extensions.propctrlr", "EFormsHelper::getCurrentListSourceBinding" );
         }
         return xReturn;
     }
@@ -461,7 +458,7 @@ namespace pcr
         }
         catch( const Exception& )
         {
-            OSL_FAIL( "EFormsHelper::setListSourceBinding: caught an exception!" );
+            TOOLS_WARN_EXCEPTION( "extensions.propctrlr", "EFormsHelper::setListSourceBinding" );
         }
     }
 
@@ -487,7 +484,7 @@ namespace pcr
         }
         catch( const Exception& )
         {
-            OSL_FAIL( "EFormsHelper::setBinding: caught an exception!" );
+            TOOLS_WARN_EXCEPTION( "extensions.propctrlr", "EFormsHelper::setBinding" );
         }
     }
 
@@ -541,8 +538,7 @@ namespace pcr
                     if ( xBinding.is() )
                     {
                         // find a nice name for it
-                        OUString sBaseName(PcrRes(RID_STR_BINDING_UI_NAME));
-                        sBaseName += " ";
+                        OUString sBaseName(PcrRes(RID_STR_BINDING_NAME) + " ");
                         OUString sNewName;
                         sal_Int32 nNumber = 1;
                         do
@@ -560,7 +556,7 @@ namespace pcr
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("extensions.propctrlr");
         }
 
         return xBinding;
@@ -621,7 +617,7 @@ namespace pcr
         }
         catch( const Exception& )
         {
-            OSL_FAIL( "EFormsHelper::getModelElementUIName: caught an exception!" );
+            TOOLS_WARN_EXCEPTION( "extensions.propctrlr", "EFormsHelper::getModelElementUIName" );
         }
 
         return sUIName;
@@ -655,12 +651,9 @@ namespace pcr
             _rElementNames.reserve( aModels.size() * 2 );    // heuristics
 
             // for every model, obtain the element
-            for ( std::vector< OUString >::const_iterator pModelName = aModels.begin();
-                  pModelName != aModels.end();
-                  ++pModelName
-                )
+            for (auto const& modelName : aModels)
             {
-                Reference< xforms::XModel > xModel = getFormModelByName( *pModelName );
+                Reference< xforms::XModel > xModel = getFormModelByName(modelName);
                 OSL_ENSURE( xModel.is(), "EFormsHelper::getAllElementUINames: inconsistency in the models!" );
                 Reference< xforms::XFormsUIHelper1 > xHelper( xModel, UNO_QUERY );
 
@@ -682,21 +675,21 @@ namespace pcr
                         Reference< xforms::XModel > xElementsModel;
                         xElement->getPropertyValue( PROPERTY_MODEL ) >>= xElementsModel;
                         OSL_ENSURE( xElementsModel == xModel, "EFormsHelper::getAllElementUINames: inconsistency in the model-element relationship!" );
-                        if ( !( xElementsModel == xModel ) )
+                        if ( xElementsModel != xModel )
                             xElement->setPropertyValue( PROPERTY_MODEL, makeAny( xModel ) );
                     }
 #endif
                     OUString sElementName = ( _eType == Submission ) ? xHelper->getSubmissionName( xElement, true ) : xHelper->getBindingName( xElement, true );
-                    OUString sUIName = composeModelElementUIName( *pModelName, sElementName );
+                    OUString sUIName = composeModelElementUIName( modelName, sElementName );
 
                     OSL_ENSURE( rMapUINameToElement.find( sUIName ) == rMapUINameToElement.end(), "EFormsHelper::getAllElementUINames: duplicate name!" );
-                    rMapUINameToElement.insert( MapStringToPropertySet::value_type( sUIName, xElement ) );
+                    rMapUINameToElement.emplace( sUIName, xElement );
                 }
             }
         }
         catch( const Exception& )
         {
-            OSL_FAIL( "EFormsHelper::getAllElementUINames: caught an exception!" );
+            TOOLS_WARN_EXCEPTION( "extensions.propctrlr", "EFormsHelper::getAllElementUINames" );
         }
 
         _rElementNames.resize( rMapUINameToElement.size() );
@@ -726,7 +719,7 @@ namespace pcr
         }
         catch( const Exception& )
         {
-            OSL_FAIL( "EFormsHelper::firePropertyChange: caught an exception!" );
+            TOOLS_WARN_EXCEPTION( "extensions.propctrlr", "EFormsHelper::firePropertyChange" );
         }
     }
 
@@ -742,28 +735,25 @@ namespace pcr
             Reference< XPropertySetInfo > xOldInfo = collectPropertiesGetInfo( _rxOldProps, aProperties );
             Reference< XPropertySetInfo > xNewInfo = collectPropertiesGetInfo( _rxNewProps, aProperties );
 
-            for ( PropertyBag::const_iterator aProp = aProperties.begin();
-                  aProp != aProperties.end();
-                  ++aProp
-                )
+            for (auto const& property : aProperties)
             {
-                if ( _rFilter.find( aProp->Name ) != _rFilter.end() )
+                if ( _rFilter.find( property.Name ) != _rFilter.end() )
                     continue;
 
-                Any aOldValue( nullptr, aProp->Type );
-                if ( xOldInfo.is() && xOldInfo->hasPropertyByName( aProp->Name ) )
-                    aOldValue = _rxOldProps->getPropertyValue( aProp->Name );
+                Any aOldValue( nullptr, property.Type );
+                if ( xOldInfo.is() && xOldInfo->hasPropertyByName( property.Name ) )
+                    aOldValue = _rxOldProps->getPropertyValue( property.Name );
 
-                Any aNewValue( nullptr, aProp->Type );
-                if ( xNewInfo.is() && xNewInfo->hasPropertyByName( aProp->Name ) )
-                    aNewValue = _rxNewProps->getPropertyValue( aProp->Name );
+                Any aNewValue( nullptr, property.Type );
+                if ( xNewInfo.is() && xNewInfo->hasPropertyByName( property.Name ) )
+                    aNewValue = _rxNewProps->getPropertyValue( property.Name );
 
-                firePropertyChange( aProp->Name, aOldValue, aNewValue );
+                firePropertyChange( property.Name, aOldValue, aNewValue );
             }
         }
         catch( const Exception& )
         {
-            OSL_FAIL( "EFormsHelper::firePropertyChanges: caught an exception!" );
+            TOOLS_WARN_EXCEPTION( "extensions.propctrlr", "EFormsHelper::firePropertyChanges" );
         }
     }
 

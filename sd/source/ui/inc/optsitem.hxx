@@ -22,11 +22,8 @@
 
 #include <unotools/configitem.hxx>
 #include <sfx2/module.hxx>
-#include <sfx2/app.hxx>
-#include <sfx2/sfxsids.hrc>
 #include <svx/optgrid.hxx>
-#include <svx/dlgutil.hxx>
-#include "sddllapi.h"
+#include <sddllapi.h>
 #include <memory>
 
 class SdOptions;
@@ -51,6 +48,11 @@ public:
     SdOptionsItem( const SdOptionsGeneric& rParent, const OUString& rSubTree );
     virtual ~SdOptionsItem() override;
 
+    SdOptionsItem(SdOptionsItem const &) = default;
+    SdOptionsItem(SdOptionsItem &&) = default;
+    SdOptionsItem & operator =(SdOptionsItem const &) = delete; // due to ConfigItem
+    SdOptionsItem & operator =(SdOptionsItem &&) = delete; // due to ConfigItem
+
     virtual void            Notify( const css::uno::Sequence<OUString>& aPropertyNames) override;
 
     css::uno::Sequence< css::uno::Any > GetProperties( const css::uno::Sequence< OUString >& rNames );
@@ -68,7 +70,7 @@ private:
     OUString                maSubTree;
     std::unique_ptr<SdOptionsItem>
                             mpCfgItem;
-    sal_uInt16              mnConfigId;
+    bool                    mbImpress;
     bool                    mbInit          : 1;
     bool                    mbEnableModify  : 1;
 
@@ -88,13 +90,13 @@ protected:
 
 public:
 
-                            SdOptionsGeneric( sal_uInt16 nConfigId, const OUString& rSubTree );
-                            SdOptionsGeneric( SdOptionsGeneric const & );
+                            SdOptionsGeneric(bool bImpress, const OUString& rSubTree);
+                            SdOptionsGeneric(SdOptionsGeneric const &);
                             virtual ~SdOptionsGeneric();
 
     SdOptionsGeneric&       operator=( SdOptionsGeneric const & );
 
-    sal_uInt16              GetConfigId() const { return mnConfigId; }
+    bool                    IsImpress() const { return mbImpress; }
 
     void                    EnableModify( bool bModify ) { mbEnableModify = bModify; }
 
@@ -122,7 +124,7 @@ protected:
     virtual bool WriteData( css::uno::Any* pValues ) const override;
 
 public:
-            SdOptionsLayout( sal_uInt16 nConfigId, bool bUseConfig );
+            SdOptionsLayout(bool bImpress, bool bUseConfig);
 
     bool    operator==( const SdOptionsLayout& rOpt ) const;
 
@@ -131,7 +133,7 @@ public:
     bool    IsDragStripes() const { Init(); return bDragStripes; }
     bool    IsHandlesBezier() const { Init(); return bHandlesBezier; }
     bool    IsHelplines() const { Init(); return bHelplines; }
-    sal_uInt16  GetMetric() const { Init(); return( ( 0xffff == nMetric ) ? (sal_uInt16)SfxModule::GetCurrentFieldUnit() : nMetric ); }
+    sal_uInt16  GetMetric() const { Init(); return( ( 0xffff == nMetric ) ? static_cast<sal_uInt16>(SfxModule::GetCurrentFieldUnit()) : nMetric ); }
     sal_uInt16  GetDefTab() const { Init(); return nDefTab; }
 
     void    SetRulerVisible( bool bOn ) { if( bRuler != bOn ) { OptionsChanged(); bRuler = bOn; } }
@@ -148,9 +150,9 @@ class SD_DLLPUBLIC SdOptionsLayoutItem : public SfxPoolItem
 public:
 
                             explicit SdOptionsLayoutItem();
-                            SdOptionsLayoutItem( SdOptions* pOpts, ::sd::FrameView* pView );
+                            SdOptionsLayoutItem( SdOptions const * pOpts, ::sd::FrameView const * pView );
 
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
+    virtual SdOptionsLayoutItem* Clone( SfxItemPool *pPool = nullptr ) const override;
     virtual bool            operator==( const SfxPoolItem& ) const override;
 
     void                    SetOptions( SdOptions* pOpts ) const;
@@ -160,7 +162,7 @@ private:
     SdOptionsLayout maOptionsLayout;
 };
 
-class SD_DLLPUBLIC SdOptionsContents : public SdOptionsGeneric
+class SdOptionsContents : public SdOptionsGeneric
 {
 private:
 protected:
@@ -171,22 +173,9 @@ protected:
 
 public:
 
-            SdOptionsContents( sal_uInt16 nConfigId, bool bUseConfig );
+            SdOptionsContents(bool bImpress);
 
     bool    operator==( const SdOptionsContents& rOpt ) const;
-};
-
-class SD_DLLPUBLIC SdOptionsContentsItem : public SfxPoolItem
-{
-public:
-
-                            SdOptionsContentsItem();
-
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
-    virtual bool            operator==( const SfxPoolItem& ) const override;
-
-private:
-    SdOptionsContents       maOptionsContents;
 };
 
 class SD_DLLPUBLIC SdOptionsMisc : public SdOptionsGeneric
@@ -242,7 +231,7 @@ protected:
 
 public:
 
-            SdOptionsMisc( sal_uInt16 nConfigId, bool bUseConfig );
+            SdOptionsMisc(bool bImpress, bool bUseConfig);
 
     bool    operator==( const SdOptionsMisc& rOpt ) const;
 
@@ -326,9 +315,9 @@ class SD_DLLPUBLIC SdOptionsMiscItem : public SfxPoolItem
 public:
 
                             explicit SdOptionsMiscItem();
-                            SdOptionsMiscItem( SdOptions* pOpts, ::sd::FrameView* pView );
+                            SdOptionsMiscItem( SdOptions const * pOpts, ::sd::FrameView const * pView );
 
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
+    virtual SdOptionsMiscItem* Clone( SfxItemPool *pPool = nullptr ) const override;
     virtual bool            operator==( const SfxPoolItem& ) const override;
 
     void                    SetOptions( SdOptions* pOpts ) const;
@@ -362,7 +351,7 @@ protected:
 
 public:
 
-            SdOptionsSnap( sal_uInt16 nConfigId, bool bUseConfig );
+            SdOptionsSnap(bool bImpress, bool bUseConfig);
 
     bool    operator==( const SdOptionsSnap& rOpt ) const;
 
@@ -394,9 +383,9 @@ class SD_DLLPUBLIC SdOptionsSnapItem : public SfxPoolItem
 public:
 
                             explicit SdOptionsSnapItem();
-                            SdOptionsSnapItem( SdOptions* pOpts, ::sd::FrameView* pView );
+                            SdOptionsSnapItem( SdOptions const * pOpts, ::sd::FrameView const * pView );
 
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
+    virtual SdOptionsSnapItem* Clone( SfxItemPool *pPool = nullptr ) const override;
     virtual bool            operator==( const SfxPoolItem& ) const override;
 
     void                    SetOptions( SdOptions* pOpts ) const;
@@ -421,7 +410,7 @@ protected:
 
 public:
 
-    explicit SdOptionsZoom(sal_uInt16 nConfigId);
+    explicit SdOptionsZoom(bool bImpress);
 
     void    GetScale( sal_Int32& rX, sal_Int32& rY ) const { Init(); rX = nX; rY = nY; }
     void    SetScale( sal_Int32 nInX, sal_Int32 nInY ) { if( nX != nInX || nY != nInY ) { OptionsChanged(); nX = nInX; nY = nInY; } }
@@ -437,7 +426,7 @@ protected:
 
 public:
 
-    explicit SdOptionsGrid(sal_uInt16 nConfigId);
+    explicit SdOptionsGrid(bool bImpress);
     virtual ~SdOptionsGrid() override;
 
     void    SetDefaults();
@@ -469,7 +458,7 @@ class SdOptionsGridItem : public SvxGridItem
 {
 
 public:
-    explicit                SdOptionsGridItem( SdOptions* pOpts );
+    explicit                SdOptionsGridItem( SdOptions const * pOpts );
 
     void                    SetOptions( SdOptions* pOpts ) const;
 };
@@ -508,7 +497,7 @@ protected:
 
 public:
 
-            SdOptionsPrint( sal_uInt16 nConfigId, bool bUseConfig );
+            SdOptionsPrint(bool bImpress, bool bUseConfig);
 
     bool    operator==( const SdOptionsPrint& rOpt ) const;
 
@@ -562,9 +551,9 @@ class SD_DLLPUBLIC SdOptionsPrintItem : public SfxPoolItem
 public:
 
                             explicit SdOptionsPrintItem();
-    explicit                SdOptionsPrintItem( SdOptions* pOpts );
+    explicit                SdOptionsPrintItem( SdOptions const * pOpts );
 
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
+    virtual SdOptionsPrintItem* Clone( SfxItemPool *pPool = nullptr ) const override;
     virtual bool            operator==( const SfxPoolItem& ) const override;
 
     void                    SetOptions( SdOptions* pOpts ) const;
@@ -582,7 +571,7 @@ class SdOptions : public SdOptionsLayout, public SdOptionsContents,
 {
 public:
 
-                        explicit SdOptions( sal_uInt16 nConfigId );
+                        explicit SdOptions(bool bImpress);
                         virtual ~SdOptions() override;
 
     void                StoreConfig();

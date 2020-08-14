@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Generated with glade 3.20.0 -->
-<interface>
-  <requires lib="gtk+" version="3.10"/>
+<!-- Generated with glade 3.22.1 -->
+<interface domain="svx">
+  <requires lib="gtk+" version="3.18"/>
   <object class="GtkMenu" id="menu">
     <property name="visible">True</property>
     <property name="can_focus">False</property>
@@ -9,7 +9,7 @@
       <object class="GtkMenuItem" id="add">
         <property name="visible">True</property>
         <property name="can_focus">False</property>
-        <property name="label" translatable="yes">_Insert</property>
+        <property name="label" translatable="yes" context="gallerymenu2|add">_Insert</property>
         <property name="use_underline">True</property>
       </object>
     </child>
@@ -17,8 +17,14 @@
       <object class="GtkMenuItem" id="background">
         <property name="visible">True</property>
         <property name="can_focus">False</property>
-        <property name="label" translatable="yes">Insert as Bac_kground</property>
+        <property name="label" translatable="yes" context="gallerymenu2|background">Insert as Bac_kground</property>
         <property name="use_underline">True</property>
+        <child type="submenu">
+          <object class="GtkMenu" id="backgroundmenu">
+            <property name="visible">True</property>
+            <property name="can_focus">False</property>
+          </object>
+        </child>
       </object>
     </child>
     <child>
@@ -31,7 +37,7 @@
       <object class="GtkCheckMenuItem" id="preview">
         <property name="visible">True</property>
         <property name="can_focus">False</property>
-        <property name="label" translatable="yes">_Preview</property>
+        <property name="label" translatable="yes" context="gallerymenu2|preview">_Preview</property>
         <property name="use_underline">True</property>
       </object>
     </child>
@@ -45,7 +51,8 @@
       <object class="GtkMenuItem" id="title">
         <property name="visible">True</property>
         <property name="can_focus">False</property>
-        <property name="label" translatable="yes">_Title</property>
+        <property name="label" translatable="yes" context="gallerymenu2|title">_Title</property>
+        <property name="use_underline">True</property>
       </object>
     </child>
     <child>
@@ -58,7 +65,8 @@
       <object class="GtkMenuItem" id="delete">
         <property name="visible">True</property>
         <property name="can_focus">False</property>
-        <property name="label" translatable="yes">_Delete</property>
+        <property name="label" translatable="yes" context="gallerymenu2|delete">_Delete</property>
+        <property name="use_underline">True</property>
       </object>
     </child>
     <child>
@@ -71,7 +79,7 @@
       <object class="GtkMenuItem" id="copy">
         <property name="visible">True</property>
         <property name="can_focus">False</property>
-        <property name="label" translatable="yes">_Copy</property>
+        <property name="label" translatable="yes" context="gallerymenu2|copy">_Copy</property>
         <property name="use_underline">True</property>
       </object>
     </child>
@@ -79,7 +87,7 @@
       <object class="GtkMenuItem" id="paste">
         <property name="visible">True</property>
         <property name="can_focus">False</property>
-        <property name="label" translatable="yes">_Insert</property>
+        <property name="label" translatable="yes" context="gallerymenu2|paste">_Paste</property>
         <property name="use_underline">True</property>
       </object>
     </child>

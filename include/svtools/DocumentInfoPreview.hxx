@@ -20,25 +20,24 @@
 #ifndef INCLUDED_SVTOOLS_DOCUMENTINFOPREVIEW_HXX
 #define INCLUDED_SVTOOLS_DOCUMENTINFOPREVIEW_HXX
 
-#include <memory>
 #include <sal/config.h>
 
-#include <com/sun/star/uno/Reference.hxx>
 #include <svtools/svtdllapi.h>
 #include <tools/wintypes.hxx>
 #include <vcl/window.hxx>
 
-class ExtMultiLineEdit;
-class SvtDocInfoTable_Impl;
+namespace com :: sun :: star :: uno { template <typename > class Reference; }
 
-namespace com { namespace sun { namespace star {
+class ExtMultiLineEdit;
+
+namespace com::sun::star {
     namespace document { class XDocumentProperties; }
     namespace util { struct DateTime; }
-} } }
+}
 
 namespace svtools {
 
-class SVT_DLLPUBLIC ODocumentInfoPreview: public vcl::Window {
+class SVT_DLLPUBLIC ODocumentInfoPreview final : public vcl::Window {
 public:
     ODocumentInfoPreview(vcl::Window * pParent, WinBits nBits);
 
@@ -53,7 +52,6 @@ public:
 
 private:
     VclPtr<ExtMultiLineEdit> m_pEditWin;
-    std::unique_ptr< SvtDocInfoTable_Impl > m_xInfoTable;
 
     void insertEntry(OUString const & title, OUString const & value);
 

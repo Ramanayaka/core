@@ -18,11 +18,12 @@
  */
 
 #include <sal/config.h>
+#include <sal/log.hxx>
 
 #include "TokenContext.hxx"
 #include <xmloff/xmltkmap.hxx>
 #include <xmloff/xmlimp.hxx>
-#include <xmloff/nmspmap.hxx>
+#include <xmloff/namespacemap.hxx>
 #include <xmloff/xmlerror.hxx>
 
 #include <algorithm>
@@ -30,7 +31,7 @@
 using com::sun::star::uno::Reference;
 using com::sun::star::xml::sax::XAttributeList;
 
-struct SvXMLTokenMapEntry aEmptyMap[1] =
+const SvXMLTokenMapEntry aEmptyMap[1] =
 {
     XML_TOKEN_MAP_END
 };
@@ -84,7 +85,7 @@ void TokenContext::StartElement(
     }
 }
 
-SvXMLImportContext* TokenContext::CreateChildContext(
+SvXMLImportContextRef TokenContext::CreateChildContext(
     sal_uInt16 nPrefix,
     const OUString& rLocalName,
     const Reference<XAttributeList>& xAttrList )
@@ -106,7 +107,6 @@ SvXMLImportContext* TokenContext::CreateChildContext(
     if( pContext == nullptr )
     {
         GetImport().SetError( XMLERROR_UNKNOWN_ELEMENT, rLocalName );
-        pContext = new SvXMLImportContext( GetImport(), nPrefix, rLocalName );
     }
     return pContext;
 }

@@ -17,8 +17,6 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <list>
-
 #include <osl/thread.hxx>
 #include <osl/diagnose.h>
 
@@ -35,7 +33,7 @@ using namespace ::osl;
 using namespace ::cppu;
 
 
-static inline void createLocalId( sal_Sequence **ppThreadId )
+static void createLocalId( sal_Sequence **ppThreadId )
 {
     rtl_byte_sequence_constructNoDefault( ppThreadId , 4 + 16 );
     sal_uInt32 id = osl::Thread::getCurrentIdentifier();

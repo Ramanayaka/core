@@ -17,14 +17,12 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "richstringcontext.hxx"
+#include <richstringcontext.hxx>
 
-#include "stylesfragment.hxx"
+#include <stylesfragment.hxx>
 #include <oox/token/namespaces.hxx>
-#include <oox/token/tokens.hxx>
 
-namespace oox {
-namespace xls {
+namespace oox::xls {
 
 using ::oox::core::ContextHandlerRef;
 
@@ -35,10 +33,10 @@ ContextHandlerRef RichStringContext::onCreateContext( sal_Int32 nElement, const 
         switch( nElement )
         {
             case XLS_TOKEN( t ):
-                mxPortion = mxString->importText( rAttribs );
+                mxPortion = mxString->importText();
                 return this;    // collect text in onCharacters()
             case XLS_TOKEN( r ):
-                mxPortion = mxString->importRun( rAttribs );
+                mxPortion = mxString->importRun();
                 return this;
             case XLS_TOKEN( rPh ):
                 mxPhonetic = mxString->importPhoneticRun( rAttribs );
@@ -54,7 +52,7 @@ ContextHandlerRef RichStringContext::onCreateContext( sal_Int32 nElement, const 
             switch( nElement )
             {
                 case XLS_TOKEN( rPr ):
-                    if( mxPortion.get() )
+                    if( mxPortion )
                         return new FontContext( *this, mxPortion->createFont() );
                 break;
 
@@ -79,16 +77,15 @@ void RichStringContext::onCharacters( const OUString& rChars )
     if( isCurrentElement( XLS_TOKEN( t ) ) ) switch( getParentElement() )
     {
         case XLS_TOKEN( rPh ):
-            if( mxPhonetic.get() )
+            if( mxPhonetic )
                 mxPhonetic->setText( rChars );
         break;
         default:
-            if( mxPortion.get() )
+            if( mxPortion )
                 mxPortion->setText( rChars );
     }
 }
 
-} // namespace xls
-} // namespace oox
+} // namespace oox::xls
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

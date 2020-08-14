@@ -18,22 +18,28 @@
  */
 
 #include "PreviewValueSet.hxx"
-#include <vcl/image.hxx>
+#include <vcl/event.hxx>
 
-namespace sd { namespace sidebar {
+namespace sd::sidebar {
 
-PreviewValueSet::PreviewValueSet (vcl::Window* pParent)
-    : ValueSet (pParent, WB_TABSTOP),
-      maPreviewSize(10,10),
-      mnBorderWidth(3),
-      mnBorderHeight(3),
-      mnMaxColumnCount(-1)
+const int gnBorderWidth(3);
+const int gnBorderHeight(3);
+
+PreviewValueSet::PreviewValueSet()
+    : ValueSet(nullptr)
+    , maPreviewSize(10,10)
 {
     SetStyle (
         GetStyle()
         & ~(WB_ITEMBORDER)// | WB_MENUSTYLEVALUESET)
         //        | WB_FLATVALUESET);
         );
+}
+
+void PreviewValueSet::SetDrawingArea(weld::DrawingArea* pDrawingArea)
+{
+    ValueSet::SetDrawingArea(pDrawingArea);
+
     SetColCount(2);
     SetExtraSpacing (2);
 }
@@ -52,21 +58,22 @@ void PreviewValueSet::SetRightMouseClickHandler (const Link<const MouseEvent&,vo
     maRightMouseClickHandler = rLink;
 }
 
-void PreviewValueSet::MouseButtonDown (const MouseEvent& rEvent)
+bool PreviewValueSet::MouseButtonDown (const MouseEvent& rEvent)
 {
     if (rEvent.IsRight())
+    {
         maRightMouseClickHandler.Call(rEvent);
-    else
-        ValueSet::MouseButtonDown(rEvent);
-
+        return true;
+    }
+    return ValueSet::MouseButtonDown(rEvent);
 }
 
 void PreviewValueSet::Resize()
 {
-    ValueSet::Resize ();
+    ValueSet::Resize();
 
     Size aWindowSize (GetOutputSizePixel());
-    if (aWindowSize.Width()>0 && aWindowSize.Height()>0)
+    if (!aWindowSize.IsEmpty())
     {
         Rearrange();
     }
@@ -88,13 +95,11 @@ sal_uInt16 PreviewValueSet::CalculateColumnCount (int nWidth) const
     int nColumnCount = 0;
     if (nWidth > 0)
     {
-        nColumnCount = nWidth / (maPreviewSize.Width() + 2*mnBorderWidth);
+        nColumnCount = nWidth / (maPreviewSize.Width() + 2*gnBorderWidth);
         if (nColumnCount < 1)
             nColumnCount = 1;
-        else if (mnMaxColumnCount>0 && nColumnCount>mnMaxColumnCount)
-            nColumnCount = mnMaxColumnCount;
     }
-    return (sal_uInt16)nColumnCount;
+    return static_cast<sal_uInt16>(nColumnCount);
 }
 
 sal_uInt16 PreviewValueSet::CalculateRowCount (sal_uInt16 nColumnCount) const
@@ -108,7 +113,7 @@ sal_uInt16 PreviewValueSet::CalculateRowCount (sal_uInt16 nColumnCount) const
             nRowCount = 1;
     }
 
-    return (sal_uInt16)nRowCount;
+    return static_cast<sal_uInt16>(nRowCount);
 }
 
 sal_Int32 PreviewValueSet::GetPreferredHeight (sal_Int32 nWidth)
@@ -116,9 +121,9 @@ sal_Int32 PreviewValueSet::GetPreferredHeight (sal_Int32 nWidth)
     int nRowCount (CalculateRowCount(CalculateColumnCount(nWidth)));
     int nItemHeight (maPreviewSize.Height());
 
-    return nRowCount * (nItemHeight + 2*mnBorderHeight);
+    return nRowCount * (nItemHeight + 2*gnBorderHeight);
 }
 
-} } // end of namespace sd::sidebar
+} // end of namespace sd::sidebar
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

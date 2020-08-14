@@ -23,19 +23,15 @@
 #include "NDriver.hxx"
 #include <com/sun/star/sdbc/SQLWarning.hpp>
 #include <com/sun/star/beans/PropertyValue.hpp>
-#include <connectivity/OSubComponent.hxx>
 #include <com/sun/star/sdbcx/XTablesSupplier.hpp>
 #include <connectivity/CommonTools.hxx>
 #include <connectivity/warningscontainer.hxx>
-#include "TConnection.hxx"
+#include <TConnection.hxx>
 #include <cppuhelper/weakref.hxx>
 #include <osl/module.h>
 #include "EApi.h"
 
-namespace connectivity
-{
-    namespace evoab
-    {
+namespace connectivity::evoab {
 
         namespace SDBCAddress {
             typedef enum {
@@ -48,11 +44,8 @@ namespace connectivity
 
         typedef connectivity::OMetaConnection               OConnection_BASE; // implements basics and text encoding
 
-        class OEvoabConnection  :public OConnection_BASE
-                                ,public connectivity::OSubComponent<OEvoabConnection, OConnection_BASE>
+        class OEvoabConnection final :public OConnection_BASE
         {
-            friend class connectivity::OSubComponent<OEvoabConnection, OConnection_BASE>;
-
         private:
             const OEvoabDriver&             m_rDriver;
             SDBCAddress::sdbc_address_type  m_eSDBCAddressType;
@@ -64,11 +57,11 @@ namespace connectivity
             virtual ~OEvoabConnection() override;
 
         public:
-            explicit OEvoabConnection( OEvoabDriver& _rDriver );
+            explicit OEvoabConnection( OEvoabDriver const & _rDriver );
             /// @throws css::sdbc::SQLException
-            virtual void construct(const OUString& _rUrl,const css::uno::Sequence< css::beans::PropertyValue >& _rInfo );
+            void construct(const OUString& _rUrl,const css::uno::Sequence< css::beans::PropertyValue >& _rInfo );
 
-            OString const & getPassword() { return m_aPassword; }
+            OString const & getPassword() const { return m_aPassword; }
             void         setPassword( OString const & aStr ) { m_aPassword = aStr; }
             // own methods
             const OEvoabDriver& getDriver() const { return m_rDriver; }
@@ -78,14 +71,12 @@ namespace connectivity
 
             // OComponentHelper
             virtual void SAL_CALL disposing() override;
-            // XInterface
-            virtual void SAL_CALL release() throw() override;
 
             // XServiceInfo
             DECLARE_SERVICE_INFO();
 
             // XConnection
-            virtual css::uno::Reference< css::sdbcx::XTablesSupplier > createCatalog();
+            css::uno::Reference< css::sdbcx::XTablesSupplier > createCatalog();
             virtual css::uno::Reference< css::sdbc::XStatement > SAL_CALL createStatement(  ) override;
             virtual css::uno::Reference< css::sdbc::XPreparedStatement > SAL_CALL prepareStatement( const OUString& sql ) override;
             virtual css::uno::Reference< css::sdbc::XPreparedStatement > SAL_CALL prepareCall( const OUString& sql ) override;
@@ -111,8 +102,8 @@ namespace connectivity
             virtual css::uno::Any SAL_CALL getWarnings(  ) override;
             virtual void SAL_CALL clearWarnings(  ) override;
         };
-    }
 }
+
 #endif // INCLUDED_CONNECTIVITY_SOURCE_DRIVERS_EVOAB2_NCONNECTION_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

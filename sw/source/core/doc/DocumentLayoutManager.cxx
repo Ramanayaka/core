@@ -30,15 +30,17 @@
 #include <fmtcntnt.hxx>
 #include <fmtcnct.hxx>
 #include <ndole.hxx>
-#include <com/sun/star/embed/EmbedStates.hpp>
 #include <fmtanchr.hxx>
 #include <txtflcnt.hxx>
 #include <fmtflcnt.hxx>
 #include <ndtxt.hxx>
-#include <dcontact.hxx>
 #include <unoframe.hxx>
 #include <docary.hxx>
 #include <textboxhelper.hxx>
+#include <ndindex.hxx>
+#include <pam.hxx>
+#include <frameformats.hxx>
+#include <com/sun/star/embed/EmbedStates.hpp>
 
 using namespace ::com::sun::star;
 
@@ -47,8 +49,7 @@ namespace sw
 
 DocumentLayoutManager::DocumentLayoutManager( SwDoc& i_rSwdoc ) :
     m_rDoc( i_rSwdoc ),
-    mpCurrentView( nullptr ),
-    mpLayouter( nullptr )
+    mpCurrentView( nullptr )
 {
 }
 
@@ -120,7 +121,7 @@ SwFrameFormat *DocumentLayoutManager::MakeLayoutFormat( RndStdIds eRequest, cons
     case RndStdIds::HEADERR:
         {
             bHeader = true;
-            SAL_FALLTHROUGH;
+            [[fallthrough]];
         }
     case RndStdIds::FOOTER:
         {
@@ -162,7 +163,7 @@ SwFrameFormat *DocumentLayoutManager::MakeLayoutFormat( RndStdIds eRequest, cons
             if (m_rDoc.GetIDocumentUndoRedo().DoesUndo())
             {
                 m_rDoc.GetIDocumentUndoRedo().AppendUndo(
-                    new SwUndoInsLayFormat(pFormat, 0, 0));
+                    std::make_unique<SwUndoInsLayFormat>(pFormat, 0, 0));
             }
         }
         break;
@@ -214,21 +215,13 @@ void DocumentLayoutManager::DelLayoutFormat( SwFrameFormat *pFormat )
         SwOLENode* pOLENd = m_rDoc.GetNodes()[ pCntIdx->GetIndex()+1 ]->GetOLENode();
         if( pOLENd && pOLENd->GetOLEObj().IsOleRef() )
         {
-
-            // TODO: the old object closed the object and cleared all references to it, but didn't remove it from the container.
-            // I have no idea, why, nobody could explain it - so I do my very best to mimic this behavior
-            //uno::Reference < util::XCloseable > xClose( pOLENd->GetOLEObj().GetOleRef(), uno::UNO_QUERY );
-            //if ( xClose.is() )
+            try
             {
-                try
-                {
-                    pOLENd->GetOLEObj().GetOleRef()->changeState( embed::EmbedStates::LOADED );
-                }
-                catch ( uno::Exception& )
-                {
-                }
+                pOLENd->GetOLEObj().GetOleRef()->changeState( embed::EmbedStates::LOADED );
             }
-
+            catch ( uno::Exception& )
+            {
+            }
         }
     }
 
@@ -240,7 +233,7 @@ void DocumentLayoutManager::DelLayoutFormat( SwFrameFormat *pFormat )
     if (m_rDoc.GetIDocumentUndoRedo().DoesUndo() &&
         (RES_FLYFRMFMT == nWh || RES_DRAWFRMFMT == nWh))
     {
-        m_rDoc.GetIDocumentUndoRedo().AppendUndo( new SwUndoDelLayFormat( pFormat ));
+        m_rDoc.GetIDocumentUndoRedo().AppendUndo( std::make_unique<SwUndoDelLayFormat>( pFormat ));
     }
     else
     {
@@ -286,7 +279,7 @@ void DocumentLayoutManager::DelLayoutFormat( SwFrameFormat *pFormat )
         if( pCntIdx )
         {
             SwNode *pNode = &pCntIdx->GetNode();
-            const_cast<SwFormatContent&>(static_cast<const SwFormatContent&>(pFormat->GetFormatAttr( RES_CNTNT ))).SetNewContentIdx( nullptr );
+            const_cast<SwFormatContent&>(pFormat->GetFormatAttr( RES_CNTNT )).SetNewContentIdx( nullptr );
             m_rDoc.getIDocumentContentOperations().DeleteSection( pNode );
         }
 
@@ -423,7 +416,7 @@ SwFrameFormat *DocumentLayoutManager::CopyLayoutFormat(
 
         if (m_rDoc.GetIDocumentUndoRedo().DoesUndo())
         {
-            m_rDoc.GetIDocumentUndoRedo().AppendUndo(new SwUndoInsLayFormat(pDest,0,0));
+            m_rDoc.GetIDocumentUndoRedo().AppendUndo(std::make_unique<SwUndoInsLayFormat>(pDest,0,0));
         }
 
         // Make sure that FlyFrames in FlyFrames are copied
@@ -433,7 +426,7 @@ SwFrameFormat *DocumentLayoutManager::CopyLayoutFormat(
         //contact object itself. They should be managed by SwUndoInsLayFormat.
         const ::sw::DrawUndoGuard drawUndoGuard(m_rDoc.GetIDocumentUndoRedo());
 
-        pSrcDoc->GetDocumentContentOperationsManager().CopyWithFlyInFly( aRg, 0, aIdx, nullptr, false, true, true );
+        pSrcDoc->GetDocumentContentOperationsManager().CopyWithFlyInFly(aRg, aIdx, nullptr, false, true, true);
     }
     else
     {
@@ -453,7 +446,7 @@ SwFrameFormat *DocumentLayoutManager::CopyLayoutFormat(
 
         if (m_rDoc.GetIDocumentUndoRedo().DoesUndo())
         {
-            m_rDoc.GetIDocumentUndoRedo().AppendUndo(new SwUndoInsLayFormat(pDest,0,0));
+            m_rDoc.GetIDocumentUndoRedo().AppendUndo(std::make_unique<SwUndoInsLayFormat>(pDest,0,0));
         }
     }
 
@@ -478,7 +471,8 @@ SwFrameFormat *DocumentLayoutManager::CopyLayoutFormat(
             boxAnchor.SetType(RndStdIds::FLY_AT_CHAR);
         }
         // presumably these anchors are supported though not sure
-        assert(RndStdIds::FLY_AT_CHAR == boxAnchor.GetAnchorId() || RndStdIds::FLY_AT_PARA == boxAnchor.GetAnchorId());
+        assert(RndStdIds::FLY_AT_CHAR == boxAnchor.GetAnchorId() || RndStdIds::FLY_AT_PARA == boxAnchor.GetAnchorId()
+        || boxAnchor.GetAnchorId() == RndStdIds::FLY_AT_PAGE);
         SwFrameFormat* pDestTextBox = CopyLayoutFormat(*pSourceTextBox,
                 boxAnchor, bSetTextFlyAtt, bMakeFrames);
         SwAttrSet aSet(pDest->GetAttrSet());

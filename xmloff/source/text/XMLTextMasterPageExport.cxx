@@ -17,12 +17,13 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <xmloff/xmlnmspe.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmltoken.hxx>
 #include <com/sun/star/text/XText.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <xmloff/xmlexp.hxx>
 #include <xmloff/XMLTextMasterPageExport.hxx>
+#include <sal/log.hxx>
 
 
 using namespace ::com::sun::star;
@@ -31,19 +32,20 @@ using namespace ::com::sun::star::text;
 using namespace ::com::sun::star::beans;
 using namespace ::xmloff::token;
 
+const OUStringLiteral gsHeaderText( "HeaderText" );
+const OUStringLiteral gsHeaderOn( "HeaderIsOn" );
+const OUStringLiteral gsHeaderShareContent( "HeaderIsShared" );
+const OUStringLiteral gsHeaderTextFirst( "HeaderTextFirst" );
+const OUStringLiteral gsHeaderTextLeft( "HeaderTextLeft" );
+const OUStringLiteral gsFirstShareContent( "FirstIsShared" );
+const OUStringLiteral gsFooterText( "FooterText" );
+const OUStringLiteral gsFooterOn( "FooterIsOn" );
+const OUStringLiteral gsFooterShareContent( "FooterIsShared" );
+const OUStringLiteral gsFooterTextFirst( "FooterTextFirst" );
+const OUStringLiteral gsFooterTextLeft( "FooterTextLeft" );
+
 XMLTextMasterPageExport::XMLTextMasterPageExport( SvXMLExport& rExp ) :
-    XMLPageExport( rExp ),
-    sHeaderText( "HeaderText" ),
-    sHeaderOn( "HeaderIsOn" ),
-    sHeaderShareContent( "HeaderIsShared" ),
-    sHeaderTextFirst( "HeaderTextFirst" ),
-    sHeaderTextLeft( "HeaderTextLeft" ),
-    sFirstShareContent( "FirstIsShared" ),
-    sFooterText( "FooterText" ),
-    sFooterOn( "FooterIsOn" ),
-    sFooterShareContent( "FooterIsShared" ),
-    sFooterTextFirst( "FooterTextFirst" ),
-    sFooterTextLeft( "FooterTextLeft" )
+    XMLPageExport( rExp )
 {
 }
 
@@ -82,27 +84,27 @@ void XMLTextMasterPageExport::exportMasterPageContent(
     Any aAny;
 
     Reference < XText > xHeaderText;
-    aAny = rPropSet->getPropertyValue( sHeaderText );
+    aAny = rPropSet->getPropertyValue( gsHeaderText );
     aAny >>= xHeaderText;
 
     Reference < XText > xHeaderTextFirst;
-    aAny = rPropSet->getPropertyValue( sHeaderTextFirst );
+    aAny = rPropSet->getPropertyValue( gsHeaderTextFirst );
     aAny >>= xHeaderTextFirst;
 
     Reference < XText > xHeaderTextLeft;
-    aAny = rPropSet->getPropertyValue( sHeaderTextLeft );
+    aAny = rPropSet->getPropertyValue( gsHeaderTextLeft );
     aAny >>= xHeaderTextLeft;
 
     Reference < XText > xFooterText;
-    aAny = rPropSet->getPropertyValue( sFooterText );
+    aAny = rPropSet->getPropertyValue( gsFooterText );
     aAny >>= xFooterText;
 
     Reference < XText > xFooterTextFirst;
-    aAny = rPropSet->getPropertyValue( sFooterTextFirst );
+    aAny = rPropSet->getPropertyValue( gsFooterTextFirst );
     aAny >>= xFooterTextFirst;
 
     Reference < XText > xFooterTextLeft;
-    aAny = rPropSet->getPropertyValue( sFooterTextLeft );
+    aAny = rPropSet->getPropertyValue( gsFooterTextLeft );
     aAny >>= xFooterTextLeft;
 
     if( bAutoStyles )
@@ -122,21 +124,23 @@ void XMLTextMasterPageExport::exportMasterPageContent(
     }
     else
     {
-        aAny = rPropSet->getPropertyValue( sHeaderOn );
+        auto const nVersion(GetExport().getSaneDefaultVersion());
+
+        aAny = rPropSet->getPropertyValue( gsHeaderOn );
         bool bHeader = false;
         aAny >>= bHeader;
 
         bool bHeaderFirstShared = false;
         if( bHeader )
         {
-            aAny = rPropSet->getPropertyValue( sFirstShareContent );
+            aAny = rPropSet->getPropertyValue( gsFirstShareContent );
             aAny >>= bHeaderFirstShared;
         }
 
         bool bHeaderLeftShared = false;
         if( bHeader )
         {
-            aAny = rPropSet->getPropertyValue( sHeaderShareContent );
+            aAny = rPropSet->getPropertyValue( gsHeaderShareContent );
             aAny >>= bHeaderLeftShared;
         }
 
@@ -150,16 +154,6 @@ void XMLTextMasterPageExport::exportMasterPageContent(
             exportHeaderFooterContent( xHeaderText, false );
         }
 
-        if( xHeaderTextFirst.is() && xHeaderTextFirst != xHeaderText )
-        {
-            if (bHeaderFirstShared)
-                GetExport().AddAttribute( XML_NAMESPACE_STYLE,
-                                          XML_DISPLAY, XML_FALSE );
-            SvXMLElementExport aElem( GetExport(), XML_NAMESPACE_STYLE,
-                                        XML_HEADER_FIRST, true, true );
-            exportHeaderFooterContent( xHeaderTextFirst, false );
-        }
-
         if( xHeaderTextLeft.is() && xHeaderTextLeft != xHeaderText )
         {
             if (bHeaderLeftShared)
@@ -170,21 +164,36 @@ void XMLTextMasterPageExport::exportMasterPageContent(
             exportHeaderFooterContent( xHeaderTextLeft, false );
         }
 
-        aAny = rPropSet->getPropertyValue( sFooterOn );
+        if (xHeaderTextFirst.is() && xHeaderTextFirst != xHeaderText
+            && SvtSaveOptions::ODFSVER_012 < nVersion)
+        {
+            if (bHeaderFirstShared)
+                GetExport().AddAttribute( XML_NAMESPACE_STYLE,
+                                          XML_DISPLAY, XML_FALSE );
+            // ODF 1.3 OFFICE-3789
+            SvXMLElementExport aElem( GetExport(),
+                                        SvtSaveOptions::ODFSVER_013 <= nVersion
+                                            ? XML_NAMESPACE_STYLE
+                                            : XML_NAMESPACE_LO_EXT,
+                                        XML_HEADER_FIRST, true, true );
+            exportHeaderFooterContent( xHeaderTextFirst, false );
+        }
+
+        aAny = rPropSet->getPropertyValue( gsFooterOn );
         bool bFooter = false;
         aAny >>= bFooter;
 
         bool bFooterFirstShared = false;
         if( bFooter )
         {
-            aAny = rPropSet->getPropertyValue( sFirstShareContent );
+            aAny = rPropSet->getPropertyValue( gsFirstShareContent );
             aAny >>= bFooterFirstShared;
         }
 
         bool bFooterLeftShared = false;
         if( bFooter )
         {
-            aAny = rPropSet->getPropertyValue( sFooterShareContent );
+            aAny = rPropSet->getPropertyValue( gsFooterShareContent );
             aAny >>= bFooterLeftShared;
         }
 
@@ -198,16 +207,6 @@ void XMLTextMasterPageExport::exportMasterPageContent(
             exportHeaderFooterContent( xFooterText, false );
         }
 
-        if( xFooterTextFirst.is() && xFooterTextFirst != xFooterText )
-        {
-            if (bFooterFirstShared)
-                GetExport().AddAttribute( XML_NAMESPACE_STYLE,
-                                          XML_DISPLAY, XML_FALSE );
-            SvXMLElementExport aElem( GetExport(), XML_NAMESPACE_STYLE,
-                                        XML_FOOTER_FIRST, true, true );
-            exportHeaderFooterContent( xFooterTextFirst, false );
-        }
-
         if( xFooterTextLeft.is() && xFooterTextLeft != xFooterText )
         {
             if (bFooterLeftShared)
@@ -216,6 +215,21 @@ void XMLTextMasterPageExport::exportMasterPageContent(
             SvXMLElementExport aElem( GetExport(), XML_NAMESPACE_STYLE,
                                         XML_FOOTER_LEFT, true, true );
             exportHeaderFooterContent( xFooterTextLeft, false );
+        }
+
+        if (xFooterTextFirst.is() && xFooterTextFirst != xFooterText
+            && SvtSaveOptions::ODFSVER_012 < nVersion)
+        {
+            if (bFooterFirstShared)
+                GetExport().AddAttribute( XML_NAMESPACE_STYLE,
+                                          XML_DISPLAY, XML_FALSE );
+            // ODF 1.3 OFFICE-3789
+            SvXMLElementExport aElem( GetExport(),
+                                        SvtSaveOptions::ODFSVER_013 <= nVersion
+                                            ? XML_NAMESPACE_STYLE
+                                            : XML_NAMESPACE_LO_EXT,
+                                        XML_FOOTER_FIRST, true, true );
+            exportHeaderFooterContent( xFooterTextFirst, false );
         }
     }
 }

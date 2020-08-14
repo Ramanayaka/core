@@ -58,17 +58,17 @@
  * Tabrack for LwpTabPiece object.
  ************************************************************************/
 #include "lwptabrack.hxx"
-#include "lwpobjstrm.hxx"
+#include <lwpobjstrm.hxx>
 
 #include <stdexcept>
 
 LwpTab::LwpTab()
+  : m_nX(0),
+    m_nType(0),
+    m_nLeader(0),
+    m_nRelativeType(0),
+    m_nAlignChar(0)      //be careful,not quite sure it's 8-bit,perhaps 16-bit.
 {
-    m_nX = 0;
-    m_nAlignChar = 0;       //be careful,not quite sure it's 8-bit,perhaps 16-bit.
-    m_nType = 0;
-    m_nLeader = 0;
-    m_nRelativeType = 0;
 }
 
 void    LwpTab::Read(LwpObjectStream *pStrm)
@@ -80,9 +80,10 @@ void    LwpTab::Read(LwpObjectStream *pStrm)
     m_nAlignChar = pStrm->QuickReaduInt16();
 }
 
-LwpTabRack::LwpTabRack(LwpObjectHeader objHdr, LwpSvStream* pStrm):LwpObject(objHdr,pStrm)
+LwpTabRack::LwpTabRack(LwpObjectHeader objHdr, LwpSvStream* pStrm)
+   : LwpObject(objHdr,pStrm),
+     m_nNumTabs(0)
 {
-    m_nNumTabs = 0;
 }
 
 void LwpTabRack::Read()
@@ -117,8 +118,7 @@ LwpTab* LwpTabRack::Lookup(sal_uInt16 nIndex)
 
 LwpTabRack* LwpTabRack::GetNext()
 {
-    LwpTabRack* pTabRack = dynamic_cast<LwpTabRack*>(m_NextID.obj().get());
-    return pTabRack;
+    return dynamic_cast<LwpTabRack*>(m_NextID.obj().get());
 }
 
 sal_uInt16 LwpTabRack::GetNumTabs()

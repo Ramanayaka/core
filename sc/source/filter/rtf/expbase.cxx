@@ -17,9 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "expbase.hxx"
-#include "document.hxx"
-#include "editutil.hxx"
+#include <expbase.hxx>
+#include <document.hxx>
+#include <editutil.hxx>
 
 ScExportBase::ScExportBase( SvStream& rStrmP, ScDocument* pDocP,
                 const ScRange& rRangeP )
@@ -27,8 +27,7 @@ ScExportBase::ScExportBase( SvStream& rStrmP, ScDocument* pDocP,
             rStrm( rStrmP ),
             aRange( rRangeP ),
             pDoc( pDocP ),
-            pFormatter( pDocP->GetFormatTable() ),
-            pEditEngine( nullptr )
+            pFormatter( pDocP->GetFormatTable() )
 {
 }
 

@@ -18,30 +18,31 @@
  */
 
 #include <sfx2/sidebar/TabBar.hxx>
-#include <sfx2/sidebar/TabItem.hxx>
-#include <sfx2/sidebar/ControlFactory.hxx>
-#include <sfx2/sidebar/DeckDescriptor.hxx>
-#include <sfx2/sidebar/Paint.hxx>
+#include <sidebar/ControlFactory.hxx>
+#include <sidebar/DeckDescriptor.hxx>
+#include <sidebar/Paint.hxx>
 #include <sfx2/sidebar/Theme.hxx>
-#include <sfx2/sidebar/Tools.hxx>
+#include <sidebar/Tools.hxx>
 #include <sfx2/sidebar/FocusManager.hxx>
 #include <sfx2/sidebar/SidebarController.hxx>
+#include <sfx2/strings.hrc>
 
 #include <sfx2/sfxresid.hxx>
-#include "Sidebar.hrc"
 
-#include <vcl/gradient.hxx>
-#include <vcl/image.hxx>
-#include <vcl/wrkwin.hxx>
 #include <comphelper/processfactory.hxx>
+#include <o3tl/safeint.hxx>
+#include <vcl/button.hxx>
+#include <vcl/commandevent.hxx>
+#include <vcl/event.hxx>
+#include <vcl/image.hxx>
+#include <vcl/svapp.hxx>
 #include <tools/svborder.hxx>
-
-#include <com/sun/star/graphic/XGraphicProvider.hpp>
+#include <svtools/acceleratorexecute.hxx>
 
 using namespace css;
 using namespace css::uno;
 
-namespace sfx2 { namespace sidebar {
+namespace sfx2::sidebar {
 
 TabBar::TabBar(vcl::Window* pParentWindow,
                const Reference<frame::XFrame>& rxFrame,
@@ -77,11 +78,8 @@ TabBar::~TabBar()
 
 void TabBar::dispose()
 {
-    for(ItemContainer::iterator
-            iItem(maItems.begin()), iEnd(maItems.end());
-        iItem!=iEnd;
-        ++iItem)
-        iItem->mpButton.disposeAndClear();
+    for (auto & item : maItems)
+        item.mpButton.disposeAndClear();
     maItems.clear();
     mpMenuButton.disposeAndClear();
     vcl::Window::dispose();
@@ -108,18 +106,17 @@ void TabBar::SetDecks(const ResourceManager::DeckContextDescriptorContainer& rDe
 {
     // Remove the current buttons.
     {
-        for(ItemContainer::iterator iItem(maItems.begin()); iItem != maItems.end(); ++iItem)
+        for (auto & item : maItems)
         {
-            iItem->mpButton.disposeAndClear();
+            item.mpButton.disposeAndClear();
         }
         maItems.clear();
     }
     maItems.resize(rDecks.size());
     sal_Int32 nIndex (0);
-    for (ResourceManager::DeckContextDescriptorContainer::const_iterator
-             iDeck(rDecks.begin()); iDeck != rDecks.end(); ++iDeck)
+    for (auto const& deck : rDecks)
     {
-        std::shared_ptr<DeckDescriptor> xDescriptor = pParentSidebarController->GetResourceManager()->GetDeckDescriptor(iDeck->msId);
+        std::shared_ptr<DeckDescriptor> xDescriptor = pParentSidebarController->GetResourceManager()->GetDeckDescriptor(deck.msId);
         if (xDescriptor == nullptr)
         {
             OSL_ASSERT(xDescriptor!=nullptr);
@@ -135,7 +132,7 @@ void TabBar::SetDecks(const ResourceManager::DeckContextDescriptorContainer& rDe
         rItem.mbIsHidden = ! xDescriptor->mbIsEnabled;
         rItem.mbIsHiddenByDefault = rItem.mbIsHidden; // the default is the state while creating
 
-        rItem.mpButton->Enable(iDeck->mbIsEnabled);
+        rItem.mpButton->Enable(deck.mbIsEnabled);
     }
 
     UpdateButtonIcons();
@@ -147,17 +144,14 @@ void TabBar::UpdateButtonIcons()
     Image aImage = Theme::GetImage(Theme::Image_TabBarMenu);
     mpMenuButton->SetModeImage(aImage);
 
-    for(ItemContainer::const_iterator
-            iItem(maItems.begin()), iEnd(maItems.end());
-        iItem!=iEnd;
-        ++iItem)
+    for (auto const& item : maItems)
     {
-        std::shared_ptr<DeckDescriptor> xDeckDescriptor = pParentSidebarController->GetResourceManager()->GetDeckDescriptor(iItem->msDeckId);
+        std::shared_ptr<DeckDescriptor> xDeckDescriptor = pParentSidebarController->GetResourceManager()->GetDeckDescriptor(item.msDeckId);
 
         if (xDeckDescriptor)
         {
             aImage = GetItemImage(*xDeckDescriptor);
-            iItem->mpButton->SetModeImage(aImage);
+            item.mpButton->SetModeImage(aImage);
         }
     }
 
@@ -189,15 +183,12 @@ void TabBar::Layout()
     }
 
     // Place the deck selection buttons.
-    for(ItemContainer::const_iterator
-            iItem(maItems.begin()), iEnd(maItems.end());
-        iItem!=iEnd;
-        ++iItem)
+    for (auto const& item : maItems)
     {
-        Button& rButton (*iItem->mpButton);
-        rButton.Show( ! iItem->mbIsHidden);
+        Button& rButton (*item.mpButton);
+        rButton.Show( ! item.mbIsHidden);
 
-        if (iItem->mbIsHidden)
+        if (item.mbIsHidden)
             continue;
 
         // Place and size the icon.
@@ -213,22 +204,20 @@ void TabBar::Layout()
 
 void TabBar::HighlightDeck (const OUString& rsDeckId)
 {
-    for (ItemContainer::iterator iItem(maItems.begin()); iItem != maItems.end(); ++iItem)
+    for (auto const& item : maItems)
     {
-        if (iItem->msDeckId.equals(rsDeckId))
-            iItem->mpButton->Check();
+        if (item.msDeckId == rsDeckId)
+            item.mpButton->Check();
         else
-            iItem->mpButton->Check(false);
+            item.mpButton->Check(false);
     }
 }
 
 void TabBar::RemoveDeckHighlight ()
 {
-    for (ItemContainer::iterator iItem(maItems.begin()),iEnd(maItems.end());
-         iItem!=iEnd;
-         ++iItem)
+    for (auto const& item : maItems)
     {
-        iItem->mpButton->Check(false);
+        item.mpButton->Check(false);
     }
 }
 
@@ -242,7 +231,22 @@ void TabBar::DataChanged (const DataChangedEvent& rDataChangedEvent)
 
 bool TabBar::EventNotify(NotifyEvent& rEvent)
 {
-    if(rEvent.GetType() == MouseNotifyEvent::COMMAND)
+    MouseNotifyEvent nType = rEvent.GetType();
+    if(MouseNotifyEvent::KEYINPUT == nType)
+    {
+        const vcl::KeyCode& rKeyCode = rEvent.GetKeyEvent()->GetKeyCode();
+        if (!mpAccel)
+        {
+            mpAccel = svt::AcceleratorExecute::createAcceleratorHelper();
+            mpAccel->init(comphelper::getProcessComponentContext(), mxFrame);
+        }
+        const OUString aCommand(mpAccel->findCommand(svt::AcceleratorExecute::st_VCLKey2AWTKey(rKeyCode)));
+        if (".uno:Sidebar" == aCommand ||
+                (rKeyCode.IsMod1() && rKeyCode.IsShift() && rKeyCode.GetCode() == KEY_F10))
+            return vcl::Window::EventNotify(rEvent);
+        return true;
+    }
+    else if(MouseNotifyEvent::COMMAND == nType)
     {
         const CommandEvent& rCommandEvent = *rEvent.GetCommandEvent();
         if(rCommandEvent.GetCommand() == CommandEventId::Wheel)
@@ -298,6 +302,8 @@ Image TabBar::GetItemImage(const DeckDescriptor& rDeckDescriptor) const
 
 IMPL_LINK_NOARG(TabBar::Item, HandleClick, Button*, void)
 {
+    vcl::Window* pFocusWin = Application::GetFocusWindow();
+    pFocusWin->GrabFocusToDocument();
     try
     {
         maDeckActivationFunctor(msDeckId);
@@ -306,53 +312,50 @@ IMPL_LINK_NOARG(TabBar::Item, HandleClick, Button*, void)
     {} // workaround for #i123198#
 }
 
-const ::rtl::OUString TabBar::GetDeckIdForIndex (const sal_Int32 nIndex) const
+OUString const & TabBar::GetDeckIdForIndex (const sal_Int32 nIndex) const
 {
-    if (nIndex<0 || static_cast<size_t>(nIndex)>=maItems.size())
+    if (nIndex<0 || o3tl::make_unsigned(nIndex)>=maItems.size())
         throw RuntimeException();
-    else
-        return maItems[nIndex].msDeckId;
+    return maItems[nIndex].msDeckId;
 }
 
 void TabBar::ToggleHideFlag (const sal_Int32 nIndex)
 {
-    if (nIndex<0 || static_cast<size_t>(nIndex) >= maItems.size())
+    if (nIndex<0 || o3tl::make_unsigned(nIndex) >= maItems.size())
         throw RuntimeException();
-    else
+
+    maItems[nIndex].mbIsHidden = ! maItems[nIndex].mbIsHidden;
+
+    std::shared_ptr<DeckDescriptor> xDeckDescriptor = pParentSidebarController->GetResourceManager()->GetDeckDescriptor(maItems[nIndex].msDeckId);
+    if (xDeckDescriptor)
     {
-        maItems[nIndex].mbIsHidden = ! maItems[nIndex].mbIsHidden;
+        xDeckDescriptor->mbIsEnabled = ! maItems[nIndex].mbIsHidden;
 
-        std::shared_ptr<DeckDescriptor> xDeckDescriptor = pParentSidebarController->GetResourceManager()->GetDeckDescriptor(maItems[nIndex].msDeckId);
-        if (xDeckDescriptor)
-        {
-            xDeckDescriptor->mbIsEnabled = ! maItems[nIndex].mbIsHidden;
+        Context aContext;
+        aContext.msApplication = pParentSidebarController->GetCurrentContext().msApplication;
+        // leave aContext.msContext on default 'any' ... this func is used only for decks
+        // and we don't have context-sensitive decks anyway
 
-            Context aContext;
-            aContext.msApplication = pParentSidebarController->GetCurrentContext().msApplication;
-            // leave aContext.msContext on default 'any' ... this func is used only for decks
-            // and we don't have context-sensitive decks anyway
-
-            xDeckDescriptor->maContextList.ToggleVisibilityForContext(
-                aContext, xDeckDescriptor->mbIsEnabled );
-        }
-
-        Layout();
+        xDeckDescriptor->maContextList.ToggleVisibilityForContext(
+            aContext, xDeckDescriptor->mbIsEnabled );
     }
+
+    Layout();
 }
 
 void TabBar::RestoreHideFlags()
 {
     bool bNeedsLayout(false);
-    for (ItemContainer::iterator iItem(maItems.begin()); iItem != maItems.end(); ++iItem)
+    for (auto & item : maItems)
     {
-        if (iItem->mbIsHidden != iItem->mbIsHiddenByDefault)
+        if (item.mbIsHidden != item.mbIsHiddenByDefault)
         {
-            iItem->mbIsHidden = iItem->mbIsHiddenByDefault;
+            item.mbIsHidden = item.mbIsHiddenByDefault;
             bNeedsLayout = true;
 
-            std::shared_ptr<DeckDescriptor> xDeckDescriptor = pParentSidebarController->GetResourceManager()->GetDeckDescriptor(iItem->msDeckId);
+            std::shared_ptr<DeckDescriptor> xDeckDescriptor = pParentSidebarController->GetResourceManager()->GetDeckDescriptor(item.msDeckId);
             if (xDeckDescriptor)
-                xDeckDescriptor->mbIsEnabled = ! iItem->mbIsHidden;
+                xDeckDescriptor->mbIsEnabled = ! item.mbIsHidden;
 
         }
     }
@@ -366,9 +369,9 @@ void TabBar::UpdateFocusManager(FocusManager& rFocusManager)
     aButtons.reserve(maItems.size()+1);
 
     aButtons.push_back(mpMenuButton.get());
-    for (ItemContainer::const_iterator iItem(maItems.begin()); iItem != maItems.end(); ++iItem)
+    for (auto const& item : maItems)
     {
-        aButtons.push_back(iItem->mpButton.get());
+        aButtons.push_back(item.mpButton.get());
     }
     rFocusManager.SetButtons(aButtons);
 }
@@ -380,18 +383,17 @@ IMPL_LINK_NOARG(TabBar, OnToolboxClicked, Button*, void)
 
     std::vector<DeckMenuData> aMenuData;
 
-    for (ItemContainer::const_iterator iItem(maItems.begin()); iItem != maItems.end(); ++iItem)
+    for (auto const& item : maItems)
     {
-        std::shared_ptr<DeckDescriptor> xDeckDescriptor = pParentSidebarController->GetResourceManager()->GetDeckDescriptor(iItem->msDeckId);
+        std::shared_ptr<DeckDescriptor> xDeckDescriptor = pParentSidebarController->GetResourceManager()->GetDeckDescriptor(item.msDeckId);
 
         if (xDeckDescriptor)
         {
             DeckMenuData aData;
             aData.msDisplayName = xDeckDescriptor->msTitle;
-            aData.msDeckId = xDeckDescriptor->msId;
-            aData.mbIsCurrentDeck = iItem->mpButton->IsChecked();
-            aData.mbIsActive = !iItem->mbIsHidden;
-            aData.mbIsEnabled = iItem->mpButton->IsEnabled();
+            aData.mbIsCurrentDeck = item.mpButton->IsChecked();
+            aData.mbIsActive = !item.mbIsHidden;
+            aData.mbIsEnabled = item.mpButton->IsEnabled();
 
             aMenuData.push_back(aData);
         }
@@ -405,6 +407,11 @@ IMPL_LINK_NOARG(TabBar, OnToolboxClicked, Button*, void)
     mpMenuButton->Check(false);
 }
 
-} } // end of namespace sfx2::sidebar
+void TabBar::EnableMenuButton(const bool bEnable)
+{
+    mpMenuButton->Enable(bEnable);
+}
+
+} // end of namespace sfx2::sidebar
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -1,18 +1,115 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Generated with glade 3.18.3 -->
-<interface>
-  <requires lib="gtk+" version="3.0"/>
-  <requires lib="LibreOffice" version="1.0"/>
+<!-- Generated with glade 3.22.1 -->
+<interface domain="sd">
+  <requires lib="gtk+" version="3.18"/>
+  <object class="GtkAdjustment" id="adjustment1">
+    <property name="upper">86400000</property>
+    <property name="step_increment">1000</property>
+    <property name="page_increment">60000</property>
+  </object>
+  <object class="GtkTreeStore" id="liststore2">
+    <columns>
+      <!-- column-name text -->
+      <column type="gchararray"/>
+      <!-- column-name id -->
+      <column type="gchararray"/>
+    </columns>
+  </object>
   <object class="GtkDialog" id="PublishingDialog">
     <property name="can_focus">False</property>
     <property name="border_width">6</property>
-    <property name="title" translatable="yes">HTML Export</property>
+    <property name="title" translatable="yes" context="publishingdialog|PublishingDialog">HTML Export</property>
     <property name="type_hint">dialog</property>
+    <child>
+      <placeholder/>
+    </child>
     <child internal-child="vbox">
       <object class="GtkBox" id="dialog-vbox1">
         <property name="can_focus">False</property>
         <property name="orientation">vertical</property>
         <property name="spacing">12</property>
+        <child internal-child="action_area">
+          <object class="GtkButtonBox" id="dialog-action_area1">
+            <property name="can_focus">False</property>
+            <child>
+              <object class="GtkButton" id="help">
+                <property name="label">gtk-help</property>
+                <property name="visible">True</property>
+                <property name="can_focus">True</property>
+                <property name="receives_default">True</property>
+                <property name="use_stock">True</property>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">0</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkButton" id="cancel">
+                <property name="label">gtk-cancel</property>
+                <property name="visible">True</property>
+                <property name="can_focus">True</property>
+                <property name="receives_default">True</property>
+                <property name="use_stock">True</property>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">1</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkButton" id="lastPageButton">
+                <property name="label" translatable="yes" context="publishingdialog|lastPageButton">&lt; Back</property>
+                <property name="visible">True</property>
+                <property name="can_focus">True</property>
+                <property name="receives_default">True</property>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">2</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkButton" id="nextPageButton">
+                <property name="label" translatable="yes" context="publishingdialog|nextPageButton">Ne_xt &gt;</property>
+                <property name="visible">True</property>
+                <property name="can_focus">True</property>
+                <property name="can_default">True</property>
+                <property name="has_default">True</property>
+                <property name="receives_default">True</property>
+                <property name="use_underline">True</property>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">4</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkButton" id="finishButton">
+                <property name="label" translatable="yes" context="publishingdialog|finishButton">_Create</property>
+                <property name="visible">True</property>
+                <property name="can_focus">True</property>
+                <property name="receives_default">True</property>
+                <property name="use_underline">True</property>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">4</property>
+              </packing>
+            </child>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="fill">True</property>
+            <property name="pack_type">end</property>
+            <property name="position">6</property>
+          </packing>
+        </child>
         <child>
           <object class="GtkFrame" id="page1">
             <property name="visible">True</property>
@@ -39,8 +136,7 @@
                     <property name="spacing">6</property>
                     <child>
                       <object class="GtkRadioButton" id="newDesignRadiobutton">
-                        <property name="label" translatable="yes">New _design</property>
-                        <property name="use_action_appearance">False</property>
+                        <property name="label" translatable="yes" context="publishingdialog|newDesignRadiobutton">New _design</property>
                         <property name="visible">True</property>
                         <property name="can_focus">True</property>
                         <property name="receives_default">False</property>
@@ -48,7 +144,6 @@
                         <property name="xalign">0</property>
                         <property name="active">True</property>
                         <property name="draw_indicator">True</property>
-                        <property name="group">oldDesignRadiobutton</property>
                       </object>
                       <packing>
                         <property name="expand">False</property>
@@ -58,11 +153,11 @@
                     </child>
                     <child>
                       <object class="GtkRadioButton" id="oldDesignRadiobutton">
-                        <property name="label" translatable="yes">Existing design</property>
-                        <property name="use_action_appearance">False</property>
+                        <property name="label" translatable="yes" context="publishingdialog|oldDesignRadiobutton">Existing design</property>
                         <property name="visible">True</property>
                         <property name="can_focus">True</property>
                         <property name="receives_default">False</property>
+                        <property name="use_underline">True</property>
                         <property name="xalign">0</property>
                         <property name="draw_indicator">True</property>
                         <property name="group">newDesignRadiobutton</property>
@@ -87,36 +182,44 @@
                             <property name="can_focus">False</property>
                             <property name="hexpand">True</property>
                             <property name="vexpand">True</property>
-                            <property name="spacing">12</property>
                             <child>
-                              <object class="GtkTreeView" id="designsTreeview:border">
+                              <object class="GtkScrolledWindow">
                                 <property name="visible">True</property>
                                 <property name="can_focus">True</property>
                                 <property name="hexpand">True</property>
                                 <property name="vexpand">True</property>
-                                <child internal-child="selection">
-                                  <object class="GtkTreeSelection" id="treeview-selection"/>
+                                <property name="shadow_type">in</property>
+                                <child>
+                                  <object class="GtkTreeView" id="designsTreeview">
+                                    <property name="visible">True</property>
+                                    <property name="can_focus">True</property>
+                                    <property name="hexpand">True</property>
+                                    <property name="vexpand">True</property>
+                                    <property name="model">liststore2</property>
+                                    <property name="headers_visible">False</property>
+                                    <property name="headers_clickable">False</property>
+                                    <property name="search_column">0</property>
+                                    <property name="show_expanders">False</property>
+                                    <child internal-child="selection">
+                                      <object class="GtkTreeSelection" id="treeview-selection2"/>
+                                    </child>
+                                    <child>
+                                      <object class="GtkTreeViewColumn" id="treeviewcolumn2">
+                                        <child>
+                                          <object class="GtkCellRendererText" id="cellrenderertext2"/>
+                                          <attributes>
+                                            <attribute name="text">0</attribute>
+                                          </attributes>
+                                        </child>
+                                      </object>
+                                    </child>
+                                  </object>
                                 </child>
                               </object>
                               <packing>
                                 <property name="expand">False</property>
                                 <property name="fill">True</property>
                                 <property name="position">0</property>
-                              </packing>
-                            </child>
-                            <child>
-                              <object class="GtkButton" id="delDesingButton">
-                                <property name="label" translatable="yes">Delete Selected Design</property>
-                                <property name="use_action_appearance">False</property>
-                                <property name="visible">True</property>
-                                <property name="can_focus">True</property>
-                                <property name="receives_default">True</property>
-                                <property name="valign">start</property>
-                              </object>
-                              <packing>
-                                <property name="expand">False</property>
-                                <property name="fill">True</property>
-                                <property name="position">1</property>
                               </packing>
                             </child>
                           </object>
@@ -129,13 +232,41 @@
                       </packing>
                     </child>
                     <child>
-                      <object class="GtkLabel" id="descLabel">
+                      <object class="GtkBox">
                         <property name="visible">True</property>
                         <property name="can_focus">False</property>
-                        <property name="halign">start</property>
-                        <property name="label" translatable="yes">Select an existing design or create a new one</property>
-                        <property name="use_underline">True</property>
-                        <property name="mnemonic_widget">designsTreeview:border</property>
+                        <property name="spacing">12</property>
+                        <child>
+                          <object class="GtkLabel" id="descLabel">
+                            <property name="visible">True</property>
+                            <property name="can_focus">False</property>
+                            <property name="halign">start</property>
+                            <property name="label" translatable="yes" context="publishingdialog|descLabel">Select an existing design or create a new one</property>
+                            <property name="use_underline">True</property>
+                            <property name="mnemonic_widget">designsTreeview</property>
+                          </object>
+                          <packing>
+                            <property name="expand">False</property>
+                            <property name="fill">True</property>
+                            <property name="position">0</property>
+                          </packing>
+                        </child>
+                        <child>
+                          <object class="GtkButton" id="delDesingButton">
+                            <property name="label" translatable="yes" context="publishingdialog|delDesingButton">Delete Selected Design</property>
+                            <property name="visible">True</property>
+                            <property name="can_focus">True</property>
+                            <property name="receives_default">True</property>
+                            <property name="halign">end</property>
+                            <property name="valign">center</property>
+                            <property name="hexpand">True</property>
+                          </object>
+                          <packing>
+                            <property name="expand">False</property>
+                            <property name="fill">True</property>
+                            <property name="position">1</property>
+                          </packing>
+                        </child>
                       </object>
                       <packing>
                         <property name="expand">False</property>
@@ -151,8 +282,8 @@
               <object class="GtkLabel" id="assignLabel">
                 <property name="visible">True</property>
                 <property name="can_focus">False</property>
+                <property name="label" translatable="yes" context="publishingdialog|assignLabel">Assign Design</property>
                 <property name="yalign">0.47999998927116394</property>
-                <property name="label" translatable="yes">Assign Design</property>
                 <attributes>
                   <attribute name="weight" value="bold"/>
                 </attributes>
@@ -197,15 +328,14 @@
                         <property name="spacing">6</property>
                         <child>
                           <object class="GtkRadioButton" id="ASPRadiobutton">
-                            <property name="label" translatable="yes">_Active Server Pages (ASP)</property>
-                            <property name="use_action_appearance">False</property>
+                            <property name="label" translatable="yes" context="publishingdialog|ASPRadiobutton">_Active Server Pages (ASP)</property>
                             <property name="visible">True</property>
                             <property name="can_focus">True</property>
                             <property name="receives_default">False</property>
                             <property name="use_underline">True</property>
                             <property name="xalign">0</property>
+                            <property name="active">True</property>
                             <property name="draw_indicator">True</property>
-                            <property name="group">perlRadiobutton</property>
                           </object>
                           <packing>
                             <property name="expand">False</property>
@@ -215,11 +345,11 @@
                         </child>
                         <child>
                           <object class="GtkRadioButton" id="perlRadiobutton">
-                            <property name="label" translatable="yes">Perl</property>
-                            <property name="use_action_appearance">False</property>
+                            <property name="label" translatable="yes" context="publishingdialog|perlRadiobutton">Perl</property>
                             <property name="visible">True</property>
                             <property name="can_focus">True</property>
                             <property name="receives_default">False</property>
+                            <property name="use_underline">True</property>
                             <property name="xalign">0</property>
                             <property name="draw_indicator">True</property>
                             <property name="group">ASPRadiobutton</property>
@@ -246,10 +376,10 @@
                                     <property name="can_focus">False</property>
                                     <property name="halign">start</property>
                                     <property name="valign">start</property>
-                                    <property name="xalign">0.49000000953674316</property>
-                                    <property name="label" translatable="yes">_URL for listeners:</property>
+                                    <property name="label" translatable="yes" context="publishingdialog|indexTxtLabel">_URL for listeners:</property>
                                     <property name="use_underline">True</property>
                                     <property name="mnemonic_widget">indexEntry</property>
+                                    <property name="xalign">0.5</property>
                                   </object>
                                   <packing>
                                     <property name="expand">False</property>
@@ -261,6 +391,7 @@
                                   <object class="GtkEntry" id="indexEntry">
                                     <property name="visible">True</property>
                                     <property name="can_focus">True</property>
+                                    <property name="activates_default">True</property>
                                   </object>
                                   <packing>
                                     <property name="expand">False</property>
@@ -273,7 +404,7 @@
                                     <property name="visible">True</property>
                                     <property name="can_focus">False</property>
                                     <property name="halign">start</property>
-                                    <property name="label" translatable="yes">URL for _presentation:</property>
+                                    <property name="label" translatable="yes" context="publishingdialog|URLTxtLabel">URL for _presentation:</property>
                                     <property name="use_underline">True</property>
                                     <property name="mnemonic_widget">URLEntry</property>
                                   </object>
@@ -287,6 +418,7 @@
                                   <object class="GtkEntry" id="URLEntry">
                                     <property name="visible">True</property>
                                     <property name="can_focus">True</property>
+                                    <property name="activates_default">True</property>
                                   </object>
                                   <packing>
                                     <property name="expand">False</property>
@@ -299,7 +431,7 @@
                                     <property name="visible">True</property>
                                     <property name="can_focus">False</property>
                                     <property name="halign">start</property>
-                                    <property name="label" translatable="yes">URL for _Perl scripts:</property>
+                                    <property name="label" translatable="yes" context="publishingdialog|CGITxtLabel">URL for _Perl scripts:</property>
                                     <property name="use_underline">True</property>
                                     <property name="mnemonic_widget">CGIEntry</property>
                                   </object>
@@ -313,6 +445,7 @@
                                   <object class="GtkEntry" id="CGIEntry">
                                     <property name="visible">True</property>
                                     <property name="can_focus">True</property>
+                                    <property name="activates_default">True</property>
                                   </object>
                                   <packing>
                                     <property name="expand">False</property>
@@ -337,8 +470,8 @@
                   <object class="GtkLabel" id="webCastLabel">
                     <property name="visible">True</property>
                     <property name="can_focus">False</property>
-                    <property name="xalign">0.49000000953674316</property>
-                    <property name="label" translatable="yes">Webcast</property>
+                    <property name="label" translatable="yes" context="publishingdialog|webCastLabel">Webcast</property>
+                    <property name="xalign">0.5</property>
                     <attributes>
                       <attribute name="weight" value="bold"/>
                     </attributes>
@@ -373,15 +506,14 @@
                         <property name="spacing">6</property>
                         <child>
                           <object class="GtkRadioButton" id="chgDefaultRadiobutton">
-                            <property name="label" translatable="yes">_As stated in document</property>
-                            <property name="use_action_appearance">False</property>
+                            <property name="label" translatable="yes" context="publishingdialog|chgDefaultRadiobutton">_As stated in document</property>
                             <property name="visible">True</property>
                             <property name="can_focus">True</property>
                             <property name="receives_default">False</property>
                             <property name="use_underline">True</property>
                             <property name="xalign">0</property>
+                            <property name="active">True</property>
                             <property name="draw_indicator">True</property>
-                            <property name="group">chgAutoRadiobutton</property>
                           </object>
                           <packing>
                             <property name="expand">False</property>
@@ -391,8 +523,7 @@
                         </child>
                         <child>
                           <object class="GtkRadioButton" id="chgAutoRadiobutton">
-                            <property name="label" translatable="yes">_Automatic</property>
-                            <property name="use_action_appearance">False</property>
+                            <property name="label" translatable="yes" context="publishingdialog|chgAutoRadiobutton">_Automatic</property>
                             <property name="visible">True</property>
                             <property name="can_focus">True</property>
                             <property name="receives_default">False</property>
@@ -427,10 +558,10 @@
                                       <object class="GtkLabel" id="durationTxtLabel">
                                         <property name="visible">True</property>
                                         <property name="can_focus">False</property>
-                                        <property name="xalign">0.50999999046325684</property>
-                                        <property name="label" translatable="yes">_Slide view time:</property>
+                                        <property name="label" translatable="yes" context="publishingdialog|durationTxtLabel">_Slide view time:</property>
                                         <property name="use_underline">True</property>
-                                        <property name="mnemonic_widget">durationSpinbutton:hh:mm</property>
+                                        <property name="mnemonic_widget">durationSpinbutton</property>
+                                        <property name="xalign">0.5</property>
                                       </object>
                                       <packing>
                                         <property name="expand">False</property>
@@ -439,9 +570,11 @@
                                       </packing>
                                     </child>
                                     <child>
-                                      <object class="GtkSpinButton" id="durationSpinbutton:hh:mm">
+                                      <object class="GtkSpinButton" id="durationSpinbutton">
                                         <property name="visible">True</property>
                                         <property name="can_focus">True</property>
+                                        <property name="activates_default">True</property>
+                                        <property name="adjustment">adjustment1</property>
                                       </object>
                                       <packing>
                                         <property name="expand">False</property>
@@ -458,8 +591,7 @@
                                 </child>
                                 <child>
                                   <object class="GtkCheckButton" id="endlessCheckbutton">
-                                    <property name="label" translatable="yes">_Endless</property>
-                                    <property name="use_action_appearance">False</property>
+                                    <property name="label" translatable="yes" context="publishingdialog|endlessCheckbutton">_Endless</property>
                                     <property name="visible">True</property>
                                     <property name="can_focus">True</property>
                                     <property name="receives_default">False</property>
@@ -491,7 +623,7 @@
                   <object class="GtkLabel" id="kioskLabel">
                     <property name="visible">True</property>
                     <property name="can_focus">False</property>
-                    <property name="label" translatable="yes">Advance Slides</property>
+                    <property name="label" translatable="yes" context="publishingdialog|kioskLabel">Advance Slides</property>
                     <attributes>
                       <attribute name="weight" value="bold"/>
                     </attributes>
@@ -529,11 +661,11 @@
                         <property name="spacing">6</property>
                         <child>
                           <object class="GtkCheckButton" id="contentCheckbutton">
-                            <property name="label" translatable="yes">Create title page</property>
-                            <property name="use_action_appearance">False</property>
+                            <property name="label" translatable="yes" context="publishingdialog|contentCheckbutton">Create title page</property>
                             <property name="visible">True</property>
                             <property name="can_focus">True</property>
                             <property name="receives_default">False</property>
+                            <property name="use_underline">True</property>
                             <property name="xalign">0</property>
                             <property name="active">True</property>
                             <property name="draw_indicator">True</property>
@@ -546,11 +678,11 @@
                         </child>
                         <child>
                           <object class="GtkCheckButton" id="notesCheckbutton">
-                            <property name="label" translatable="yes">Show notes</property>
-                            <property name="use_action_appearance">False</property>
+                            <property name="label" translatable="yes" context="publishingdialog|notesCheckbutton">Show notes</property>
                             <property name="visible">True</property>
                             <property name="can_focus">True</property>
                             <property name="receives_default">False</property>
+                            <property name="use_underline">True</property>
                             <property name="xalign">0</property>
                             <property name="active">True</property>
                             <property name="draw_indicator">True</property>
@@ -569,7 +701,7 @@
                   <object class="GtkLabel" id="htmlOptionsLabel">
                     <property name="visible">True</property>
                     <property name="can_focus">False</property>
-                    <property name="label" translatable="yes">Options</property>
+                    <property name="label" translatable="yes" context="publishingdialog|htmlOptionsLabel">Options</property>
                     <attributes>
                       <attribute name="weight" value="bold"/>
                     </attributes>
@@ -611,7 +743,7 @@
                               <object class="GtkImage" id="standardFBImage">
                                 <property name="visible">True</property>
                                 <property name="can_focus">False</property>
-                                <property name="pixbuf">sd/res/pubdes.png</property>
+                                <property name="icon_name">sd/res/pubdes.png</property>
                               </object>
                               <packing>
                                 <property name="expand">False</property>
@@ -622,7 +754,7 @@
                             <child>
                               <object class="GtkImage" id="framesFBImage">
                                 <property name="can_focus">False</property>
-                                <property name="pixbuf">sd/res/pubdes2.png</property>
+                                <property name="icon_name">sd/res/pubdes2.png</property>
                               </object>
                               <packing>
                                 <property name="expand">False</property>
@@ -633,7 +765,7 @@
                             <child>
                               <object class="GtkImage" id="kioskFBImage">
                                 <property name="can_focus">False</property>
-                                <property name="pixbuf">sd/res/pubdes3.png</property>
+                                <property name="icon_name">sd/res/pubdes3.png</property>
                               </object>
                               <packing>
                                 <property name="expand">False</property>
@@ -644,7 +776,7 @@
                             <child>
                               <object class="GtkImage" id="webCastFBImage">
                                 <property name="can_focus">False</property>
-                                <property name="pixbuf">sd/res/pubdes4.png</property>
+                                <property name="icon_name">sd/res/pubdes4.png</property>
                               </object>
                               <packing>
                                 <property name="expand">False</property>
@@ -660,8 +792,7 @@
                         </child>
                         <child>
                           <object class="GtkRadioButton" id="webCastRadiobutton">
-                            <property name="label" translatable="yes">_WebCast</property>
-                            <property name="use_action_appearance">False</property>
+                            <property name="label" translatable="yes" context="publishingdialog|webCastRadiobutton">_WebCast</property>
                             <property name="visible">True</property>
                             <property name="can_focus">True</property>
                             <property name="receives_default">False</property>
@@ -677,15 +808,14 @@
                         </child>
                         <child>
                           <object class="GtkRadioButton" id="kioskRadiobutton">
-                            <property name="label" translatable="yes">_Automatic</property>
-                            <property name="use_action_appearance">False</property>
+                            <property name="label" translatable="yes" context="publishingdialog|kioskRadiobutton">_Automatic</property>
                             <property name="visible">True</property>
                             <property name="can_focus">True</property>
                             <property name="receives_default">False</property>
                             <property name="use_underline">True</property>
                             <property name="xalign">0</property>
                             <property name="draw_indicator">True</property>
-                            <property name="group">webCastRadiobutton</property>
+                            <property name="group">standardRadiobutton</property>
                           </object>
                           <packing>
                             <property name="left_attach">0</property>
@@ -694,15 +824,14 @@
                         </child>
                         <child>
                           <object class="GtkRadioButton" id="singleDocumentRadiobutton">
-                            <property name="label" translatable="yes">_Single-document HTML</property>
-                            <property name="use_action_appearance">False</property>
+                            <property name="label" translatable="yes" context="publishingdialog|singleDocumentRadiobutton">_Single-document HTML</property>
                             <property name="visible">True</property>
                             <property name="can_focus">True</property>
                             <property name="receives_default">False</property>
                             <property name="use_underline">True</property>
                             <property name="xalign">0</property>
                             <property name="draw_indicator">True</property>
-                            <property name="group">kioskRadiobutton</property>
+                            <property name="group">standardRadiobutton</property>
                           </object>
                           <packing>
                             <property name="left_attach">0</property>
@@ -711,15 +840,14 @@
                         </child>
                         <child>
                           <object class="GtkRadioButton" id="framesRadiobutton">
-                            <property name="label" translatable="yes">Standard HTML with _frames</property>
-                            <property name="use_action_appearance">False</property>
+                            <property name="label" translatable="yes" context="publishingdialog|framesRadiobutton">Standard HTML with _frames</property>
                             <property name="visible">True</property>
                             <property name="can_focus">True</property>
                             <property name="receives_default">False</property>
                             <property name="use_underline">True</property>
                             <property name="xalign">0</property>
                             <property name="draw_indicator">True</property>
-                            <property name="group">singleDocumentRadiobutton</property>
+                            <property name="group">standardRadiobutton</property>
                           </object>
                           <packing>
                             <property name="left_attach">0</property>
@@ -728,15 +856,14 @@
                         </child>
                         <child>
                           <object class="GtkRadioButton" id="standardRadiobutton">
-                            <property name="label" translatable="yes">Standard H_TML format</property>
-                            <property name="use_action_appearance">False</property>
+                            <property name="label" translatable="yes" context="publishingdialog|standardRadiobutton">Standard H_TML format</property>
                             <property name="visible">True</property>
                             <property name="can_focus">True</property>
                             <property name="receives_default">False</property>
                             <property name="use_underline">True</property>
                             <property name="xalign">0</property>
+                            <property name="active">True</property>
                             <property name="draw_indicator">True</property>
-                            <property name="group">framesRadiobutton</property>
                           </object>
                           <packing>
                             <property name="left_attach">0</property>
@@ -751,7 +878,7 @@
                   <object class="GtkLabel" id="publicationLabel">
                     <property name="visible">True</property>
                     <property name="can_focus">False</property>
-                    <property name="label" translatable="yes">Publication Type</property>
+                    <property name="label" translatable="yes" context="publishingdialog|publicationLabel">Publication Type</property>
                     <attributes>
                       <attribute name="weight" value="bold"/>
                     </attributes>
@@ -809,8 +936,7 @@
                             <property name="spacing">6</property>
                             <child>
                               <object class="GtkRadioButton" id="pngRadiobutton">
-                                <property name="label" translatable="yes">_PNG</property>
-                                <property name="use_action_appearance">False</property>
+                                <property name="label" translatable="yes" context="publishingdialog|pngRadiobutton">_PNG</property>
                                 <property name="visible">True</property>
                                 <property name="can_focus">True</property>
                                 <property name="receives_default">False</property>
@@ -818,7 +944,6 @@
                                 <property name="xalign">0</property>
                                 <property name="active">True</property>
                                 <property name="draw_indicator">True</property>
-                                <property name="group">gifRadiobutton</property>
                               </object>
                               <packing>
                                 <property name="expand">False</property>
@@ -828,15 +953,14 @@
                             </child>
                             <child>
                               <object class="GtkRadioButton" id="gifRadiobutton">
-                                <property name="label" translatable="yes">_GIF</property>
-                                <property name="use_action_appearance">False</property>
+                                <property name="label" translatable="yes" context="publishingdialog|gifRadiobutton">_GIF</property>
                                 <property name="visible">True</property>
                                 <property name="can_focus">True</property>
                                 <property name="receives_default">False</property>
                                 <property name="use_underline">True</property>
                                 <property name="xalign">0</property>
                                 <property name="draw_indicator">True</property>
-                                <property name="group">jpgRadiobutton</property>
+                                <property name="group">pngRadiobutton</property>
                               </object>
                               <packing>
                                 <property name="expand">False</property>
@@ -846,8 +970,7 @@
                             </child>
                             <child>
                               <object class="GtkRadioButton" id="jpgRadiobutton">
-                                <property name="label" translatable="yes">_JPG</property>
-                                <property name="use_action_appearance">False</property>
+                                <property name="label" translatable="yes" context="publishingdialog|jpgRadiobutton">_JPG</property>
                                 <property name="visible">True</property>
                                 <property name="can_focus">True</property>
                                 <property name="receives_default">False</property>
@@ -873,7 +996,7 @@
                                     <property name="visible">True</property>
                                     <property name="can_focus">False</property>
                                     <property name="halign">start</property>
-                                    <property name="label" translatable="yes">_Quality:</property>
+                                    <property name="label" translatable="yes" context="publishingdialog|qualityTxtLabel">_Quality:</property>
                                     <property name="use_underline">True</property>
                                     <property name="mnemonic_widget">qualityCombobox</property>
                                   </object>
@@ -884,13 +1007,15 @@
                                   </packing>
                                 </child>
                                 <child>
-                                  <object class="GtkComboBox" id="qualityCombobox">
+                                  <object class="GtkComboBoxText" id="qualityCombobox">
                                     <property name="visible">True</property>
                                     <property name="can_focus">False</property>
+                                    <property name="hexpand">True</property>
                                     <property name="has_entry">True</property>
                                     <child internal-child="entry">
                                       <object class="GtkEntry" id="combobox-entry">
-                                        <property name="can_focus">False</property>
+                                        <property name="can_focus">True</property>
+                                        <property name="activates_default">True</property>
                                       </object>
                                     </child>
                                   </object>
@@ -915,7 +1040,7 @@
                       <object class="GtkLabel" id="saveImgAsLabel">
                         <property name="visible">True</property>
                         <property name="can_focus">False</property>
-                        <property name="label" translatable="yes">Save Images As</property>
+                        <property name="label" translatable="yes" context="publishingdialog|saveImgAsLabel">Save Images As</property>
                         <attributes>
                           <attribute name="weight" value="bold"/>
                         </attributes>
@@ -950,16 +1075,13 @@
                             <property name="spacing">6</property>
                             <child>
                               <object class="GtkRadioButton" id="resolution1Radiobutton">
-                                <property name="label" translatable="yes">Low (_640 × 480 pixels)</property>
-                                <property name="use_action_appearance">False</property>
+                                <property name="label" translatable="yes" context="publishingdialog|resolution1Radiobutton">Low (_640 × 480 pixels)</property>
                                 <property name="visible">True</property>
                                 <property name="can_focus">True</property>
                                 <property name="receives_default">False</property>
                                 <property name="use_underline">True</property>
                                 <property name="xalign">0</property>
-                                <property name="active">True</property>
                                 <property name="draw_indicator">True</property>
-                                <property name="group">resolution2Radiobutton</property>
                               </object>
                               <packing>
                                 <property name="expand">False</property>
@@ -969,15 +1091,14 @@
                             </child>
                             <child>
                               <object class="GtkRadioButton" id="resolution2Radiobutton">
-                                <property name="label" translatable="yes">Medium (_800 × 600 pixels)</property>
-                                <property name="use_action_appearance">False</property>
+                                <property name="label" translatable="yes" context="publishingdialog|resolution2Radiobutton">Medium (_800 × 600 pixels)</property>
                                 <property name="visible">True</property>
                                 <property name="can_focus">True</property>
                                 <property name="receives_default">False</property>
                                 <property name="use_underline">True</property>
                                 <property name="xalign">0</property>
                                 <property name="draw_indicator">True</property>
-                                <property name="group">resolution3Radiobutton</property>
+                                <property name="group">resolution1Radiobutton</property>
                               </object>
                               <packing>
                                 <property name="expand">False</property>
@@ -987,14 +1108,14 @@
                             </child>
                             <child>
                               <object class="GtkRadioButton" id="resolution3Radiobutton">
-                                <property name="label" translatable="yes">High (_1024 × 768 pixels)</property>
-                                <property name="use_action_appearance">False</property>
+                                <property name="label" translatable="yes" context="publishingdialog|resolution3Radiobutton">High (_1024 × 768 pixels)</property>
                                 <property name="visible">True</property>
                                 <property name="can_focus">True</property>
                                 <property name="receives_default">False</property>
                                 <property name="relief">half</property>
                                 <property name="use_underline">True</property>
                                 <property name="xalign">0</property>
+                                <property name="active">True</property>
                                 <property name="draw_indicator">True</property>
                                 <property name="group">resolution1Radiobutton</property>
                               </object>
@@ -1012,7 +1133,7 @@
                       <object class="GtkLabel" id="monitorResolutionLabel">
                         <property name="visible">True</property>
                         <property name="can_focus">False</property>
-                        <property name="label" translatable="yes">Monitor Resolution</property>
+                        <property name="label" translatable="yes" context="publishingdialog|monitorResolutionLabel">Monitor Resolution</property>
                         <attributes>
                           <attribute name="weight" value="bold"/>
                         </attributes>
@@ -1052,8 +1173,7 @@
                         <property name="spacing">6</property>
                         <child>
                           <object class="GtkCheckButton" id="sldSoundCheckbutton">
-                            <property name="label" translatable="yes">_Export sounds when slide advances</property>
-                            <property name="use_action_appearance">False</property>
+                            <property name="label" translatable="yes" context="publishingdialog|sldSoundCheckbutton">_Export sounds when slide advances</property>
                             <property name="visible">True</property>
                             <property name="can_focus">True</property>
                             <property name="receives_default">False</property>
@@ -1070,8 +1190,7 @@
                         </child>
                         <child>
                           <object class="GtkCheckButton" id="hiddenSlidesCheckbutton">
-                            <property name="label" translatable="yes">Export _hidden slides</property>
-                            <property name="use_action_appearance">False</property>
+                            <property name="label" translatable="yes" context="publishingdialog|hiddenSlidesCheckbutton">Export _hidden slides</property>
                             <property name="visible">True</property>
                             <property name="can_focus">True</property>
                             <property name="receives_default">False</property>
@@ -1093,7 +1212,7 @@
                   <object class="GtkLabel" id="effectsLabel">
                     <property name="visible">True</property>
                     <property name="can_focus">False</property>
-                    <property name="label" translatable="yes">Effects</property>
+                    <property name="label" translatable="yes" context="publishingdialog|effectsLabel">Effects</property>
                     <attributes>
                       <attribute name="weight" value="bold"/>
                     </attributes>
@@ -1141,7 +1260,7 @@
                         <property name="visible">True</property>
                         <property name="can_focus">False</property>
                         <property name="halign">start</property>
-                        <property name="label" translatable="yes">_Author:</property>
+                        <property name="label" translatable="yes" context="publishingdialog|authorTxtLabel">_Author:</property>
                         <property name="use_underline">True</property>
                         <property name="mnemonic_widget">authorEntry</property>
                       </object>
@@ -1155,6 +1274,7 @@
                         <property name="visible">True</property>
                         <property name="can_focus">True</property>
                         <property name="hexpand">True</property>
+                        <property name="activates_default">True</property>
                       </object>
                       <packing>
                         <property name="left_attach">1</property>
@@ -1166,7 +1286,7 @@
                         <property name="visible">True</property>
                         <property name="can_focus">False</property>
                         <property name="halign">start</property>
-                        <property name="label" translatable="yes">E-_mail address:</property>
+                        <property name="label" translatable="yes" context="publishingdialog|emailTxtLabel">E-_mail address:</property>
                         <property name="use_underline">True</property>
                         <property name="mnemonic_widget">emailEntry</property>
                       </object>
@@ -1180,7 +1300,7 @@
                         <property name="visible">True</property>
                         <property name="can_focus">False</property>
                         <property name="halign">start</property>
-                        <property name="label" translatable="yes">Your hom_epage:</property>
+                        <property name="label" translatable="yes" context="publishingdialog|wwwTxtLabel">Your hom_epage:</property>
                         <property name="use_underline">True</property>
                         <property name="mnemonic_widget">wwwEntry</property>
                       </object>
@@ -1195,9 +1315,9 @@
                         <property name="can_focus">False</property>
                         <property name="halign">start</property>
                         <property name="valign">start</property>
-                        <property name="label" translatable="yes">Additional _information:</property>
+                        <property name="label" translatable="yes" context="publishingdialog|addInformLabel">Additional _information:</property>
                         <property name="use_underline">True</property>
-                        <property name="mnemonic_widget">miscTextview:border</property>
+                        <property name="mnemonic_widget">miscTextview</property>
                       </object>
                       <packing>
                         <property name="left_attach">0</property>
@@ -1209,6 +1329,7 @@
                         <property name="visible">True</property>
                         <property name="can_focus">True</property>
                         <property name="hexpand">True</property>
+                        <property name="activates_default">True</property>
                       </object>
                       <packing>
                         <property name="left_attach">1</property>
@@ -1220,6 +1341,7 @@
                         <property name="visible">True</property>
                         <property name="can_focus">True</property>
                         <property name="hexpand">True</property>
+                        <property name="activates_default">True</property>
                       </object>
                       <packing>
                         <property name="left_attach">1</property>
@@ -1227,21 +1349,8 @@
                       </packing>
                     </child>
                     <child>
-                      <object class="GtkTextView" id="miscTextview:border">
-                        <property name="visible">True</property>
-                        <property name="can_focus">True</property>
-                        <property name="hexpand">True</property>
-                        <property name="vexpand">True</property>
-                      </object>
-                      <packing>
-                        <property name="left_attach">1</property>
-                        <property name="top_attach">3</property>
-                      </packing>
-                    </child>
-                    <child>
                       <object class="GtkCheckButton" id="downloadCheckbutton">
-                        <property name="label" translatable="yes">Link to a copy of the _original presentation</property>
-                        <property name="use_action_appearance">False</property>
+                        <property name="label" translatable="yes" context="publishingdialog|downloadCheckbutton">Link to a copy of the _original presentation</property>
                         <property name="visible">True</property>
                         <property name="can_focus">True</property>
                         <property name="receives_default">False</property>
@@ -1255,6 +1364,27 @@
                         <property name="width">2</property>
                       </packing>
                     </child>
+                    <child>
+                      <object class="GtkScrolledWindow">
+                        <property name="visible">True</property>
+                        <property name="can_focus">True</property>
+                        <property name="hexpand">True</property>
+                        <property name="vexpand">True</property>
+                        <property name="shadow_type">in</property>
+                        <child>
+                          <object class="GtkTextView" id="miscTextview">
+                            <property name="visible">True</property>
+                            <property name="can_focus">True</property>
+                            <property name="hexpand">True</property>
+                            <property name="vexpand">True</property>
+                          </object>
+                        </child>
+                      </object>
+                      <packing>
+                        <property name="left_attach">1</property>
+                        <property name="top_attach">3</property>
+                      </packing>
+                    </child>
                   </object>
                 </child>
               </object>
@@ -1263,7 +1393,7 @@
               <object class="GtkLabel" id="infTitlePageLabel">
                 <property name="visible">True</property>
                 <property name="can_focus">False</property>
-                <property name="label" translatable="yes">Information for the Title Page</property>
+                <property name="label" translatable="yes" context="publishingdialog|infTitlePageLabel">Information for the Title Page</property>
                 <attributes>
                   <attribute name="weight" value="bold"/>
                 </attributes>
@@ -1301,8 +1431,7 @@
                     <property name="spacing">6</property>
                     <child>
                       <object class="GtkCheckButton" id="textOnlyCheckbutton">
-                        <property name="label" translatable="yes">_Text only</property>
-                        <property name="use_action_appearance">False</property>
+                        <property name="label" translatable="yes" context="publishingdialog|textOnlyCheckbutton">_Text only</property>
                         <property name="visible">True</property>
                         <property name="can_focus">True</property>
                         <property name="receives_default">False</property>
@@ -1319,11 +1448,28 @@
                       </packing>
                     </child>
                     <child>
-                      <object class="svtlo-ValueSet" id="buttonsDrawingarea:border">
+                      <object class="GtkScrolledWindow" id="buttonsDrawingareawin">
                         <property name="visible">True</property>
-                        <property name="can_focus">False</property>
-                        <property name="hexpand">True</property>
+                        <property name="can_focus">True</property>
                         <property name="vexpand">True</property>
+                        <property name="hscrollbar_policy">never</property>
+                        <property name="vscrollbar_policy">never</property>
+                        <property name="shadow_type">in</property>
+                        <child>
+                          <object class="GtkViewport">
+                            <property name="visible">True</property>
+                            <property name="can_focus">False</property>
+                            <child>
+                              <object class="GtkDrawingArea" id="buttonsDrawingarea">
+                                <property name="visible">True</property>
+                                <property name="can_focus">True</property>
+                                <property name="events">GDK_BUTTON_MOTION_MASK | GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK | GDK_STRUCTURE_MASK</property>
+                                <property name="hexpand">True</property>
+                                <property name="vexpand">True</property>
+                              </object>
+                            </child>
+                          </object>
+                        </child>
                       </object>
                       <packing>
                         <property name="expand">False</property>
@@ -1339,8 +1485,8 @@
               <object class="GtkLabel" id="buttonStyleLabel">
                 <property name="visible">True</property>
                 <property name="can_focus">False</property>
-                <property name="xalign">0.49000000953674316</property>
-                <property name="label" translatable="yes">Select Button Style</property>
+                <property name="label" translatable="yes" context="publishingdialog|buttonStyleLabel">Select Button Style</property>
+                <property name="xalign">0.5</property>
                 <attributes>
                   <attribute name="weight" value="bold"/>
                 </attributes>
@@ -1378,8 +1524,7 @@
                     <property name="spacing">6</property>
                     <child>
                       <object class="GtkRadioButton" id="docColorsRadiobutton">
-                        <property name="label" translatable="yes">_Apply color scheme from document</property>
-                        <property name="use_action_appearance">False</property>
+                        <property name="label" translatable="yes" context="publishingdialog|docColorsRadiobutton">_Apply color scheme from document</property>
                         <property name="visible">True</property>
                         <property name="can_focus">True</property>
                         <property name="receives_default">False</property>
@@ -1387,7 +1532,6 @@
                         <property name="xalign">0</property>
                         <property name="active">True</property>
                         <property name="draw_indicator">True</property>
-                        <property name="group">defaultRadiobutton</property>
                       </object>
                       <packing>
                         <property name="expand">False</property>
@@ -1397,15 +1541,14 @@
                     </child>
                     <child>
                       <object class="GtkRadioButton" id="defaultRadiobutton">
-                        <property name="label" translatable="yes">Use _browser colors</property>
-                        <property name="use_action_appearance">False</property>
+                        <property name="label" translatable="yes" context="publishingdialog|defaultRadiobutton">Use _browser colors</property>
                         <property name="visible">True</property>
                         <property name="can_focus">True</property>
                         <property name="receives_default">False</property>
                         <property name="use_underline">True</property>
                         <property name="xalign">0</property>
                         <property name="draw_indicator">True</property>
-                        <property name="group">userRadiobutton</property>
+                        <property name="group">docColorsRadiobutton</property>
                       </object>
                       <packing>
                         <property name="expand">False</property>
@@ -1415,8 +1558,7 @@
                     </child>
                     <child>
                       <object class="GtkRadioButton" id="userRadiobutton">
-                        <property name="label" translatable="yes">_Use custom color scheme</property>
-                        <property name="use_action_appearance">False</property>
+                        <property name="label" translatable="yes" context="publishingdialog|userRadiobutton">_Use custom color scheme</property>
                         <property name="visible">True</property>
                         <property name="can_focus">True</property>
                         <property name="receives_default">False</property>
@@ -1450,8 +1592,7 @@
                                 <property name="row_spacing">6</property>
                                 <child>
                                   <object class="GtkButton" id="vLinkButton">
-                                    <property name="label" translatable="yes">_Visited Link</property>
-                                    <property name="use_action_appearance">False</property>
+                                    <property name="label" translatable="yes" context="publishingdialog|vLinkButton">_Visited Link</property>
                                     <property name="visible">True</property>
                                     <property name="can_focus">True</property>
                                     <property name="receives_default">True</property>
@@ -1464,8 +1605,7 @@
                                 </child>
                                 <child>
                                   <object class="GtkButton" id="aLinkButton">
-                                    <property name="label" translatable="yes">Active Li_nk</property>
-                                    <property name="use_action_appearance">False</property>
+                                    <property name="label" translatable="yes" context="publishingdialog|aLinkButton">Active Li_nk</property>
                                     <property name="visible">True</property>
                                     <property name="can_focus">True</property>
                                     <property name="receives_default">True</property>
@@ -1478,8 +1618,7 @@
                                 </child>
                                 <child>
                                   <object class="GtkButton" id="linkButton">
-                                    <property name="label" translatable="yes">Hyper_link</property>
-                                    <property name="use_action_appearance">False</property>
+                                    <property name="label" translatable="yes" context="publishingdialog|linkButton">Hyper_link</property>
                                     <property name="visible">True</property>
                                     <property name="can_focus">True</property>
                                     <property name="receives_default">True</property>
@@ -1492,8 +1631,7 @@
                                 </child>
                                 <child>
                                   <object class="GtkButton" id="textButton">
-                                    <property name="label" translatable="yes">Text</property>
-                                    <property name="use_action_appearance">False</property>
+                                    <property name="label" translatable="yes" context="publishingdialog|textButton">Text</property>
                                     <property name="visible">True</property>
                                     <property name="can_focus">True</property>
                                     <property name="receives_default">True</property>
@@ -1511,11 +1649,29 @@
                               </packing>
                             </child>
                             <child>
-                              <object class="sduilo-SdHtmlAttrPreview" id="previewDrawingarea:border">
+                              <object class="GtkScrolledWindow">
                                 <property name="visible">True</property>
                                 <property name="can_focus">False</property>
                                 <property name="hexpand">True</property>
-                                <property name="vexpand">True</property>
+                                <property name="hscrollbar_policy">never</property>
+                                <property name="vscrollbar_policy">never</property>
+                                <property name="shadow_type">in</property>
+                                <child>
+                                  <object class="GtkViewport">
+                                    <property name="visible">True</property>
+                                    <property name="can_focus">False</property>
+                                    <property name="hexpand">True</property>
+                                    <property name="vexpand">True</property>
+                                    <child>
+                                      <object class="GtkDrawingArea" id="previewDrawingarea">
+                                        <property name="visible">True</property>
+                                        <property name="can_focus">False</property>
+                                        <property name="hexpand">True</property>
+                                        <property name="vexpand">True</property>
+                                      </object>
+                                    </child>
+                                  </object>
+                                </child>
                               </object>
                               <packing>
                                 <property name="expand">False</property>
@@ -1525,8 +1681,7 @@
                             </child>
                             <child>
                               <object class="GtkButton" id="backButton">
-                                <property name="label" translatable="yes">Bac_kground</property>
-                                <property name="use_action_appearance">False</property>
+                                <property name="label" translatable="yes" context="publishingdialog|backButton">Bac_kground</property>
                                 <property name="visible">True</property>
                                 <property name="can_focus">True</property>
                                 <property name="receives_default">True</property>
@@ -1556,7 +1711,7 @@
               <object class="GtkLabel" id="selectColorLabel">
                 <property name="visible">True</property>
                 <property name="can_focus">False</property>
-                <property name="label" translatable="yes">Select Color Scheme</property>
+                <property name="label" translatable="yes" context="publishingdialog|selectColorLabel">Select Color Scheme</property>
                 <attributes>
                   <attribute name="weight" value="bold"/>
                 </attributes>
@@ -1569,101 +1724,14 @@
             <property name="position">5</property>
           </packing>
         </child>
-        <child internal-child="action_area">
-          <object class="GtkButtonBox" id="dialog-action_area1">
-            <property name="can_focus">False</property>
-            <child>
-              <object class="GtkButton" id="help">
-                <property name="label">gtk-help</property>
-                <property name="use_action_appearance">False</property>
-                <property name="visible">True</property>
-                <property name="can_focus">True</property>
-                <property name="receives_default">True</property>
-                <property name="use_stock">True</property>
-              </object>
-              <packing>
-                <property name="expand">False</property>
-                <property name="fill">True</property>
-                <property name="position">0</property>
-              </packing>
-            </child>
-            <child>
-              <object class="GtkButton" id="cancel">
-                <property name="label">gtk-cancel</property>
-                <property name="use_action_appearance">False</property>
-                <property name="visible">True</property>
-                <property name="can_focus">True</property>
-                <property name="receives_default">True</property>
-                <property name="use_stock">True</property>
-              </object>
-              <packing>
-                <property name="expand">False</property>
-                <property name="fill">True</property>
-                <property name="position">1</property>
-              </packing>
-            </child>
-            <child>
-              <object class="GtkButton" id="lastPageButton">
-                <property name="label" translatable="yes">&lt;&lt; Back</property>
-                <property name="use_action_appearance">False</property>
-                <property name="visible">True</property>
-                <property name="can_focus">True</property>
-                <property name="receives_default">True</property>
-              </object>
-              <packing>
-                <property name="expand">False</property>
-                <property name="fill">True</property>
-                <property name="position">2</property>
-              </packing>
-            </child>
-            <child>
-              <object class="GtkButton" id="nextPageButton">
-                <property name="label" translatable="yes">Ne_xt &gt;&gt;</property>
-                <property name="use_action_appearance">False</property>
-                <property name="visible">True</property>
-                <property name="can_focus">True</property>
-                <property name="can_default">True</property>
-                <property name="has_default">True</property>
-                <property name="receives_default">True</property>
-                <property name="use_underline">True</property>
-              </object>
-              <packing>
-                <property name="expand">False</property>
-                <property name="fill">True</property>
-                <property name="position">4</property>
-              </packing>
-            </child>
-            <child>
-              <object class="GtkButton" id="finishButton">
-                <property name="label" translatable="yes">_Create</property>
-                <property name="use_action_appearance">False</property>
-                <property name="visible">True</property>
-                <property name="can_focus">True</property>
-                <property name="receives_default">True</property>
-                <property name="use_underline">True</property>
-              </object>
-              <packing>
-                <property name="expand">False</property>
-                <property name="fill">True</property>
-                <property name="position">4</property>
-              </packing>
-            </child>
-          </object>
-          <packing>
-            <property name="expand">False</property>
-            <property name="fill">True</property>
-            <property name="pack_type">end</property>
-            <property name="position">6</property>
-          </packing>
-        </child>
       </object>
     </child>
     <action-widgets>
-      <action-widget response="0">help</action-widget>
-      <action-widget response="0">cancel</action-widget>
-      <action-widget response="0">lastPageButton</action-widget>
-      <action-widget response="0">nextPageButton</action-widget>
-      <action-widget response="0">finishButton</action-widget>
+      <action-widget response="-11">help</action-widget>
+      <action-widget response="-6">cancel</action-widget>
+      <action-widget response="101">lastPageButton</action-widget>
+      <action-widget response="102">nextPageButton</action-widget>
+      <action-widget response="103">finishButton</action-widget>
     </action-widgets>
   </object>
   <object class="GtkSizeGroup" id="sizegroup1">

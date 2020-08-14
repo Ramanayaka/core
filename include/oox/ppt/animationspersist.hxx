@@ -22,7 +22,7 @@
 #define INCLUDED_OOX_PPT_ANIMATIONSPERSIST_HXX
 
 #include <array>
-#include <list>
+#include <vector>
 #include <memory>
 
 #include <com/sun/star/uno/Any.hxx>
@@ -31,7 +31,7 @@
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
 
-namespace oox { namespace ppt {
+namespace oox::ppt {
 
     enum {
         NP_TO = 0,
@@ -85,7 +85,7 @@ namespace oox { namespace ppt {
 
     struct AnimationCondition;
 
-    typedef std::list< AnimationCondition > AnimationConditionList;
+    typedef std::vector< AnimationCondition > AnimationConditionList;
 
     /** data for CT_TLTimeCondition */
     struct AnimationCondition
@@ -98,7 +98,7 @@ namespace oox { namespace ppt {
         static css::uno::Any convertList(const SlidePersistPtr & pSlide, const AnimationConditionList & l);
 
         AnimTargetElementPtr &     getTarget()
-            { if(!mpTarget) mpTarget.reset( new AnimTargetElement ); return mpTarget; }
+            { if(!mpTarget) mpTarget = std::make_shared<AnimTargetElement>(); return mpTarget; }
         css::uno::Any              maValue;
         sal_Int32                  mnType;
     private:
@@ -113,9 +113,9 @@ namespace oox { namespace ppt {
         css::uno::Any       maValue;
     };
 
-    typedef ::std::list< TimeAnimationValue > TimeAnimationValueList;
+    typedef ::std::vector< TimeAnimationValue > TimeAnimationValueList;
 
-} }
+}
 
 
 #endif

@@ -18,17 +18,16 @@
  */
 
 #include <sal/macros.h>
-#include "java/sql/DatabaseMetaData.hxx"
-#include "java/sql/Connection.hxx"
-#include "java/sql/ResultSet.hxx"
-#include "java/tools.hxx"
-#include "java/lang/String.hxx"
-#include <connectivity/CommonTools.hxx>
-#include "FDatabaseMetaDataResultSet.hxx"
+#include <java/sql/DatabaseMetaData.hxx>
+#include <java/sql/Connection.hxx>
+#include <java/sql/ResultSet.hxx>
+#include <java/sql/SQLException.hxx>
+#include <java/tools.hxx>
+#include <java/lang/String.hxx>
+#include <FDatabaseMetaDataResultSet.hxx>
 #include <comphelper/types.hxx>
-#include "TPrivilegesResultSet.hxx"
-#include "resource/conn_shared_res.hrc"
-#include "strings.hxx"
+#include <TPrivilegesResultSet.hxx>
+#include <strings.hxx>
 
 using namespace ::comphelper;
 
@@ -118,15 +117,15 @@ Reference< XResultSet > SAL_CALL java_sql_DatabaseMetaData::getTables(
         // execute Java-Call
         static jmethodID mID(nullptr);
         obtainMethodId_throwSQL(t.pEnv, cMethodName,cSignature, mID);
-        OSL_VERIFY( !isExceptionOccurred(t.pEnv, true) );
+        OSL_VERIFY( !isExceptionOccurred(t.pEnv) );
         jvalue args[4];
 
         args[3].l = nullptr;
         sal_Int32 typeFilterCount = _types.getLength();
         if ( typeFilterCount )
         {
-            jobjectArray pObjArray = t.pEnv->NewObjectArray( (jsize)typeFilterCount, java_lang_String::st_getMyClass(), nullptr );
-            OSL_VERIFY( !isExceptionOccurred( t.pEnv, true ) );
+            jobjectArray pObjArray = t.pEnv->NewObjectArray( static_cast<jsize>(typeFilterCount), java_lang_String::st_getMyClass(), nullptr );
+            OSL_VERIFY( !isExceptionOccurred( t.pEnv ) );
             const OUString* typeFilter = _types.getConstArray();
             bool bIncludeAllTypes = false;
             for ( sal_Int32 i=0; i<typeFilterCount; ++i, ++typeFilter )
@@ -137,8 +136,8 @@ Reference< XResultSet > SAL_CALL java_sql_DatabaseMetaData::getTables(
                     break;
                 }
                 jstring aT = convertwchar_tToJavaString( t.pEnv, *typeFilter );
-                t.pEnv->SetObjectArrayElement( pObjArray, (jsize)i, aT );
-                OSL_VERIFY( !isExceptionOccurred( t.pEnv, true ) );
+                t.pEnv->SetObjectArrayElement( pObjArray, static_cast<jsize>(i), aT );
+                OSL_VERIFY( !isExceptionOccurred( t.pEnv ) );
             }
 
             if ( bIncludeAllTypes )
@@ -146,7 +145,7 @@ Reference< XResultSet > SAL_CALL java_sql_DatabaseMetaData::getTables(
                 // the SDBC API allows to pass "%" as table type filter, but in JDBC, "all table types"
                 // is represented by the table type being <null/>
                 t.pEnv->DeleteLocalRef( pObjArray );
-                OSL_VERIFY( !isExceptionOccurred( t.pEnv, true ) );
+                OSL_VERIFY( !isExceptionOccurred( t.pEnv ) );
             }
             else
             {
@@ -174,37 +173,36 @@ Reference< XResultSet > SAL_CALL java_sql_DatabaseMetaData::getTables(
         if ( aCatalogFilter.hasValue() )
         {
             t.pEnv->DeleteLocalRef(static_cast<jstring>(args[0].l));
-            OSL_VERIFY( !isExceptionOccurred( t.pEnv, true ) );
+            OSL_VERIFY( !isExceptionOccurred( t.pEnv ) );
         }
         if(args[1].l)
         {
             t.pEnv->DeleteLocalRef(static_cast<jstring>(args[1].l));
-            OSL_VERIFY( !isExceptionOccurred( t.pEnv, true ) );
+            OSL_VERIFY( !isExceptionOccurred( t.pEnv ) );
         }
         if(!tableNamePattern.isEmpty())
         {
             t.pEnv->DeleteLocalRef(static_cast<jstring>(args[2].l));
-            OSL_VERIFY( !isExceptionOccurred( t.pEnv, true ) );
+            OSL_VERIFY( !isExceptionOccurred( t.pEnv ) );
         }
         //for(INT16 i=0;i<len;i++)
         if ( args[3].l )
         {
             t.pEnv->DeleteLocalRef( static_cast<jobjectArray>(args[3].l) );
-            OSL_VERIFY( !isExceptionOccurred( t.pEnv, true ) );
+            OSL_VERIFY( !isExceptionOccurred( t.pEnv ) );
         }
 
         if ( jThrow )
         {
             if ( t.pEnv->IsInstanceOf( jThrow,java_sql_SQLException_BASE::st_getMyClass() ) )
             {
-                java_sql_SQLException_BASE* pException = new java_sql_SQLException_BASE( t.pEnv, jThrow );
-                SQLException e( pException->getMessage(),
+                java_sql_SQLException_BASE aException( t.pEnv, jThrow );
+                SQLException e( aException.getMessage(),
                                     *this,
-                                    pException->getSQLState(),
-                                    pException->getErrorCode(),
+                                    aException.getSQLState(),
+                                    aException.getErrorCode(),
                                     Any()
                                 );
-                delete pException;
                 throw  e;
             }
         }
@@ -447,11 +445,11 @@ Reference< XResultSet > SAL_CALL java_sql_DatabaseMetaData::getTablePrivileges(
                 for (sal_Int32 i = 1 ; i <= nCount ; ++i)
                 {
                     sColumnName = xMeta->getColumnName(i);
-                    for (sal_uInt32 j = 0 ; j < SAL_N_ELEMENTS(sPrivs); ++j)
+                    for (size_t j = 0 ; j < SAL_N_ELEMENTS(sPrivs); ++j)
                     {
                         if ( sPrivs[j] == sColumnName )
                         {
-                            aColumnMatching.insert( std::map<sal_Int32,sal_Int32>::value_type(i,j+1) );
+                            aColumnMatching.emplace(i,j+1);
                             break;
                         }
                     }
@@ -468,15 +466,13 @@ Reference< XResultSet > SAL_CALL java_sql_DatabaseMetaData::getTablePrivileges(
                 ODatabaseMetaDataResultSet::ORow aRow(8);
                 while ( xRow.is() && xTemp->next() )
                 {
-                    std::map<sal_Int32,sal_Int32>::const_iterator aIter = aColumnMatching.begin();
-                    std::map<sal_Int32,sal_Int32>::const_iterator aEnd  = aColumnMatching.end();
-                    for (;aIter != aEnd ; ++aIter)
+                    for (const auto& [nCol, nPriv] : aColumnMatching)
                     {
-                        sValue = xRow->getString(aIter->first);
+                        sValue = xRow->getString(nCol);
                         if ( xRow->wasNull() )
-                            aRow[aIter->second] = ODatabaseMetaDataResultSet::getEmptyValue();
+                            aRow[nPriv] = ODatabaseMetaDataResultSet::getEmptyValue();
                         else
-                            aRow[aIter->second] = new ORowSetValueDecorator(sValue);
+                            aRow[nPriv] = new ORowSetValueDecorator(sValue);
                     }
 
                     aRows.push_back(aRow);
@@ -540,8 +536,8 @@ Reference< XResultSet > SAL_CALL java_sql_DatabaseMetaData::getCrossReference(
 bool java_sql_DatabaseMetaData::impl_callBooleanMethod( const char* _pMethodName, jmethodID& _inout_MethodID )
 {
     m_aLogger.log( LogLevel::FINEST, STR_LOG_META_DATA_METHOD, _pMethodName );
-    jboolean out( java_lang_Object::callBooleanMethod(_pMethodName,_inout_MethodID) );
-    m_aLogger.log< const sal_Char*, bool>( LogLevel::FINEST, STR_LOG_META_DATA_RESULT, _pMethodName, out );
+    bool out( java_lang_Object::callBooleanMethod(_pMethodName,_inout_MethodID) );
+    m_aLogger.log< const char*, bool>( LogLevel::FINEST, STR_LOG_META_DATA_RESULT, _pMethodName, out );
     return out;
 }
 
@@ -582,9 +578,9 @@ bool java_sql_DatabaseMetaData::impl_callBooleanMethodWithIntArg( const char* _p
 {
     m_aLogger.log( LogLevel::FINEST, STR_LOG_META_DATA_METHOD_ARG1, _pMethodName, _nArgument );
 
-    jboolean out( callBooleanMethodWithIntArg(_pMethodName,_inout_MethodID,_nArgument) );
+    bool out( callBooleanMethodWithIntArg(_pMethodName,_inout_MethodID,_nArgument) );
 
-    m_aLogger.log< const sal_Char*, bool >( LogLevel::FINEST, STR_LOG_META_DATA_RESULT, _pMethodName, out );
+    m_aLogger.log< const char*, bool >( LogLevel::FINEST, STR_LOG_META_DATA_RESULT, _pMethodName, out );
     return out;
 }
 
@@ -994,7 +990,7 @@ sal_Bool SAL_CALL java_sql_DatabaseMetaData::supportsConvert( sal_Int32 fromType
     static const char* const pMethodName = "supportsConvert";
     m_aLogger.log( LogLevel::FINEST, STR_LOG_META_DATA_METHOD_ARG2, pMethodName, fromType, toType );
 
-    jboolean out( false );
+    bool out( false );
     SDBThreadAttach t;
 
     {
@@ -1004,7 +1000,7 @@ sal_Bool SAL_CALL java_sql_DatabaseMetaData::supportsConvert( sal_Int32 fromType
         ThrowLoggedSQLException( m_aLogger, t.pEnv, *this );
     }
 
-    m_aLogger.log< const sal_Char*, bool >( LogLevel::FINEST, STR_LOG_META_DATA_RESULT, pMethodName, out );
+    m_aLogger.log< const char*, bool >( LogLevel::FINEST, STR_LOG_META_DATA_RESULT, pMethodName, out );
     return out;
 }
 
@@ -1336,7 +1332,7 @@ sal_Bool SAL_CALL java_sql_DatabaseMetaData::supportsResultSetConcurrency( sal_I
     static const char* const pMethodName = "supportsResultSetConcurrency";
     m_aLogger.log( LogLevel::FINEST, STR_LOG_META_DATA_METHOD_ARG2, pMethodName, setType, concurrency );
 
-    jboolean out( false );
+    bool out( false );
     SDBThreadAttach t;
 
     {
@@ -1346,7 +1342,7 @@ sal_Bool SAL_CALL java_sql_DatabaseMetaData::supportsResultSetConcurrency( sal_I
         ThrowLoggedSQLException( m_aLogger, t.pEnv, *this );
     }
 
-    m_aLogger.log< const sal_Char*, bool >( LogLevel::FINEST, STR_LOG_META_DATA_RESULT, pMethodName, out );
+    m_aLogger.log< const char*, bool >( LogLevel::FINEST, STR_LOG_META_DATA_RESULT, pMethodName, out );
     return out;
 }
 

@@ -22,9 +22,9 @@
 #include <svx/svdomedia.hxx>
 #include <sdr/contact/viewobjectcontactofsdrmediaobj.hxx>
 #include <drawinglayer/primitive2d/mediaprimitive2d.hxx>
-#include <avmedia/mediawindow.hxx>
+#include <vcl/canvastools.hxx>
 
-namespace sdr { namespace contact {
+namespace sdr::contact {
 
 ViewContactOfSdrMediaObj::ViewContactOfSdrMediaObj( SdrMediaObj& rMediaObj ) :
     ViewContactOfSdrObj( rMediaObj )
@@ -100,14 +100,8 @@ drawinglayer::primitive2d::Primitive2DContainer ViewContactOfSdrMediaObj::create
 {
     // create range using the model data directly. This is in SdrTextObj::aRect which i will access using
     // GetGeoRect() to not trigger any calculations. It's the unrotated geometry which is okay for MediaObjects ATM.
-    tools::Rectangle aRectangle(GetSdrMediaObj().GetGeoRect());
-    // Hack for calc, transform position of object according
-    // to current zoom so as objects relative position to grid
-    // appears stable
-    aRectangle += GetSdrMediaObj().GetGridOffset();
-    const basegfx::B2DRange aRange(
-        aRectangle.Left(), aRectangle.Top(),
-        aRectangle.Right(), aRectangle.Bottom());
+    const tools::Rectangle aRectangle(GetSdrMediaObj().GetGeoRect());
+    const basegfx::B2DRange aRange = vcl::unotools::b2DRectangleFromRectangle(aRectangle);
 
     // create object transform
     basegfx::B2DHomMatrix aTransform;
@@ -121,7 +115,7 @@ drawinglayer::primitive2d::Primitive2DContainer ViewContactOfSdrMediaObj::create
     // and/or BoundRect
     const basegfx::BColor aBackgroundColor(67.0 / 255.0, 67.0 / 255.0, 67.0 / 255.0);
     const OUString& rURL(GetSdrMediaObj().getURL());
-    const sal_uInt32 nPixelBorder(4L);
+    const sal_uInt32 nPixelBorder(4);
     const drawinglayer::primitive2d::Primitive2DReference xRetval(
         new drawinglayer::primitive2d::MediaPrimitive2D(
             aTransform, rURL, aBackgroundColor, nPixelBorder,
@@ -130,6 +124,6 @@ drawinglayer::primitive2d::Primitive2DContainer ViewContactOfSdrMediaObj::create
     return drawinglayer::primitive2d::Primitive2DContainer { xRetval };
 }
 
-}}
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

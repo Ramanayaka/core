@@ -20,15 +20,17 @@
 #ifndef INCLUDED_COMPHELPER_STILLREADWRITEINTERACTION_HXX
 #define INCLUDED_COMPHELPER_STILLREADWRITEINTERACTION_HXX
 
+#include <config_options.h>
 #include <ucbhelper/interceptedinteraction.hxx>
-
-#include <com/sun/star/task/XInteractionHandler.hpp>
 
 #include <comphelper/comphelperdllapi.h>
 
+namespace com::sun::star::task { class XInteractionHandler; }
+namespace com::sun::star::task { class XInteractionRequest; }
+
 
 namespace comphelper{
-class COMPHELPER_DLLPUBLIC StillReadWriteInteraction : public ::ucbhelper::InterceptedInteraction
+class UNLESS_MERGELIBS(COMPHELPER_DLLPUBLIC) StillReadWriteInteraction final : public ::ucbhelper::InterceptedInteraction
 {
 private:
     static const sal_Int32 HANDLE_INTERACTIVEIOEXCEPTION       = 0;
@@ -45,7 +47,7 @@ public:
 
     void resetInterceptions();
     void resetErrorStates();
-    bool wasWriteError() { return (m_bUsed && m_bHandledByMySelf);}
+    bool wasWriteError() const { return (m_bUsed && m_bHandledByMySelf);}
 
 private:
     css::uno::Reference< css::task::XInteractionHandler > m_xAuxiliaryHandler;

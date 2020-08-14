@@ -19,7 +19,6 @@
 
 #include <sal/config.h>
 
-#include <o3tl/make_unique.hxx>
 #include <sdr/properties/captionproperties.hxx>
 #include <svl/itemset.hxx>
 #include <svl/style.hxx>
@@ -28,14 +27,12 @@
 #include <svx/svdocapt.hxx>
 
 
-namespace sdr
+namespace sdr::properties
 {
-    namespace properties
-    {
         // create a new itemset
         std::unique_ptr<SfxItemSet> CaptionProperties::CreateObjectSpecificItemSet(SfxItemPool& rPool)
         {
-            return o3tl::make_unique<SfxItemSet>(
+            return std::make_unique<SfxItemSet>(
                 rPool,
                 svl::Items<
                     // Ranges from SdrAttrObj, SdrCaptionObj:
@@ -59,9 +56,9 @@ namespace sdr
         {
         }
 
-        BaseProperties& CaptionProperties::Clone(SdrObject& rObj) const
+        std::unique_ptr<BaseProperties> CaptionProperties::Clone(SdrObject& rObj) const
         {
-            return *(new CaptionProperties(*this, rObj));
+            return std::unique_ptr<BaseProperties>(new CaptionProperties(*this, rObj));
         }
 
         void CaptionProperties::ItemSetChanged(const SfxItemSet& rSet)
@@ -77,12 +74,11 @@ namespace sdr
 
         void CaptionProperties::SetStyleSheet(SfxStyleSheet* pNewStyleSheet, bool bDontRemoveHardAttr)
         {
-            SdrCaptionObj& rObj = static_cast<SdrCaptionObj&>(GetSdrObject());
-
-            // call parent
+            // call parent (always first thing to do, may create the SfxItemSet)
             RectangleProperties::SetStyleSheet(pNewStyleSheet, bDontRemoveHardAttr);
 
             // local changes
+            SdrCaptionObj& rObj = static_cast<SdrCaptionObj&>(GetSdrObject());
             rObj.ImpRecalcTail();
         }
 
@@ -98,7 +94,6 @@ namespace sdr
             // reset to default
             mpItemSet->ClearItem(XATTR_LINESTYLE);
         }
-    } // end of namespace properties
-} // end of namespace sdr
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

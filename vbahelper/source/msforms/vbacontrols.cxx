@@ -25,28 +25,28 @@
 #include <com/sun/star/awt/FontUnderline.hpp>
 #include <com/sun/star/container/XNameContainer.hpp>
 #include <com/sun/star/script/XInvocation.hpp>
-#include <com/sun/star/lang/WrappedTargetException.hpp>
 #include <com/sun/star/lang/WrappedTargetRuntimeException.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 
 #include "vbacontrols.hxx"
 #include "vbacontrol.hxx"
+#include <cppuhelper/exc_hlp.hxx>
 #include <cppuhelper/implbase.hxx>
-#include <ooo/vba/XControlProvider.hpp>
 #include <unordered_map>
 
 using namespace com::sun::star;
 using namespace ooo::vba;
 
 
-typedef  std::unordered_map< OUString, sal_Int32, OUStringHash > ControlIndexMap;
-typedef  std::vector< uno::Reference< awt::XControl > > ControlVec;
+typedef  std::unordered_map< OUString, sal_Int32 > ControlIndexMap;
+
+namespace {
 
 class ControlArrayWrapper : public ::cppu::WeakImplHelper< container::XNameAccess, container::XIndexAccess >
 {
     uno::Reference< awt::XControlContainer > mxDialog;
     uno::Sequence< OUString > msNames;
-    ControlVec mControls;
+    std::vector< uno::Reference< awt::XControl > > mControls;
     ControlIndexMap mIndices;
 
 private:
@@ -64,19 +64,6 @@ private:
             msNames[ nIndex ] = getControlName( xCtrl );
             mControls.push_back( xCtrl );
             mIndices[ msNames[ nIndex ] ] = nIndex;
-        }
-    }
-    void getNestedControls( ControlVec& vControls, uno::Reference< awt::XControlContainer >& xContainer )
-    {
-        uno::Sequence< uno::Reference< awt::XControl > > aControls = xContainer->getControls();
-        const uno::Reference< awt::XControl >* pCtrl = aControls.getConstArray();
-        const uno::Reference< awt::XControl >* pCtrlsEnd = pCtrl + aControls.getLength();
-        for ( ; pCtrl < pCtrlsEnd; ++pCtrl )
-        {
-            uno::Reference< awt::XControlContainer > xC( *pCtrl, uno::UNO_QUERY );
-            vControls.push_back( *pCtrl );
-            if ( xC.is() )
-                getNestedControls( vControls, xC );
         }
     }
 public:
@@ -203,6 +190,7 @@ public:
 
 };
 
+}
 
 static uno::Reference<container::XIndexAccess >
 lcl_controlsWrapper( const uno::Reference< awt::XControl >& xDlg )
@@ -283,8 +271,7 @@ uno::Any SAL_CALL ScVbaControls::Add( const uno::Any& Object, const uno::Any& St
             sal_Int32 nInd = 0;
             while( xDialogContainer->hasByName( aNewName ) && (nInd < SAL_MAX_INT32) )
             {
-                aNewName = aComServiceName;
-                aNewName += OUString::number( nInd++ );
+                aNewName = aComServiceName + OUString::number( nInd++ );
             }
         }
 
@@ -408,29 +395,28 @@ uno::Any SAL_CALL ScVbaControls::Add( const uno::Any& Object, const uno::Any& St
             }
         }
 
-        if ( xNewControl.is() )
-        {
-            UpdateCollectionIndex( lcl_controlsWrapper( mxDialog  ) );
-            aResult <<= xNewControl;
-            aResult = createCollectionObject( aResult );
-            uno::Reference< msforms::XControl > xVBAControl( aResult, uno::UNO_QUERY_THROW );
-            if( fDefWidth > 0.0 )
-                xVBAControl->setWidth( fDefWidth );
-            if( fDefHeight > 0.0 )
-                xVBAControl->setHeight( fDefHeight );
-        }
-        else
+        if ( !xNewControl.is() )
             throw uno::RuntimeException();
+
+        UpdateCollectionIndex( lcl_controlsWrapper( mxDialog  ) );
+        aResult <<= xNewControl;
+        aResult = createCollectionObject( aResult );
+        uno::Reference< msforms::XControl > xVBAControl( aResult, uno::UNO_QUERY_THROW );
+        if( fDefWidth > 0.0 )
+            xVBAControl->setWidth( fDefWidth );
+        if( fDefHeight > 0.0 )
+            xVBAControl->setHeight( fDefHeight );
     }
     catch (const uno::RuntimeException&)
     {
         throw;
     }
-    catch (const uno::Exception& e)
+    catch (const uno::Exception&)
     {
+        css::uno::Any anyEx = cppu::getCaughtException();
         throw lang::WrappedTargetRuntimeException( "Can not create AXControl!",
                 uno::Reference< uno::XInterface >(),
-                uno::makeAny( e ) );
+                anyEx );
     }
 
     return aResult;

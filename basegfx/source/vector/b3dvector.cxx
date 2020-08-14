@@ -48,8 +48,7 @@ namespace basegfx
 
     B3DVector B3DVector::getPerpendicular(const B3DVector& rNormalizedVec) const
     {
-        B3DVector aNew(*this);
-        aNew = cross(aNew, rNormalizedVec);
+        B3DVector aNew = cross(*this, rNormalizedVec);
         aNew.normalize();
         return aNew;
     }
@@ -69,7 +68,8 @@ namespace basegfx
     B3DVector operator*( const ::basegfx::B3DHomMatrix& rMat, const B3DVector& rVec )
     {
         B3DVector aRes( rVec );
-        return aRes*=rMat;
+        aRes *= rMat;
+        return aRes;
     }
 
     bool areParallel( const B3DVector& rVecA, const B3DVector& rVecB )
@@ -81,7 +81,7 @@ namespace basegfx
         if(!fTools::equal(rVecA.getX() * rVecB.getZ(), rVecA.getZ() * rVecB.getX()))
             return false;
 
-        return (fTools::equal(rVecA.getY() * rVecB.getZ(), rVecA.getZ() * rVecB.getY()));
+        return fTools::equal(rVecA.getY() * rVecB.getZ(), rVecA.getZ() * rVecB.getY());
     }
 
 } // end of namespace basegfx

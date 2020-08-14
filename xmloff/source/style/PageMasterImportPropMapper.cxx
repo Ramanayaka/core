@@ -19,12 +19,12 @@
 
 
 #include "PageMasterImportPropMapper.hxx"
-#include "PageMasterPropMapper.hxx"
-#include <xmloff/PageMasterStyleMap.hxx>
+#include <PageMasterStyleMap.hxx>
 #include <xmloff/maptype.hxx>
 #include <com/sun/star/table/BorderLine2.hpp>
 #include <com/sun/star/container/XNameContainer.hpp>
 #include <xmloff/xmlimp.hxx>
+#include <xmloff/xmlprmap.hxx>
 #include <memory>
 
 #define XML_LINE_LEFT 0
@@ -62,7 +62,7 @@ bool PageMasterImportPropertyMapper::handleSpecialItem(
     if( CTF_PM_REGISTER_STYLE==nContextID )
     {
         OUString sDisplayName( rImport.GetStyleDisplayName(
-                    XML_STYLE_FAMILY_TEXT_PARAGRAPH, rValue ) );
+                    XmlStyleFamily::TEXT_PARAGRAPH, rValue ) );
         Reference < XNameContainer > xParaStyles =
             rImport.GetTextImport()->GetParaStyles();
         if( xParaStyles.is() && xParaStyles->hasByName( sDisplayName ) )
@@ -125,10 +125,9 @@ void PageMasterImportPropertyMapper::finished(std::vector< XMLPropertyState >& r
     XMLPropertyState* pFooterMargins[4] = { nullptr, nullptr, nullptr, nullptr };
     std::unique_ptr<XMLPropertyState> pNewFooterMargins[4];
 
-    std::vector< XMLPropertyState >::iterator aEnd = rProperties.end();
-    for (std::vector< XMLPropertyState >::iterator aIter = rProperties.begin(); aIter != aEnd; ++aIter)
+    for (auto& rProp : rProperties)
     {
-        XMLPropertyState *property = &(*aIter);
+        XMLPropertyState *property = &rProp;
         sal_Int16 nContextID = getPropertySetMapper()->GetEntryContextId(property->mnIndex);
         if (property->mnIndex >= nStartIndex && property->mnIndex < nEndIndex)
         {
@@ -252,7 +251,7 @@ void PageMasterImportPropertyMapper::finished(std::vector< XMLPropertyState >& r
         {
             table::BorderLine2 aBorderLine;
             pBorders[i]->maValue >>= aBorderLine;
-             if( pBorderWidths[i] )
+            if( pBorderWidths[i] )
             {
                 table::BorderLine2 aBorderLineWidth;
                 pBorderWidths[i]->maValue >>= aBorderLineWidth;
@@ -275,7 +274,7 @@ void PageMasterImportPropertyMapper::finished(std::vector< XMLPropertyState >& r
         {
             table::BorderLine2 aBorderLine;
             pHeaderBorders[i]->maValue >>= aBorderLine;
-             if( pHeaderBorderWidths[i] )
+            if( pHeaderBorderWidths[i] )
             {
                 table::BorderLine2 aBorderLineWidth;
                 pHeaderBorderWidths[i]->maValue >>= aBorderLineWidth;
@@ -298,7 +297,7 @@ void PageMasterImportPropertyMapper::finished(std::vector< XMLPropertyState >& r
         {
             table::BorderLine2 aBorderLine;
             pFooterBorders[i]->maValue >>= aBorderLine;
-             if( pFooterBorderWidths[i] )
+            if( pFooterBorderWidths[i] )
             {
                 table::BorderLine2 aBorderLineWidth;
                 pFooterBorderWidths[i]->maValue >>= aBorderLineWidth;
@@ -381,15 +380,15 @@ void PageMasterImportPropertyMapper::finished(std::vector< XMLPropertyState >& r
 
     for (sal_uInt16 i = 0; i < 4; i++)
     {
-        if (pNewMargins[i].get())
+        if (pNewMargins[i])
         {
             rProperties.push_back(*pNewMargins[i]);
         }
-        if (pNewHeaderMargins[i].get())
+        if (pNewHeaderMargins[i])
         {
             rProperties.push_back(*pNewHeaderMargins[i]);
         }
-        if (pNewFooterMargins[i].get())
+        if (pNewFooterMargins[i])
         {
             rProperties.push_back(*pNewFooterMargins[i]);
         }

@@ -29,24 +29,24 @@ class SwTextFlyCnt;
  *
  * A pool item that is attached to the placeholder character of an as-character frame. (TextFrame, etc.)
  */
-class SwFormatFlyCnt : public SfxPoolItem
+class SAL_DLLPUBLIC_RTTI SwFormatFlyCnt final : public SfxPoolItem
 {
     friend class SwTextFlyCnt;
-    SwTextFlyCnt* pTextAttr;
-    SwFrameFormat* pFormat; ///< My Fly/DrawFrame-format.
+    SwTextFlyCnt* m_pTextAttr;
+    SwFrameFormat* m_pFormat; ///< My Fly/DrawFrame-format.
     SwFormatFlyCnt& operator=(const SwFormatFlyCnt& rFlyCnt) = delete;
 
 public:
     SwFormatFlyCnt( SwFrameFormat *pFrameFormat );
     /// "Pure virtual methods" of SfxPoolItem.
     virtual bool            operator==( const SfxPoolItem& ) const override;
-    virtual SfxPoolItem*    Clone( SfxItemPool* pPool = nullptr ) const override;
+    virtual SwFormatFlyCnt* Clone( SfxItemPool* pPool = nullptr ) const override;
 
-    SwFrameFormat *GetFrameFormat() const { return pFormat; }
+    SwFrameFormat *GetFrameFormat() const { return m_pFormat; }
     /// For Undo: delete the FlyFrameFormat "logically"; it is kept in Undo-object.
-    void SetFlyFormat( SwFrameFormat* pNew = nullptr )   { pFormat = pNew; }
+    void SetFlyFormat( SwFrameFormat* pNew = nullptr )   { m_pFormat = pNew; }
 
-    const SwTextFlyCnt *GetTextFlyCnt() const { return pTextAttr; }
+    const SwTextFlyCnt *GetTextFlyCnt() const { return m_pTextAttr; }
 };
 
 #endif

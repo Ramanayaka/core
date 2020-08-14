@@ -17,29 +17,21 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <com/sun/star/geometry/AffineMatrix2D.hpp>
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
-#include <com/sun/star/rendering/RenderState.hpp>
-#include <com/sun/star/rendering/ViewState.hpp>
-#include <com/sun/star/rendering/XCanvas.hpp>
-#include <com/sun/star/rendering/CompositeOperation.hpp>
 
 #include <basegfx/matrix/b2dhommatrix.hxx>
 #include <basegfx/range/b2drange.hxx>
-#include <basegfx/range/b2drectangle.hxx>
 #include <basegfx/point/b2dpoint.hxx>
-#include <basegfx/tools/canvastools.hxx>
+#include <basegfx/utils/canvastools.hxx>
 #include <basegfx/polygon/b2dpolygon.hxx>
 #include <basegfx/polygon/b2dpolypolygontools.hxx>
-#include <basegfx/tools/unopolypolygon.hxx>
+#include <basegfx/utils/unopolypolygon.hxx>
 #include <basegfx/matrix/b2dhommatrixtools.hxx>
 #include <cppuhelper/supportsservice.hxx>
 
 using namespace ::com::sun::star;
 
-namespace basegfx
-{
-namespace unotools
+namespace basegfx::unotools
 {
     UnoPolyPolygon::UnoPolyPolygon( const B2DPolyPolygon& rPolyPoly ) :
         UnoPolyPolygonBase( m_aMutex ),
@@ -117,13 +109,13 @@ namespace unotools
             }
         }
 
-        const B2DRange  aBounds( tools::getRange( aSrcPoly ) );
+        const B2DRange  aBounds( utils::getRange( aSrcPoly ) );
         const B2DVector     aOffset( unotools::b2DPointFromRealPoint2D( position ) -
                                              aBounds.getMinimum() );
 
         if( !aOffset.equalZero() )
         {
-            const B2DHomMatrix aTranslate(tools::createTranslateB2DHomMatrix(aOffset));
+            const B2DHomMatrix aTranslate(utils::createTranslateB2DHomMatrix(aOffset));
             aSrcPoly.transform( aTranslate );
         }
 
@@ -389,7 +381,7 @@ namespace unotools
 
                 // empty polygon - impossible to specify _any_
                 // legal value except 0 here!
-                if( !nPolyCount && nPointIndex )
+                if( !nPolyCount)
                     throw lang::IndexOutOfBoundsException();
 
                 nFirstPoint = nPointIndex;
@@ -436,7 +428,7 @@ namespace unotools
 #define SERVICE_NAME "com.sun.star.rendering.PolyPolygon2D"
     OUString SAL_CALL UnoPolyPolygon::getImplementationName()
     {
-        return OUString( IMPLEMENTATION_NAME );
+        return IMPLEMENTATION_NAME;
     }
 
     sal_Bool SAL_CALL UnoPolyPolygon::supportsService( const OUString& ServiceName )
@@ -459,7 +451,6 @@ namespace unotools
         return aRet;
     }
 
-}
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

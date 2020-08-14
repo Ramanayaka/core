@@ -11,12 +11,15 @@ $(eval $(call gb_UnpackedTarball_UnpackedTarball,cppunit))
 
 $(eval $(call gb_UnpackedTarball_set_tarball,cppunit,$(CPPUNIT_TARBALL),,cppunit))
 
+$(eval $(call gb_UnpackedTarball_update_autoconf_configs,cppunit))
+
 $(eval $(call gb_UnpackedTarball_add_patches,cppunit,\
 	external/cppunit/windows.patch \
 	external/cppunit/unix.patch \
 	external/cppunit/CPPUNIT_PLUGIN_EXPORT.patch.0 \
 	external/cppunit/enable-win32-debug.patch \
 	external/cppunit/rtti.patch.0 \
+	external/cppunit/order.patch.0 \
 ))
 ifeq ($(DISABLE_DYNLOADING),TRUE)
 $(eval $(call gb_UnpackedTarball_add_patches,cppunit,\

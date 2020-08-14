@@ -19,26 +19,15 @@
 
 
 #include <xmloff/txtparae.hxx>
-#include <rtl/ustring.hxx>
-#include <rtl/ustrbuf.hxx>
 
 #include <vector>
 
 #include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/text/XText.hpp>
 #include <com/sun/star/text/XTextSection.hpp>
-#include <com/sun/star/text/SectionFileLink.hpp>
-#include <com/sun/star/text/XDocumentIndex.hpp>
-#include <xmloff/xmlnmspe.hxx>
-#include <xmloff/families.hxx>
-#include <xmloff/xmluconv.hxx>
-#include <xmloff/nmspmap.hxx>
-#include <xmloff/xmlexp.hxx>
-#include <xmloff/xmltkmap.hxx>
 #include "XMLTextNumRuleInfo.hxx"
 #include "XMLSectionExport.hxx"
 #include "XMLRedlineExport.hxx"
-#include "MultiPropertySetHelper.hxx"
+#include <MultiPropertySetHelper.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::text;
@@ -60,9 +49,9 @@ void XMLTextParagraphExport::exportListAndSectionChange(
     Reference<XPropertySet> xPropSet(rNextSectionContent, UNO_QUERY);
     if (xPropSet.is())
     {
-        if (xPropSet->getPropertySetInfo()->hasPropertyByName(sTextSection))
+        if (xPropSet->getPropertySetInfo()->hasPropertyByName(gsTextSection))
         {
-            xPropSet->getPropertyValue(sTextSection) >>= xNextSection;
+            xPropSet->getPropertyValue(gsTextSection) >>= xNextSection;
         }
         // else: no current section
     }

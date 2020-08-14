@@ -19,16 +19,16 @@
 
 #include <editeng/AccessibleContextBase.hxx>
 
-#include <com/sun/star/accessibility/AccessibleRole.hpp>
-#include <com/sun/star/beans/PropertyChangeEvent.hpp>
 #include <com/sun/star/accessibility/XAccessibleEventListener.hpp>
 #include <com/sun/star/accessibility/AccessibleStateType.hpp>
 #include <com/sun/star/accessibility/AccessibleRelationType.hpp>
+#include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
+#include <com/sun/star/accessibility/AccessibleEventId.hpp>
+#include <com/sun/star/accessibility/IllegalAccessibleComponentStateException.hpp>
 
 #include <unotools/accessiblestatesethelper.hxx>
 #include <unotools/accessiblerelationsethelper.hxx>
 #include <comphelper/accessibleeventnotifier.hxx>
-#include <comphelper/servicehelper.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <osl/mutex.hxx>
 
@@ -45,8 +45,6 @@ AccessibleContextBase::AccessibleContextBase (
         const uno::Reference<XAccessible>& rxParent,
         const sal_Int16 aRole)
     :   WeakComponentImplHelper(MutexOwner::maMutex),
-        mxStateSet (nullptr),
-        mxRelationSet (nullptr),
         mxParent(rxParent),
         msDescription(),
         meDescriptionOrigin(NotSet),
@@ -146,7 +144,7 @@ bool AccessibleContextBase::GetState (sal_Int16 aState)
 void AccessibleContextBase::SetRelationSet (
     const uno::Reference<XAccessibleRelationSet>& rxNewRelationSet)
 {
-    // Try to emit some meaningfull events indicating differing relations in
+    // Try to emit some meaningful events indicating differing relations in
     // both sets.
     typedef std::pair<short int,short int> RD;
     const RD aRelationDescriptors[] = {
@@ -232,11 +230,11 @@ sal_Int32 SAL_CALL
                 }
             }
         }
-   }
+    }
 
-   //   Return -1 to indicate that this object's parent does not know about the
-   //   object.
-   return -1;
+    //   Return -1 to indicate that this object's parent does not know about the
+    //   object.
+    return -1;
 }
 
 
@@ -317,18 +315,6 @@ uno::Reference<XAccessibleStateSet> SAL_CALL
         // Create a copy of the state set and return it.
         pStateSet = static_cast< ::utl::AccessibleStateSetHelper*>(mxStateSet.get());
 
-        // Merge current focused state from edit engine.
-#if 0
-        if (aState == AccessibleStateType::FOCUSED
-            && pStateSet != NULL
-            && mpText != NULL)
-        {
-            if (mpText->GetFocusedState ())
-                pStateSet->AddState (aState);
-            else
-                pStateSet->RemoveState (aState);
-        }
-#endif
         if (pStateSet != nullptr)
             pStateSet = new ::utl::AccessibleStateSetHelper (*pStateSet);
     }
@@ -361,19 +347,19 @@ lang::Locale SAL_CALL
 void SAL_CALL AccessibleContextBase::addAccessibleEventListener (
         const uno::Reference<XAccessibleEventListener >& rxListener)
 {
-    if (rxListener.is())
+    if (!rxListener.is())
+        return;
+
+    if (rBHelper.bDisposed || rBHelper.bInDispose)
     {
-        if (rBHelper.bDisposed || rBHelper.bInDispose)
-        {
-            uno::Reference<uno::XInterface> x (static_cast<lang::XComponent *>(this), uno::UNO_QUERY);
-            rxListener->disposing (lang::EventObject (x));
-        }
-        else
-        {
-            if (!mnClientId)
-                mnClientId = comphelper::AccessibleEventNotifier::registerClient( );
-            comphelper::AccessibleEventNotifier::addEventListener( mnClientId, rxListener );
-        }
+        uno::Reference<uno::XInterface> x (static_cast<lang::XComponent *>(this), uno::UNO_QUERY);
+        rxListener->disposing (lang::EventObject (x));
+    }
+    else
+    {
+        if (!mnClientId)
+            mnClientId = comphelper::AccessibleEventNotifier::registerClient( );
+        comphelper::AccessibleEventNotifier::addEventListener( mnClientId, rxListener );
     }
 }
 
@@ -382,25 +368,25 @@ void SAL_CALL AccessibleContextBase::removeAccessibleEventListener (
         const uno::Reference<XAccessibleEventListener >& rxListener )
 {
     ThrowIfDisposed ();
-    if (rxListener.is() && mnClientId)
+    if (!(rxListener.is() && mnClientId))
+        return;
+
+    sal_Int32 nListenerCount = comphelper::AccessibleEventNotifier::removeEventListener( mnClientId, rxListener );
+    if ( !nListenerCount )
     {
-        sal_Int32 nListenerCount = comphelper::AccessibleEventNotifier::removeEventListener( mnClientId, rxListener );
-        if ( !nListenerCount )
-        {
-            // no listeners anymore
-            // -> revoke ourself. This may lead to the notifier thread dying (if we were the last client),
-            // and at least to us not firing any events anymore, in case somebody calls
-            // NotifyAccessibleEvent, again
-            comphelper::AccessibleEventNotifier::revokeClient( mnClientId );
-            mnClientId = 0;
-        }
+        // no listeners anymore
+        // -> revoke ourself. This may lead to the notifier thread dying (if we were the last client),
+        // and at least to us not firing any events anymore, in case somebody calls
+        // NotifyAccessibleEvent, again
+        comphelper::AccessibleEventNotifier::revokeClient( mnClientId );
+        mnClientId = 0;
     }
 }
 
 // XServiceInfo
 OUString SAL_CALL AccessibleContextBase::getImplementationName()
 {
-    return OUString("AccessibleContextBase");
+    return "AccessibleContextBase";
 }
 
 sal_Bool SAL_CALL AccessibleContextBase::supportsService (const OUString& sServiceName)
@@ -446,21 +432,21 @@ void AccessibleContextBase::SetAccessibleDescription (
     const OUString& rDescription,
     StringOrigin eDescriptionOrigin)
 {
-    if (eDescriptionOrigin < meDescriptionOrigin
-        || (eDescriptionOrigin == meDescriptionOrigin && msDescription != rDescription))
-    {
-        uno::Any aOldValue, aNewValue;
-        aOldValue <<= msDescription;
-        aNewValue <<= rDescription;
+    if (!(eDescriptionOrigin < meDescriptionOrigin
+        || (eDescriptionOrigin == meDescriptionOrigin && msDescription != rDescription)))
+        return;
 
-        msDescription = rDescription;
-        meDescriptionOrigin = eDescriptionOrigin;
+    uno::Any aOldValue, aNewValue;
+    aOldValue <<= msDescription;
+    aNewValue <<= rDescription;
 
-        CommitChange(
-            AccessibleEventId::DESCRIPTION_CHANGED,
-            aNewValue,
-            aOldValue);
-    }
+    msDescription = rDescription;
+    meDescriptionOrigin = eDescriptionOrigin;
+
+    CommitChange(
+        AccessibleEventId::DESCRIPTION_CHANGED,
+        aNewValue,
+        aOldValue);
 }
 
 
@@ -468,33 +454,27 @@ void AccessibleContextBase::SetAccessibleName (
     const OUString& rName,
     StringOrigin eNameOrigin)
 {
-    if (eNameOrigin < meNameOrigin
-        || (eNameOrigin == meNameOrigin && msName != rName))
-    {
-        uno::Any aOldValue, aNewValue;
-        aOldValue <<= msName;
-        aNewValue <<= rName;
+    if (!(eNameOrigin < meNameOrigin
+        || (eNameOrigin == meNameOrigin && msName != rName)))
+        return;
 
-        msName = rName;
-        meNameOrigin = eNameOrigin;
+    uno::Any aOldValue, aNewValue;
+    aOldValue <<= msName;
+    aNewValue <<= rName;
 
-        CommitChange(
-            AccessibleEventId::NAME_CHANGED,
-            aNewValue,
-            aOldValue);
-    }
-}
+    msName = rName;
+    meNameOrigin = eNameOrigin;
 
-
-OUString AccessibleContextBase::CreateAccessibleDescription()
-{
-    return OUString("Empty Description");
+    CommitChange(
+        AccessibleEventId::NAME_CHANGED,
+        aNewValue,
+        aOldValue);
 }
 
 
 OUString AccessibleContextBase::CreateAccessibleName()
 {
-    return OUString("Empty Name");
+    return "Empty Name";
 }
 
 
@@ -536,7 +516,7 @@ void AccessibleContextBase::ThrowIfDisposed()
 }
 
 
-bool AccessibleContextBase::IsDisposed()
+bool AccessibleContextBase::IsDisposed() const
 {
     return (rBHelper.bDisposed || rBHelper.bInDispose);
 }

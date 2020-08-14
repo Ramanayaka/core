@@ -18,57 +18,92 @@
  */
 
 #include <sfx2/request.hxx>
-#include <sfx2/viewfrm.hxx>
 #include <sfx2/objface.hxx>
+#include <svx/svdograf.hxx>
+#include <svx/svdview.hxx>
 #include <fldmgr.hxx>
 #include <expfld.hxx>
 #include <modcfg.hxx>
 
-#include "swmodule.hxx"
-#include "view.hxx"
-#include "wview.hxx"
-#include "wrtsh.hxx"
-#include "cmdid.h"
-#include "caption.hxx"
-#include "poolfmt.hxx"
-#include "edtwin.hxx"
+#include <swmodule.hxx>
+#include <view.hxx>
+#include <wview.hxx>
+#include <wrtsh.hxx>
+#include <cmdid.h>
+#include <caption.hxx>
+#include <poolfmt.hxx>
+#include <edtwin.hxx>
 #include <SwStyleNameMapper.hxx>
 
-#include "initui.hxx"
-#include "swabstdlg.hxx"
-#include "frmui.hrc"
-#include "misc.hrc"
+#include <swabstdlg.hxx>
 
-#include "view.hrc"
+#include <strings.hrc>
 
 #include <memory>
 
-void SwView::ExecDlgExt(SfxRequest &rReq)
-{
-    vcl::Window *pMDI = &GetViewFrame()->GetWindow();
+#include <svl/stritem.hxx>
 
+using namespace css;
+
+void SwView::ExecDlgExt(SfxRequest const &rReq)
+{
     switch ( rReq.GetSlot() )
     {
         case FN_INSERT_CAPTION:
         {
             SwAbstractDialogFactory* pFact = SwAbstractDialogFactory::Create();
-            assert(pFact && "SwAbstractDialogFactory fail!");
+            ScopedVclPtr<VclAbstractDialog> pDialog(pFact->CreateSwCaptionDialog(GetFrameWeld(), *this ));
+            pDialog->Execute();
+            break;
+        }
+        case SID_INSERT_SIGNATURELINE:
+        case SID_EDIT_SIGNATURELINE:
+        {
+            VclAbstractDialogFactory* pFact = VclAbstractDialogFactory::Create();
+            const uno::Reference<frame::XModel> xModel(GetCurrentDocument());
+            ScopedVclPtr<AbstractSignatureLineDialog> pDialog(pFact->CreateSignatureLineDialog(
+                GetFrameWeld(), xModel, rReq.GetSlot() == SID_EDIT_SIGNATURELINE));
+            pDialog->Execute();
+            break;
+        }
+        case SID_INSERT_QRCODE:
+        case SID_EDIT_QRCODE:
+        {
+            VclAbstractDialogFactory* pFact = VclAbstractDialogFactory::Create();
+            const uno::Reference<frame::XModel> xModel(GetCurrentDocument());
+            ScopedVclPtr<AbstractQrCodeGenDialog> pDialog(pFact->CreateQrCodeGenDialog(
+                GetFrameWeld(), xModel, rReq.GetSlot() == SID_EDIT_QRCODE));
+            pDialog->Execute();
+            break;
+        }
+        case SID_ADDITIONS_DIALOG:
+        {
+            OUString sAdditionsTag = "";
 
-            ScopedVclPtr<VclAbstractDialog> pDialog(pFact->CreateSwCaptionDialog( pMDI, *this ));
-            assert(pDialog && "Dialog creation failed!");
-            if ( pDialog )
-            {
-                pDialog->Execute();
-            }
+            const SfxStringItem* pStringArg = rReq.GetArg<SfxStringItem>(SID_ADDITIONS_TAG);
+            if (pStringArg)
+                sAdditionsTag = pStringArg->GetValue();
+
+            VclAbstractDialogFactory* pFact = VclAbstractDialogFactory::Create();
+            ScopedVclPtr<AbstractAdditionsDialog> pDialog(
+                pFact->CreateAdditionsDialog(GetFrameWeld(), sAdditionsTag));
+            pDialog->Execute();
+            break;
+        }
+        case SID_SIGN_SIGNATURELINE:
+        {
+            VclAbstractDialogFactory* pFact = VclAbstractDialogFactory::Create();
+            const uno::Reference<frame::XModel> xModel(GetCurrentDocument());
+            ScopedVclPtr<AbstractSignSignatureLineDialog> pDialog(
+                pFact->CreateSignSignatureLineDialog(GetFrameWeld(), xModel));
+            pDialog->Execute();
             break;
         }
         case  FN_EDIT_FOOTNOTE:
         {
             SwAbstractDialogFactory* pFact = SwAbstractDialogFactory::Create();
-            assert(pFact && "Dialog creation failed!");
             ScopedVclPtr<AbstractInsFootNoteDlg> pDlg(pFact->CreateInsFootNoteDlg(
-                pMDI, *m_pWrtShell, true));
-            assert(pDlg && "Dialog creation failed!");
+                GetFrameWeld(), *m_pWrtShell, true));
 
             pDlg->SetHelpId(GetStaticInterface()->GetSlot(FN_EDIT_FOOTNOTE)->GetCommand());
             pDlg->SetText( SwResId(STR_EDIT_FOOTNOTE) );
@@ -78,6 +113,69 @@ void SwView::ExecDlgExt(SfxRequest &rReq)
     }
 }
 
+bool SwView::isSignatureLineSelected() const
+{
+    SwWrtShell& rSh = GetWrtShell();
+    SdrView* pSdrView = rSh.GetDrawView();
+    if (!pSdrView)
+        return false;
+
+    if (pSdrView->GetMarkedObjectCount() != 1)
+        return false;
+
+    SdrObject* pPickObj = pSdrView->GetMarkedObjectByIndex(0);
+    if (!pPickObj)
+        return false;
+
+    SdrGrafObj* pGraphic = dynamic_cast<SdrGrafObj*>(pPickObj);
+    if (!pGraphic)
+        return false;
+
+    return pGraphic->isSignatureLine();
+}
+
+bool SwView::isSignatureLineSigned() const
+{
+    SwWrtShell& rSh = GetWrtShell();
+    SdrView* pSdrView = rSh.GetDrawView();
+    if (!pSdrView)
+        return false;
+
+    if (pSdrView->GetMarkedObjectCount() != 1)
+        return false;
+
+    SdrObject* pPickObj = pSdrView->GetMarkedObjectByIndex(0);
+    if (!pPickObj)
+        return false;
+
+    SdrGrafObj* pGraphic = dynamic_cast<SdrGrafObj*>(pPickObj);
+    if (!pGraphic)
+        return false;
+
+    return pGraphic->isSignatureLineSigned();
+}
+
+bool SwView::isQRCodeSelected() const
+{
+    SwWrtShell& rSh = GetWrtShell();
+    SdrView* pSdrView = rSh.GetDrawView();
+    if (!pSdrView)
+        return false;
+
+    if (pSdrView->GetMarkedObjectCount() != 1)
+        return false;
+
+    SdrObject* pPickObj = pSdrView->GetMarkedObjectByIndex(0);
+    if (!pPickObj)
+        return false;
+
+    SdrGrafObj* pGraphic = dynamic_cast<SdrGrafObj*>(pPickObj);
+    if (!pGraphic)
+        return false;
+
+    return pGraphic->getQrCode() != nullptr;
+}
+
 void SwView::AutoCaption(const sal_uInt16 nType, const SvGlobalName *pOleId)
 {
     SwModuleOptions* pModOpt = SW_MOD()->GetModuleConfig();
@@ -85,7 +183,7 @@ void SwView::AutoCaption(const sal_uInt16 nType, const SvGlobalName *pOleId)
     bool bWeb = dynamic_cast<SwWebView*>( this ) !=  nullptr;
     if (pModOpt->IsInsWithCaption(bWeb))
     {
-        const InsCaptionOpt *pOpt = pModOpt->GetCapOption(bWeb, (SwCapObjType)nType, pOleId);
+        const InsCaptionOpt *pOpt = pModOpt->GetCapOption(bWeb, static_cast<SwCapObjType>(nType), pOleId);
         if (pOpt && pOpt->UseCaption())
             InsertCaption(pOpt);
     }
@@ -118,11 +216,11 @@ void SwView::InsertCaption(const InsCaptionOpt *pOpt)
     if (eType & SelectionType::Ole)
         eType = SelectionType::Graphic;
 
-    const SwLabelType eT = (eType & SelectionType::Table) ? LTYPE_TABLE :
-                      (eType & SelectionType::Frame) ? LTYPE_FLY :
-                      (eType == SelectionType::Text) ? LTYPE_FLY :
-                      (eType & SelectionType::DrawObject) ? LTYPE_DRAW :
-                                                    LTYPE_OBJECT;
+    const SwLabelType eT = (eType & SelectionType::Table) ? SwLabelType::Table :
+                      (eType & SelectionType::Frame) ? SwLabelType::Fly :
+                      (eType == SelectionType::Text) ? SwLabelType::Fly :
+                      (eType & SelectionType::DrawObject) ? SwLabelType::Draw :
+                                                    SwLabelType::Object;
 
     SwFieldMgr aMgr(&rSh);
     SwSetExpFieldType* pFieldType =

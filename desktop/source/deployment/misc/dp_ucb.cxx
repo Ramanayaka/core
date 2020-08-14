@@ -17,18 +17,21 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <sal/config.h>
 
-#include "deployment.hrc"
-#include "dp_misc.h"
-#include "dp_ucb.h"
+#include <string_view>
+
+#include <dp_misc.h>
+#include <dp_ucb.h>
 #include <rtl/uri.hxx>
 #include <rtl/ustrbuf.hxx>
 #include <ucbhelper/content.hxx>
 #include <xmlscript/xml_helper.hxx>
-#include <com/sun/star/io/XInputStream.hpp>
+#include <com/sun/star/io/XOutputStream.hpp>
 #include <com/sun/star/ucb/CommandFailedException.hpp>
 #include <com/sun/star/ucb/ContentInfo.hpp>
 #include <com/sun/star/ucb/ContentInfoAttribute.hpp>
+#include <com/sun/star/ucb/ContentCreationException.hpp>
 #include <comphelper/processfactory.hxx>
 
 using namespace ::com::sun::star;
@@ -103,7 +106,7 @@ bool create_folder(
         // invalid: has to be at least "auth:/..."
         if (throw_exc)
             throw ContentCreationException(
-                "Cannot create folder (invalid path): " + url,
+                "Cannot create folder (invalid path): '" + url + "'",
                 Reference<XInterface>(), ContentCreationError_UNKNOWN );
         return false;
     }
@@ -116,10 +119,9 @@ bool create_folder(
                                          RTL_TEXTENCODING_UTF8 ) );
     const Sequence<ContentInfo> infos(
         parentContent.queryCreatableContentsInfo() );
-    for ( sal_Int32 pos = 0; pos < infos.getLength(); ++pos )
+    for ( ContentInfo const & info : infos )
     {
         // look KIND_FOLDER:
-        ContentInfo const & info = infos[ pos ];
         if ((info.Attributes & ContentInfoAttribute::KIND_FOLDER) != 0)
         {
             // make sure the only required bootstrap property is "Title":
@@ -154,7 +156,7 @@ bool create_folder(
     }
     if (throw_exc)
         throw ContentCreationException(
-            "Cannot create folder: " + url,
+            "Cannot create folder: '" + url + "'",
             Reference<XInterface>(), ContentCreationError_UNKNOWN );
     return false;
 }
@@ -202,7 +204,7 @@ bool readLine( OUString * res, OUString const & startingWith,
 {
     // read whole file:
     std::vector<sal_Int8> bytes( readFile( ucb_content ) );
-    OUString file( reinterpret_cast<sal_Char const *>(bytes.data()),
+    OUString file( reinterpret_cast<char const *>(bytes.data()),
                    bytes.size(), textenc );
     sal_Int32 pos = 0;
     for (;;)
@@ -216,18 +218,18 @@ bool readLine( OUString * res, OUString const & startingWith,
             {
                 pos = file.indexOf( LF, pos );
                 if (pos < 0) { // EOF
-                    buf.append( file.copy( start ) );
+                    buf.append( std::u16string_view(file).substr(start) );
                 }
                 else
                 {
                     if (pos > 0 && file[ pos - 1 ] == CR)
                     {
                         // consume extra CR
-                        buf.append( file.copy( start, pos - start - 1 ) );
+                        buf.append( std::u16string_view(file).substr(start, pos - start - 1) );
                         ++pos;
                     }
                     else
-                        buf.append( file.copy( start, pos - start ) );
+                        buf.append( std::u16string_view(file).substr(start, pos - start) );
                     ++pos; // consume LF
                     // check next line:
                     if (pos < file.getLength() &&
@@ -253,12 +255,12 @@ bool readLine( OUString * res, OUString const & startingWith,
     return false;
 }
 
-bool readProperties( std::list< std::pair< OUString, OUString> > & out_result,
+bool readProperties( std::vector< std::pair< OUString, OUString> > & out_result,
                      ::ucbhelper::Content & ucb_content )
 {
     // read whole file:
     std::vector<sal_Int8> bytes( readFile( ucb_content ) );
-    OUString file( reinterpret_cast<sal_Char const *>(bytes.data()),
+    OUString file( reinterpret_cast<char const *>(bytes.data()),
                    bytes.size(), RTL_TEXTENCODING_UTF8);
     sal_Int32 pos = 0;
 
@@ -271,16 +273,16 @@ bool readProperties( std::list< std::pair< OUString, OUString> > & out_result,
         bool bEOF = false;
         pos = file.indexOf( LF, pos );
         if (pos < 0) { // EOF
-            buf.append( file.copy( start ) );
+            buf.append( std::u16string_view(file).substr(start) );
             bEOF = true;
         }
         else
         {
             if (pos > 0 && file[ pos - 1 ] == CR)
                 // consume extra CR
-                buf.append( file.copy( start, pos - start - 1 ) );
+                buf.append( std::u16string_view(file).substr(start, pos - start - 1) );
             else
-                buf.append( file.copy( start, pos - start ) );
+                buf.append( std::u16string_view(file).substr(start, pos - start) );
             pos++;
         }
         OUString aLine = buf.makeStringAndClear();
@@ -290,7 +292,7 @@ bool readProperties( std::list< std::pair< OUString, OUString> > & out_result,
         {
             OUString name = aLine.copy(0, posEqual);
             OUString value = aLine.copy(posEqual + 1);
-            out_result.push_back(std::make_pair(name, value));
+            out_result.emplace_back(name, value);
         }
 
         if (bEOF)

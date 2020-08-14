@@ -18,9 +18,12 @@
  */
 
 
-#include <basdoc.hxx>
+#include "basdoc.hxx"
 #include <iderdll.hxx>
 #include <com/sun/star/io/IOException.hpp>
+#include <comphelper/sequence.hxx>
+#include <cppuhelper/queryinterface.hxx>
+#include <cppuhelper/supportsservice.hxx>
 #include <sfx2/objsh.hxx>
 #include <vcl/svapp.hxx>
 
@@ -70,46 +73,24 @@ void SAL_CALL SIDEModel::release() throw()
 
 uno::Sequence< uno::Type > SAL_CALL SIDEModel::getTypes(  )
 {
-    uno::Sequence< uno::Type > aTypes = SfxBaseModel::getTypes();
-    sal_Int32 nLen = aTypes.getLength();
-    aTypes.realloc(nLen + 1);
-    uno::Type* pTypes = aTypes.getArray();
-    pTypes[nLen++] = cppu::UnoType<XServiceInfo>::get();
-
-    return aTypes;
+    return comphelper::concatSequences(
+            SfxBaseModel::getTypes(),
+            uno::Sequence {  cppu::UnoType<XServiceInfo>::get() });
 }
 
 OUString SIDEModel::getImplementationName()
 {
-    return getImplementationName_Static();
-}
-
-OUString SIDEModel::getImplementationName_Static()
-{
-    return OUString( "com.sun.star.comp.basic.BasicIDE" );
+    return "com.sun.star.comp.basic.BasicIDE";
 }
 
 sal_Bool SIDEModel::supportsService(const OUString& rServiceName)
 {
     return cppu::supportsService(this, rServiceName);
 }
+
 uno::Sequence< OUString > SIDEModel::getSupportedServiceNames()
 {
-    return getSupportedServiceNames_Static();
-}
-
-uno::Sequence< OUString > SIDEModel::getSupportedServiceNames_Static()
-{
     return { "com.sun.star.script.BasicIDE" };
-}
-
-uno::Reference< uno::XInterface > SAL_CALL SIDEModel_createInstance(
-                const uno::Reference< lang::XMultiServiceFactory > & )
-{
-    SolarMutexGuard aGuard;
-    EnsureIde();
-    SfxObjectShell* pShell = new DocShell();
-    return uno::Reference< uno::XInterface >( pShell->GetModel() );
 }
 
 //  XStorable
@@ -135,5 +116,17 @@ void  SIDEModel::notImplemented()
 }
 
 } // namespace basctl
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+com_sun_star_comp_basic_BasicID_get_implementation(
+    css::uno::XComponentContext* , css::uno::Sequence<css::uno::Any> const&)
+{
+    SolarMutexGuard aGuard;
+    basctl::EnsureIde();
+    SfxObjectShell* pShell = new basctl::DocShell();
+    auto pModel = pShell->GetModel();
+    pModel->acquire();
+    return pModel.get();
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

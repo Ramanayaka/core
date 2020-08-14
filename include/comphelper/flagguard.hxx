@@ -21,53 +21,54 @@
 #define INCLUDED_COMPHELPER_FLAGGUARD_HXX
 
 #include <comphelper/scopeguard.hxx>
-
+#include <utility>
 
 namespace comphelper
 {
 
-    //= FlagRestorationGuard
+    //= ValueRestorationGuard
 
-    class COMPHELPER_DLLPUBLIC FlagRestorationGuard : public ScopeGuard
+    // note: can't store the originalValue in a ValueRestorationGuard member,
+    // because it will be used from base class dtor
+    template <typename T> struct ValueRestorationGuard_Impl
     {
-    public:
-        FlagRestorationGuard( bool& i_flagRef, bool i_temporaryValue )
-            : ScopeGuard(RestoreFlag(i_flagRef))
+        T& rVal;
+        T const originalValue;
+        ValueRestorationGuard_Impl(T& i_valRef)
+            : rVal(i_valRef), originalValue(i_valRef) {}
+        void operator()()
         {
-            i_flagRef = i_temporaryValue;
+            rVal = originalValue;
         }
-
-        ~FlagRestorationGuard();
-
-    private:
-        // note: can't store the originalValue in a FlagRestorationGuard member,
-        // because it will be used from base class dtor
-        struct RestoreFlag
-        {
-            bool & rFlag;
-            bool originalValue;
-            RestoreFlag(bool & i_flagRef)
-                : rFlag(i_flagRef), originalValue(i_flagRef) {}
-            void operator()()
-            {
-                rFlag = originalValue;
-            }
-        };
     };
 
+    template <typename T>
+    class ValueRestorationGuard : public ScopeGuard<ValueRestorationGuard_Impl<T>>
+    {
+    public:
+        template <typename T1>
+        ValueRestorationGuard(T& i_valRef, T1&& i_temporaryValue)
+            : ScopeGuard<ValueRestorationGuard_Impl<T>>(ValueRestorationGuard_Impl(i_valRef))
+        {
+            i_valRef = std::forward<T1>(i_temporaryValue);
+        }
+    };
+
+    typedef ValueRestorationGuard<bool> FlagRestorationGuard;
 
     //= FlagGuard
 
-    class COMPHELPER_DLLPUBLIC FlagGuard : public ScopeGuard
+    // Guarantees that the flag is true within the scope of the guard, and is set to false after
+    // its destruction, regardless of initial flag value
+    class FlagGuard : public FlagRestorationGuard
     {
     public:
-        explicit FlagGuard( bool& i_flagRef )
-            : ScopeGuard( [&i_flagRef] () { i_flagRef = false; } )
+        // Set flag to false before passing its reference to base class ctor, so that it would be
+        // reset back to false in base class dtor
+        explicit FlagGuard(bool& i_flagRef)
+            : FlagRestorationGuard((i_flagRef = false), true)
         {
-            i_flagRef = true;
         }
-
-        ~FlagGuard();
     };
 
 

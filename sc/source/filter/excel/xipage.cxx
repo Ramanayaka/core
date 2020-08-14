@@ -17,10 +17,10 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "xipage.hxx"
+#include <xipage.hxx>
 #include <svl/itemset.hxx>
 #include <vcl/graph.hxx>
-#include "scitems.hxx"
+#include <scitems.hxx>
 #include <svl/eitem.hxx>
 #include <svl/intitem.hxx>
 #include <svx/pageitem.hxx>
@@ -28,12 +28,13 @@
 #include <editeng/lrspitem.hxx>
 #include <editeng/ulspitem.hxx>
 #include <editeng/brushitem.hxx>
-#include "document.hxx"
-#include "stlsheet.hxx"
-#include "attrib.hxx"
-#include "xistream.hxx"
-#include "xihelper.hxx"
-#include "xiescher.hxx"
+#include <unotools/configmgr.hxx>
+#include <document.hxx>
+#include <stlsheet.hxx>
+#include <attrib.hxx>
+#include <xistream.hxx>
+#include <xihelper.hxx>
+#include <xiescher.hxx>
 
 // Page settings ==============================================================
 
@@ -117,10 +118,17 @@ void XclImpPageSettings::ReadHeaderFooter( XclImpStream& rStrm )
 
     switch( rStrm.GetRecId() )
     {
-        case EXC_ID_HEADER:     maData.maHeader = aString;  break;
-        case EXC_ID_FOOTER:     maData.maFooter = aString;  break;
+        case EXC_ID_HEADER:          maData.maHeader = aString;  break;
+        case EXC_ID_FOOTER:          maData.maFooter = aString;  break;
+        case EXC_ID_HEADER_EVEN:     maData.maHeaderEven = aString;  break;
+        case EXC_ID_FOOTER_EVEN:     maData.maFooterEven = aString;  break;
         default:    OSL_FAIL( "XclImpPageSettings::ReadHeaderFooter - unknown record" );
     }
+
+    if (maData.maHeader.getLength() > 10 && utl::ConfigManager::IsFuzzing())
+        maData.maHeader = maData.maHeader.copy(0, 10);
+    if (maData.maHeaderEven.getLength() > 10 && utl::ConfigManager::IsFuzzing())
+        maData.maHeaderEven = maData.maHeaderEven.copy(0, 10);
 }
 
 void XclImpPageSettings::ReadPageBreaks( XclImpStream& rStrm )
@@ -133,23 +141,23 @@ void XclImpPageSettings::ReadPageBreaks( XclImpStream& rStrm )
         default:    OSL_FAIL( "XclImpPageSettings::ReadPageBreaks - unknown record" );
     }
 
-    if( pVec )
+    if( !pVec )
+        return;
+
+    bool bIgnore = GetBiff() == EXC_BIFF8;  // ignore start/end columns or rows in BIFF8
+
+    sal_uInt16 nCount, nBreak;
+    nCount = rStrm.ReaduInt16();
+    pVec->clear();
+    pVec->reserve( nCount );
+
+    while( nCount-- )
     {
-        bool bIgnore = GetBiff() == EXC_BIFF8;  // ignore start/end columns or rows in BIFF8
-
-        sal_uInt16 nCount, nBreak;
-        nCount = rStrm.ReaduInt16();
-        pVec->clear();
-        pVec->reserve( nCount );
-
-        while( nCount-- )
-        {
-            nBreak = rStrm.ReaduInt16();
-            if( nBreak )
-                pVec->push_back( nBreak );
-            if( bIgnore )
-                rStrm.Ignore( 4 );
-        }
+        nBreak = rStrm.ReaduInt16();
+        if( nBreak )
+            pVec->push_back( nBreak );
+        if( bIgnore )
+            rStrm.Ignore( 4 );
     }
 }
 
@@ -187,7 +195,7 @@ void lclPutMarginItem( SfxItemSet& rItemSet, sal_uInt16 nRecId, double fMarginIn
         case EXC_ID_TOPMARGIN:
         case EXC_ID_BOTTOMMARGIN:
         {
-            SvxULSpaceItem aItem( GETITEM( rItemSet, SvxULSpaceItem, ATTR_ULSPACE ) );
+            SvxULSpaceItem aItem( rItemSet.Get( ATTR_ULSPACE ) );
             if( nRecId == EXC_ID_TOPMARGIN )
                 aItem.SetUpperValue( nMarginTwips );
             else
@@ -198,7 +206,7 @@ void lclPutMarginItem( SfxItemSet& rItemSet, sal_uInt16 nRecId, double fMarginIn
         case EXC_ID_LEFTMARGIN:
         case EXC_ID_RIGHTMARGIN:
         {
-            SvxLRSpaceItem aItem( GETITEM( rItemSet, SvxLRSpaceItem, ATTR_LRSPACE ) );
+            SvxLRSpaceItem aItem( rItemSet.Get( ATTR_LRSPACE ) );
             if( nRecId == EXC_ID_LEFTMARGIN )
                 aItem.SetLeftValue( nMarginTwips );
             else
@@ -220,17 +228,15 @@ void XclImpPageSettings::Finalize()
 
     // *** create page style sheet ***
 
-    OUStringBuffer aStyleName;
-    aStyleName.append("PageStyle_");
-
+    OUString aStyleName;
     OUString aTableName;
     if( GetDoc().GetName( nScTab, aTableName ) )
-        aStyleName.append(aTableName);
+        aStyleName = "PageStyle_" + aTableName;
     else
-        aStyleName.append(static_cast<sal_Int32>(nScTab+1));
+        aStyleName = "PageStyle_" + OUString::number(static_cast<sal_Int32>(nScTab+1));
 
     ScStyleSheet& rStyleSheet = ScfTools::MakePageStyleSheet(
-        GetStyleSheetPool(), aStyleName.makeStringAndClear(), false);
+        GetStyleSheetPool(), aStyleName, false);
 
     SfxItemSet& rItemSet = rStyleSheet.GetItemSet();
 
@@ -246,12 +252,12 @@ void XclImpPageSettings::Finalize()
     sal_uInt16 nStartPage = maData.mbManualStart ? maData.mnStartPage : 0;
     ScfTools::PutItem( rItemSet, SfxUInt16Item( ATTR_PAGE_FIRSTPAGENO, nStartPage ), true );
 
-    if( maData.mxBrushItem.get() )
+    if( maData.mxBrushItem )
         rItemSet.Put( *maData.mxBrushItem );
 
     if( mbValidPaper )
     {
-        SvxPageItem aPageItem( GETITEM( rItemSet, SvxPageItem, ATTR_PAGE ) );
+        SvxPageItem aPageItem( rItemSet.Get( ATTR_PAGE ) );
         aPageItem.SetLandscape( !maData.mbPortrait );
         rItemSet.Put( aPageItem );
         ScfTools::PutItem( rItemSet, SvxSizeItem( ATTR_PAGE_SIZE, maData.GetScPaperSize() ), true );
@@ -285,7 +291,7 @@ void XclImpPageSettings::Finalize()
 
     // header
     bool bHasHeader = !maData.maHeader.isEmpty();
-    SvxSetItem aHdrSetItem( GETITEM( rItemSet, SvxSetItem, ATTR_PAGE_HEADERSET ) );
+    SvxSetItem aHdrSetItem( rItemSet.Get( ATTR_PAGE_HEADERSET ) );
     SfxItemSet& rHdrItemSet = aHdrSetItem.GetItemSet();
     rHdrItemSet.Put( SfxBoolItem( ATTR_PAGE_ON, bHasHeader ) );
     if( bHasHeader )
@@ -321,7 +327,7 @@ void XclImpPageSettings::Finalize()
 
     // footer
     bool bHasFooter = !maData.maFooter.isEmpty();
-    SvxSetItem aFtrSetItem( GETITEM( rItemSet, SvxSetItem, ATTR_PAGE_FOOTERSET ) );
+    SvxSetItem aFtrSetItem( rItemSet.Get( ATTR_PAGE_FOOTERSET ) );
     SfxItemSet& rFtrItemSet = aFtrSetItem.GetItemSet();
     rFtrItemSet.Put( SfxBoolItem( ATTR_PAGE_ON, bHasFooter ) );
     if( bHasFooter )
@@ -368,19 +374,17 @@ void XclImpPageSettings::Finalize()
 
     // *** page breaks ***
 
-    ScfUInt16Vec::const_iterator aIt, aEnd;
-
-    for( aIt = maData.maHorPageBreaks.begin(), aEnd = maData.maHorPageBreaks.end(); aIt != aEnd; ++aIt )
+    for( const auto& rHorPageBreak : maData.maHorPageBreaks )
     {
-        SCROW nScRow = static_cast< SCROW >( *aIt );
-        if( nScRow <= MAXROW )
+        SCROW nScRow = static_cast< SCROW >( rHorPageBreak );
+        if( nScRow <= rDoc.MaxRow() )
             rDoc.SetRowBreak(nScRow, nScTab, false, true);
     }
 
-    for( aIt = maData.maVerPageBreaks.begin(), aEnd = maData.maVerPageBreaks.end(); aIt != aEnd; ++aIt )
+    for( const auto& rVerPageBreak : maData.maVerPageBreaks )
     {
-        SCCOL nScCol = static_cast< SCCOL >( *aIt );
-        if( nScCol <= MAXCOL )
+        SCCOL nScCol = static_cast< SCCOL >( rVerPageBreak );
+        if( nScCol <= rDoc.MaxCol() )
             rDoc.SetColBreak(nScCol, nScTab, false, true);
     }
 }

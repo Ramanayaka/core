@@ -29,7 +29,7 @@
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wnon-virtual-dtor"
 #endif
-#include  "UAccCOM.h"
+#include  <UAccCOM.h>
 #if defined __clang__
 #pragma clang diagnostic pop
 #endif
@@ -45,8 +45,7 @@ class ATL_NO_VTABLE CEnumVariant :
 public:
     CEnumVariant()
             :m_lLBound(0),
-            pUNOInterface(nullptr),
-            m_pXAccessibleSelection(nullptr)
+            pUNOInterface(nullptr)
     {
         m_lCurrent = m_lLBound;
     }

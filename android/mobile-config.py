@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python3
 # -*- tab-width: 4; indent-tabs-mode: nil; py-indent-offset: 4 -*-
 #
 # This file is part of the LibreOffice project.
@@ -65,14 +65,14 @@ if __name__ == '__main__':
         size = len(ET.tostring(child));
         key = '%s/%s' % (package, section)
         if key in main_xcd_discard:
-            print 'removed %s - saving %d' % (key, size)
+            print('removed %s - saving %d' % (key, size))
             saved = saved + size
             to_remove.append(child)
 
     for child in to_remove:
         root.remove(child)
 
-    print "saved %d of %d bytes: %2.f%%" % (saved, total, saved*100.0/total)
+    print("saved %d of %d bytes: %2.f%%" % (saved, total, saved*100.0/total))
 
     # Don't do pointless Word -> Writer and similar conversions when we have no UI.
     nsDict = {

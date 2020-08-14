@@ -18,27 +18,31 @@
  */
 
 #include <sal/config.h>
+#include <sal/log.hxx>
 
+#include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
-#include <osl/diagnose.h>
-#include <vcl/msgbox.hxx>
+#include <com/sun/star/document/XUndoManager.hpp>
+#include <com/sun/star/document/XUndoManagerSupplier.hpp>
+#include <comphelper/propertysequence.hxx>
+#include <comphelper/scopeguard.hxx>
 #include <vcl/svapp.hxx>
+#include <vcl/weld.hxx>
 #include <svtools/sfxecode.hxx>
 #include <svtools/ehdl.hxx>
-#include <svtools/svtools.hrc>
 #include <tools/urlobj.hxx>
-#include <svx/dialogs.hrc>
-#include "oox/ppt/pptimport.hxx"
-#include "oox/drawingml/chart/chartconverter.hxx"
-#include "oox/dump/pptxdumper.hxx"
-#include "drawingml/table/tablestylelistfragmenthandler.hxx"
-#include "oox/helper/graphichelper.hxx"
-#include "oox/ole/vbaproject.hxx"
+#include <svx/dialmgr.hxx>
+#include <svx/strings.hrc>
+#include <oox/ppt/pptimport.hxx>
+#include <oox/drawingml/chart/chartconverter.hxx>
+#include <oox/dump/pptxdumper.hxx>
+#include <drawingml/table/tablestylelistfragmenthandler.hxx>
+#include <oox/helper/graphichelper.hxx>
+#include <oox/ole/vbaproject.hxx>
 #include <oox/ppt/presentationfragmenthandler.hxx>
+#include <oox/ppt/presPropsfragmenthandler.hxx>
 #include <oox/token/tokens.hxx>
-
-#include <services.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
@@ -48,25 +52,7 @@ using namespace oox::core;
 using ::com::sun::star::beans::PropertyValue;
 using ::com::sun::star::lang::XComponent;
 
-namespace oox { namespace ppt {
-
-OUString SAL_CALL PowerPointImport_getImplementationName()
-{
-    return OUString( "com.sun.star.comp.oox.ppt.PowerPointImport" );
-}
-
-uno::Sequence< OUString > SAL_CALL PowerPointImport_getSupportedServiceNames()
-{
-    Sequence< OUString > aSeq( 2 );
-    aSeq[ 0 ] = "com.sun.star.document.ImportFilter";
-    aSeq[ 1 ] = "com.sun.star.document.ExportFilter";
-    return aSeq;
-}
-
-uno::Reference< uno::XInterface > SAL_CALL PowerPointImport_createInstance( const Reference< XComponentContext >& rxContext )
-{
-    return static_cast< ::cppu::OWeakObject* >( new PowerPointImport( rxContext ) );
-}
+namespace oox::ppt {
 
 #if OSL_DEBUG_LEVEL > 0
 XmlFilterBase* PowerPointImport::mpDebugFilterBase = nullptr;
@@ -74,7 +60,7 @@ XmlFilterBase* PowerPointImport::mpDebugFilterBase = nullptr;
 
 PowerPointImport::PowerPointImport( const Reference< XComponentContext >& rxContext ) :
     XmlFilterBase( rxContext ),
-    mxChartConv( new ::oox::drawingml::chart::ChartConverter )
+    mxChartConv( std::make_shared<::oox::drawingml::chart::ChartConverter>() )
 
 {
 #if OSL_DEBUG_LEVEL > 0
@@ -84,34 +70,36 @@ PowerPointImport::PowerPointImport( const Reference< XComponentContext >& rxCont
 
 PowerPointImport::~PowerPointImport()
 {
+    maPPTShapes.clear();
 }
 
 /// Visits the relations from pRelations which are of type rType.
 static void visitRelations(PowerPointImport& rImport, const core::RelationsRef& pRelations, const OUString& rType, std::vector<OUString>& rImageFragments)
 {
-    if (core::RelationsRef pRelationsOfType = pRelations->getRelationsFromTypeFromOfficeDoc(rType))
-    {
-        for (const auto& rRelation : *pRelationsOfType)
-        {
-            OUString aFragment = pRelationsOfType->getFragmentPathFromRelation(rRelation.second);
-            if (core::RelationsRef pFragmentRelations = rImport.importRelations(aFragment))
-            {
-                // See if the fragment has images.
-                if (core::RelationsRef pImages = pFragmentRelations->getRelationsFromTypeFromOfficeDoc("image"))
-                {
-                    for (const auto& rImage : *pImages)
-                    {
-                        OUString aPath = pImages->getFragmentPathFromRelation(rImage.second);
-                        // Safe subset: e.g. WMF may have an external header from the
-                        // referencing fragment.
-                        if (aPath.endsWith(".jpg") || aPath.endsWith(".jpeg"))
-                            rImageFragments.push_back(aPath);
-                    }
-                }
+    core::RelationsRef pRelationsOfType = pRelations->getRelationsFromTypeFromOfficeDoc(rType);
+    if (!pRelationsOfType)
+        return;
 
-                // See if the fragment has a slide layout, and recurse.
-                visitRelations(rImport, pFragmentRelations, "slideLayout", rImageFragments);
+    for (const auto& rRelation : *pRelationsOfType)
+    {
+        OUString aFragment = pRelationsOfType->getFragmentPathFromRelation(rRelation.second);
+        if (core::RelationsRef pFragmentRelations = rImport.importRelations(aFragment))
+        {
+            // See if the fragment has images.
+            if (core::RelationsRef pImages = pFragmentRelations->getRelationsFromTypeFromOfficeDoc("image"))
+            {
+                for (const auto& rImage : *pImages)
+                {
+                    OUString aPath = pImages->getFragmentPathFromRelation(rImage.second);
+                    // Safe subset: e.g. WMF may have an external header from the
+                    // referencing fragment.
+                    if (aPath.endsWith(".jpg") || aPath.endsWith(".jpeg"))
+                        rImageFragments.push_back(aPath);
+                }
             }
+
+            // See if the fragment has a slide layout, and recurse.
+            visitRelations(rImport, pFragmentRelations, "slideLayout", rImageFragments);
         }
     }
 }
@@ -123,11 +111,26 @@ bool PowerPointImport::importDocument()
         file:///<path-to-oox-module>/source/dump/pptxdumper.ini. */
     OOX_DUMP_FILE( ::oox::dump::pptx::Dumper );
 
+    uno::Reference< document::XUndoManagerSupplier > xUndoManagerSupplier (getModel(), UNO_QUERY );
+    uno::Reference< util::XLockable > xUndoManager;
+    bool bWasUnLocked = true;
+    if(xUndoManagerSupplier.is())
+    {
+        xUndoManager = xUndoManagerSupplier->getUndoManager();
+        if(xUndoManager.is())
+        {
+            bWasUnLocked = !xUndoManager->isLocked();
+            xUndoManager->lock();
+        }
+    }
+
     importDocumentProperties();
 
     OUString aFragmentPath = getFragmentPathFromFirstTypeFromOfficeDoc( "officeDocument" );
     FragmentHandlerRef xPresentationFragmentHandler( new PresentationFragmentHandler( *this, aFragmentPath ) );
     maTableStyleListPath = xPresentationFragmentHandler->getFragmentPathFromFirstTypeFromOfficeDoc( "tableStyles" );
+    const OUString sPresPropsPath
+        = xPresentationFragmentHandler->getFragmentPathFromFirstTypeFromOfficeDoc("presProps");
 
     // importRelations() is cheap, it will do an actual import for the first time only.
     if (core::RelationsRef pFragmentRelations = importRelations(aFragmentPath))
@@ -140,23 +143,32 @@ bool PowerPointImport::importDocument()
     }
 
     bool bRet = importFragment(xPresentationFragmentHandler);
+    if (bRet && !sPresPropsPath.isEmpty())
+    {
+        FragmentHandlerRef xPresPropsFragmentHandler(
+            new PresPropsFragmentHandler(*this, sPresPropsPath));
+        importFragment(xPresPropsFragmentHandler);
+    }
 
-    if (mbMissingExtDrawing)
+    static bool bNoSmartartWarning = getenv("OOX_NO_SMARTART_WARNING");
+    if (!bNoSmartartWarning && mbMissingExtDrawing)
     {
         // Construct a warning message.
         INetURLObject aURL(getFileUrl());
         SfxErrorContext aContext(ERRCTX_SFX_OPENDOC, aURL.getName(INetURLObject::LAST_SEGMENT, true, INetURLObject::DecodeMechanism::WithCharset), nullptr, RID_ERRCTX);
         OUString aWarning;
         aContext.GetString(ERRCODE_NONE.MakeWarning(), aWarning);
-        aWarning += ":\n";
-        static ResMgr* pResMgr = ResMgr::CreateResMgr("svx", Application::GetSettings().GetUILanguageTag());
-        aWarning += ResId(RID_SVXSTR_WARN_MISSING_SMARTART, *pResMgr).toString();
+        aWarning += ":\n" + SvxResId(RID_SVXSTR_WARN_MISSING_SMARTART);
 
         // Show it.
-        WinBits eBits = WB_OK | WB_DEF_OK;
-        ScopedVclPtrInstance<WarningBox> pBox(nullptr, eBits, aWarning);
-        pBox->Execute();
+        std::unique_ptr<weld::MessageDialog> xWarn(Application::CreateMessageDialog(nullptr,
+                                                   VclMessageType::Warning, VclButtonsType::Ok,
+                                                   aWarning));
+        xWarn->run();
     }
+
+    if(xUndoManager.is() && bWasUnLocked)
+        xUndoManager->unlock();
 
     return bRet;
 
@@ -167,9 +179,9 @@ bool PowerPointImport::exportDocument() throw()
     return false;
 }
 
-sal_Int32 PowerPointImport::getSchemeColor( sal_Int32 nToken ) const
+::Color PowerPointImport::getSchemeColor( sal_Int32 nToken ) const
 {
-    sal_Int32 nColor = 0;
+    ::Color nColor;
     if ( mpActualSlidePersist )
     {
         bool bColorMapped = false;
@@ -187,20 +199,15 @@ sal_Int32 PowerPointImport::getSchemeColor( sal_Int32 nToken ) const
                     pClrMapPtr->getColorMap( nToken );
             }
         }
-        oox::drawingml::ClrSchemePtr pClrSchemePtr( mpActualSlidePersist->getClrScheme() );
-        if ( pClrSchemePtr )
-            pClrSchemePtr->getColor( nToken, nColor );
+
+        ::oox::drawingml::ThemePtr pTheme = mpActualSlidePersist->getTheme();
+        if( pTheme )
+        {
+            pTheme->getClrScheme().getColor( nToken, nColor );
+        }
         else
         {
-            ::oox::drawingml::ThemePtr pTheme = mpActualSlidePersist->getTheme();
-            if( pTheme )
-            {
-                pTheme->getClrScheme().getColor( nToken, nColor );
-            }
-            else
-            {
-                SAL_WARN("oox", "OOX: PowerPointImport::mpThemePtr is NULL");
-            }
+            SAL_WARN("oox", "OOX: PowerPointImport::mpThemePtr is NULL");
         }
     }
     return nColor;
@@ -216,18 +223,39 @@ sal_Bool SAL_CALL PowerPointImport::filter( const Sequence< PropertyValue >& rDe
     if( XmlFilterBase::filter( rDescriptor ) )
         return true;
 
-    if( isExportFilter() ) {
-        Reference< XExporter > xExporter( Reference<css::lang::XMultiServiceFactory>(getComponentContext()->getServiceManager(), UNO_QUERY_THROW)->createInstance( "com.sun.star.comp.Impress.oox.PowerPointExport" ), UNO_QUERY );
+    if (isExportFilter())
+    {
+        uno::Sequence<uno::Any> aArguments(comphelper::InitAnyPropertySequence(
+        {
+            {"IsPPTM", uno::makeAny(exportVBA())},
+            {"IsTemplate", uno::makeAny(isExportTemplate())},
+        }));
 
-        if( xExporter.is() ) {
-            Reference< XComponent > xDocument( getModel(), UNO_QUERY );
-            Reference< XFilter > xFilter( xExporter, UNO_QUERY );
+        Reference<css::lang::XMultiServiceFactory> aFactory(getComponentContext()->getServiceManager(), UNO_QUERY_THROW);
+        Reference< XExporter > xExporter(aFactory->createInstanceWithArguments("com.sun.star.comp.Impress.oox.PowerPointExport", aArguments), UNO_QUERY);
 
-            if( xFilter.is() ) {
-                xExporter->setSourceDocument( xDocument );
-                if( xFilter->filter( rDescriptor ) )
-                    return true;
+        if (Reference<XFilter> xFilter{ xExporter, UNO_QUERY })
+        {
+            Reference<util::XLockable> xUndoManager;
+            bool bWasUnLocked = true;
+            if (Reference<document::XUndoManagerSupplier> xUMS{ getModel(), UNO_QUERY })
+            {
+                xUndoManager = xUMS->getUndoManager();
+                if (xUndoManager.is())
+                {
+                    bWasUnLocked = !xUndoManager->isLocked();
+                    xUndoManager->lock();
+                }
             }
+            comphelper::ScopeGuard aGuard([xUndoManager, bWasUnLocked] {
+                if (xUndoManager && bWasUnLocked)
+                    xUndoManager->unlock();
+            });
+
+            Reference< XComponent > xDocument = getModel();
+            xExporter->setSourceDocument(xDocument);
+            if (xFilter->filter(rDescriptor))
+                return true;
         }
     }
 
@@ -239,7 +267,7 @@ sal_Bool SAL_CALL PowerPointImport::filter( const Sequence< PropertyValue >& rDe
     return mpActualSlidePersist ? mpActualSlidePersist->getDrawing() : nullptr;
 }
 
-const oox::drawingml::table::TableStyleListPtr PowerPointImport::getTableStyles()
+oox::drawingml::table::TableStyleListPtr PowerPointImport::getTableStyles()
 {
     if ( !mpTableStyleList && !maTableStyleListPath.isEmpty() )
     {
@@ -261,8 +289,8 @@ class PptGraphicHelper : public GraphicHelper
 {
 public:
     explicit            PptGraphicHelper( const PowerPointImport& rFilter );
-    virtual sal_Int32   getSchemeColor( sal_Int32 nToken ) const override;
-    virtual sal_Int32 getDefaultChartAreaFillStyle() const override;
+    virtual ::Color     getSchemeColor( sal_Int32 nToken ) const override;
+    virtual sal_Int32   getDefaultChartAreaFillStyle() const override;
 private:
     const PowerPointImport& mrFilter;
 };
@@ -273,7 +301,7 @@ PptGraphicHelper::PptGraphicHelper( const PowerPointImport& rFilter ) :
 {
 }
 
-sal_Int32 PptGraphicHelper::getSchemeColor( sal_Int32 nToken ) const
+::Color PptGraphicHelper::getSchemeColor( sal_Int32 nToken ) const
 {
     return mrFilter.getSchemeColor( nToken );
 }
@@ -297,9 +325,16 @@ GraphicHelper* PowerPointImport::implCreateGraphicHelper() const
 
 OUString PowerPointImport::getImplementationName()
 {
-    return PowerPointImport_getImplementationName();
+    return "com.sun.star.comp.oox.ppt.PowerPointImport";
 }
 
-}}
+}
+
+extern "C" SAL_DLLPUBLIC_EXPORT uno::XInterface*
+com_sun_star_comp_oox_ppt_PowerPointImport_get_implementation(
+    uno::XComponentContext* pCtx, uno::Sequence<uno::Any> const& /*rSeq*/)
+{
+    return cppu::acquire(new oox::ppt::PowerPointImport(pCtx));
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

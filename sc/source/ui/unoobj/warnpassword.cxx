@@ -17,18 +17,15 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "warnpassword.hxx"
+#include <warnpassword.hxx>
 #include <com/sun/star/task/XInteractionHandler.hpp>
-#include <svl/itemset.hxx>
 #include <sfx2/docfile.hxx>
-#include <sfx2/sfxsids.hrc>
 #include <ucbhelper/simpleinteractionrequest.hxx>
 #include <com/sun/star/task/InteractionClassification.hpp>
 #include <com/sun/star/ucb/InteractiveAppException.hpp>
-#include <com/sun/star/ucb/XContent.hpp>
 #include <svx/svxerr.hxx>
+#include <rtl/ref.hxx>
 
-using ::com::sun::star::uno::makeAny;
 using ::com::sun::star::uno::Any;
 using ::com::sun::star::uno::Reference;
 using ::com::sun::star::uno::XInterface;

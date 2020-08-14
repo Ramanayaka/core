@@ -44,7 +44,7 @@ namespace
 
     // Good ole HAKMEM tradition. Calc number of 1 bits in 32bit word,
     // unrolled loop. See e.g. Hackers Delight, p. 66
-    inline sal_Int32 bitcount( sal_uInt32 val )
+    sal_Int32 bitcount( sal_uInt32 val )
     {
         val = val - ((val >> 1) & 0x55555555);
         val = (val & 0x33333333) + ((val >> 2) & 0x33333333);
@@ -128,288 +128,268 @@ VclCanvasBitmap::VclCanvasBitmap( const BitmapEx& rBitmap ) :
     m_aLayout.Palette.clear();
     m_aLayout.IsMsbFirst     = false;
 
-    if( m_pBmpAcc )
+    if( !m_pBmpAcc )
+        return;
+
+    m_aLayout.ScanLines      = m_pBmpAcc->Height();
+    m_aLayout.ScanLineBytes  = (m_pBmpAcc->GetBitCount()*m_pBmpAcc->Width() + 7) / 8;
+    m_aLayout.ScanLineStride = m_pBmpAcc->GetScanlineSize();
+    m_aLayout.PlaneStride    = 0;
+
+    switch( m_pBmpAcc->GetScanlineFormat() )
     {
-        m_aLayout.ScanLines      = m_pBmpAcc->Height();
-        m_aLayout.ScanLineBytes  = (m_pBmpAcc->GetBitCount()*m_pBmpAcc->Width() + 7) / 8;
-        m_aLayout.ScanLineStride = m_pBmpAcc->GetScanlineSize();
-        m_aLayout.PlaneStride    = 0;
+        case ScanlineFormat::N1BitMsbPal:
+            m_bPalette           = true;
+            m_nBitsPerInputPixel = 1;
+            m_nEndianness        = util::Endianness::LITTLE; // doesn't matter
+            m_aLayout.IsMsbFirst = true;
+            break;
 
-        switch( m_pBmpAcc->GetScanlineFormat() )
+        case ScanlineFormat::N1BitLsbPal:
+            m_bPalette           = true;
+            m_nBitsPerInputPixel = 1;
+            m_nEndianness        = util::Endianness::LITTLE; // doesn't matter
+            m_aLayout.IsMsbFirst = false;
+            break;
+
+        case ScanlineFormat::N4BitMsnPal:
+            m_bPalette           = true;
+            m_nBitsPerInputPixel = 4;
+            m_nEndianness        = util::Endianness::LITTLE; // doesn't matter
+            m_aLayout.IsMsbFirst = true;
+            break;
+
+        case ScanlineFormat::N4BitLsnPal:
+            m_bPalette           = true;
+            m_nBitsPerInputPixel = 4;
+            m_nEndianness        = util::Endianness::LITTLE; // doesn't matter
+            m_aLayout.IsMsbFirst = false;
+            break;
+
+        case ScanlineFormat::N8BitPal:
+            m_bPalette           = true;
+            m_nBitsPerInputPixel = 8;
+            m_nEndianness        = util::Endianness::LITTLE; // doesn't matter
+            m_aLayout.IsMsbFirst = false; // doesn't matter
+            break;
+
+        case ScanlineFormat::N8BitTcMask:
+            m_bPalette           = false;
+            m_nBitsPerInputPixel = 8;
+            m_nEndianness        = util::Endianness::LITTLE; // doesn't matter
+            m_aLayout.IsMsbFirst = false; // doesn't matter
+            setComponentInfo( m_pBmpAcc->GetColorMask().GetRedMask(),
+                              m_pBmpAcc->GetColorMask().GetGreenMask(),
+                              m_pBmpAcc->GetColorMask().GetBlueMask() );
+            break;
+
+        case ScanlineFormat::N24BitTcBgr:
+            m_bPalette           = false;
+            m_nBitsPerInputPixel = 24;
+            m_nEndianness        = util::Endianness::LITTLE;
+            m_aLayout.IsMsbFirst = false; // doesn't matter
+            setComponentInfo( static_cast<sal_uInt32>(0xff0000UL),
+                              static_cast<sal_uInt32>(0x00ff00UL),
+                              static_cast<sal_uInt32>(0x0000ffUL) );
+            break;
+
+        case ScanlineFormat::N24BitTcRgb:
+            m_bPalette           = false;
+            m_nBitsPerInputPixel = 24;
+            m_nEndianness        = util::Endianness::LITTLE;
+            m_aLayout.IsMsbFirst = false; // doesn't matter
+            setComponentInfo( static_cast<sal_uInt32>(0x0000ffUL),
+                              static_cast<sal_uInt32>(0x00ff00UL),
+                              static_cast<sal_uInt32>(0xff0000UL) );
+            break;
+
+        case ScanlineFormat::N32BitTcAbgr:
         {
-            case ScanlineFormat::N1BitMsbPal:
-                m_bPalette           = true;
-                m_nBitsPerInputPixel = 1;
-                m_nEndianness        = util::Endianness::LITTLE; // doesn't matter
-                m_aLayout.IsMsbFirst = true;
-                break;
+            m_bPalette           = false;
+            m_nBitsPerInputPixel = 32;
+            m_nEndianness        = util::Endianness::LITTLE;
+            m_aLayout.IsMsbFirst = false; // doesn't matter
 
-            case ScanlineFormat::N1BitLsbPal:
-                m_bPalette           = true;
-                m_nBitsPerInputPixel = 1;
-                m_nEndianness        = util::Endianness::LITTLE; // doesn't matter
-                m_aLayout.IsMsbFirst = false;
-                break;
+            m_aComponentTags.realloc(4);
+            sal_Int8* pTags = m_aComponentTags.getArray();
+            pTags[0]        = rendering::ColorComponentTag::ALPHA;
+            pTags[1]        = rendering::ColorComponentTag::RGB_BLUE;
+            pTags[2]        = rendering::ColorComponentTag::RGB_GREEN;
+            pTags[3]        = rendering::ColorComponentTag::RGB_RED;
 
-            case ScanlineFormat::N4BitMsnPal:
-                m_bPalette           = true;
-                m_nBitsPerInputPixel = 4;
-                m_nEndianness        = util::Endianness::LITTLE; // doesn't matter
-                m_aLayout.IsMsbFirst = true;
-                break;
+            m_aComponentBitCounts.realloc(4);
+            sal_Int32* pCounts = m_aComponentBitCounts.getArray();
+            pCounts[0]         = 8;
+            pCounts[1]         = 8;
+            pCounts[2]         = 8;
+            pCounts[3]         = 8;
 
-            case ScanlineFormat::N4BitLsnPal:
-                m_bPalette           = true;
-                m_nBitsPerInputPixel = 4;
-                m_nEndianness        = util::Endianness::LITTLE; // doesn't matter
-                m_aLayout.IsMsbFirst = false;
-                break;
-
-            case ScanlineFormat::N8BitPal:
-                m_bPalette           = true;
-                m_nBitsPerInputPixel = 8;
-                m_nEndianness        = util::Endianness::LITTLE; // doesn't matter
-                m_aLayout.IsMsbFirst = false; // doesn't matter
-                break;
-
-            case ScanlineFormat::N8BitTcMask:
-                m_bPalette           = false;
-                m_nBitsPerInputPixel = 8;
-                m_nEndianness        = util::Endianness::LITTLE; // doesn't matter
-                m_aLayout.IsMsbFirst = false; // doesn't matter
-                setComponentInfo( m_pBmpAcc->GetColorMask().GetRedMask(),
-                                  m_pBmpAcc->GetColorMask().GetGreenMask(),
-                                  m_pBmpAcc->GetColorMask().GetBlueMask() );
-                break;
-
-            case ScanlineFormat::N16BitTcMsbMask:
-                m_bPalette           = false;
-                m_nBitsPerInputPixel = 16;
-                m_nEndianness        = util::Endianness::BIG;
-                m_aLayout.IsMsbFirst = false; // doesn't matter
-                setComponentInfo( m_pBmpAcc->GetColorMask().GetRedMask(),
-                                  m_pBmpAcc->GetColorMask().GetGreenMask(),
-                                  m_pBmpAcc->GetColorMask().GetBlueMask() );
-                break;
-
-            case ScanlineFormat::N16BitTcLsbMask:
-                m_bPalette           = false;
-                m_nBitsPerInputPixel = 16;
-                m_nEndianness        = util::Endianness::LITTLE;
-                m_aLayout.IsMsbFirst = false; // doesn't matter
-                setComponentInfo( m_pBmpAcc->GetColorMask().GetRedMask(),
-                                  m_pBmpAcc->GetColorMask().GetGreenMask(),
-                                  m_pBmpAcc->GetColorMask().GetBlueMask() );
-                break;
-
-            case ScanlineFormat::N24BitTcBgr:
-                m_bPalette           = false;
-                m_nBitsPerInputPixel = 24;
-                m_nEndianness        = util::Endianness::LITTLE;
-                m_aLayout.IsMsbFirst = false; // doesn't matter
-                setComponentInfo( static_cast<sal_uInt32>(0xff0000UL),
-                                  static_cast<sal_uInt32>(0x00ff00UL),
-                                  static_cast<sal_uInt32>(0x0000ffUL) );
-                break;
-
-            case ScanlineFormat::N24BitTcRgb:
-                m_bPalette           = false;
-                m_nBitsPerInputPixel = 24;
-                m_nEndianness        = util::Endianness::LITTLE;
-                m_aLayout.IsMsbFirst = false; // doesn't matter
-                setComponentInfo( static_cast<sal_uInt32>(0x0000ffUL),
-                                  static_cast<sal_uInt32>(0x00ff00UL),
-                                  static_cast<sal_uInt32>(0xff0000UL) );
-                break;
-
-            case ScanlineFormat::N32BitTcAbgr:
-            {
-                m_bPalette           = false;
-                m_nBitsPerInputPixel = 32;
-                m_nEndianness        = util::Endianness::LITTLE;
-                m_aLayout.IsMsbFirst = false; // doesn't matter
-
-                m_aComponentTags.realloc(4);
-                sal_Int8* pTags = m_aComponentTags.getArray();
-                pTags[0]        = rendering::ColorComponentTag::ALPHA;
-                pTags[1]        = rendering::ColorComponentTag::RGB_BLUE;
-                pTags[2]        = rendering::ColorComponentTag::RGB_GREEN;
-                pTags[3]        = rendering::ColorComponentTag::RGB_RED;
-
-                m_aComponentBitCounts.realloc(4);
-                sal_Int32* pCounts = m_aComponentBitCounts.getArray();
-                pCounts[0]         = 8;
-                pCounts[1]         = 8;
-                pCounts[2]         = 8;
-                pCounts[3]         = 8;
-
-                m_nRedIndex   = 3;
-                m_nGreenIndex = 2;
-                m_nBlueIndex  = 1;
-                m_nAlphaIndex = 0;
-            }
-            break;
-
-            case ScanlineFormat::N32BitTcArgb:
-            {
-                m_bPalette           = false;
-                m_nBitsPerInputPixel = 32;
-                m_nEndianness        = util::Endianness::LITTLE;
-                m_aLayout.IsMsbFirst = false; // doesn't matter
-
-                m_aComponentTags.realloc(4);
-                sal_Int8* pTags = m_aComponentTags.getArray();
-                pTags[0]        = rendering::ColorComponentTag::ALPHA;
-                pTags[1]        = rendering::ColorComponentTag::RGB_RED;
-                pTags[2]        = rendering::ColorComponentTag::RGB_GREEN;
-                pTags[3]        = rendering::ColorComponentTag::RGB_BLUE;
-
-                m_aComponentBitCounts.realloc(4);
-                sal_Int32* pCounts = m_aComponentBitCounts.getArray();
-                pCounts[0]         = 8;
-                pCounts[1]         = 8;
-                pCounts[2]         = 8;
-                pCounts[3]         = 8;
-
-                m_nRedIndex   = 1;
-                m_nGreenIndex = 2;
-                m_nBlueIndex  = 3;
-                m_nAlphaIndex = 0;
-            }
-            break;
-
-            case ScanlineFormat::N32BitTcBgra:
-            {
-                m_bPalette           = false;
-                m_nBitsPerInputPixel = 32;
-                m_nEndianness        = util::Endianness::LITTLE;
-                m_aLayout.IsMsbFirst = false; // doesn't matter
-
-                m_aComponentTags.realloc(4);
-                sal_Int8* pTags = m_aComponentTags.getArray();
-                pTags[0]        = rendering::ColorComponentTag::RGB_BLUE;
-                pTags[1]        = rendering::ColorComponentTag::RGB_GREEN;
-                pTags[2]        = rendering::ColorComponentTag::RGB_RED;
-                pTags[3]        = rendering::ColorComponentTag::ALPHA;
-
-                m_aComponentBitCounts.realloc(4);
-                sal_Int32* pCounts = m_aComponentBitCounts.getArray();
-                pCounts[0]         = 8;
-                pCounts[1]         = 8;
-                pCounts[2]         = 8;
-                pCounts[3]         = 8;
-
-                m_nRedIndex   = 2;
-                m_nGreenIndex = 1;
-                m_nBlueIndex  = 0;
-                m_nAlphaIndex = 3;
-            }
-            break;
-
-            case ScanlineFormat::N32BitTcRgba:
-            {
-                m_bPalette           = false;
-                m_nBitsPerInputPixel = 32;
-                m_nEndianness        = util::Endianness::LITTLE;
-                m_aLayout.IsMsbFirst = false; // doesn't matter
-
-                m_aComponentTags.realloc(4);
-                sal_Int8* pTags = m_aComponentTags.getArray();
-                pTags[0]        = rendering::ColorComponentTag::RGB_RED;
-                pTags[1]        = rendering::ColorComponentTag::RGB_GREEN;
-                pTags[2]        = rendering::ColorComponentTag::RGB_BLUE;
-                pTags[3]        = rendering::ColorComponentTag::ALPHA;
-
-                m_aComponentBitCounts.realloc(4);
-                sal_Int32* pCounts = m_aComponentBitCounts.getArray();
-                pCounts[0]         = 8;
-                pCounts[1]         = 8;
-                pCounts[2]         = 8;
-                pCounts[3]         = 8;
-
-                m_nRedIndex   = 0;
-                m_nGreenIndex = 1;
-                m_nBlueIndex  = 2;
-                m_nAlphaIndex = 3;
-            }
-            break;
-
-            case ScanlineFormat::N32BitTcMask:
-                m_bPalette           = false;
-                m_nBitsPerInputPixel = 32;
-                m_nEndianness        = util::Endianness::LITTLE;
-                m_aLayout.IsMsbFirst = false; // doesn't matter
-                setComponentInfo( m_pBmpAcc->GetColorMask().GetRedMask(),
-                                  m_pBmpAcc->GetColorMask().GetGreenMask(),
-                                  m_pBmpAcc->GetColorMask().GetBlueMask() );
-                break;
-
-            default:
-                OSL_FAIL( "unsupported bitmap format" );
-                break;
+            m_nRedIndex   = 3;
+            m_nGreenIndex = 2;
+            m_nBlueIndex  = 1;
+            m_nAlphaIndex = 0;
         }
+        break;
 
-        if( m_bPalette )
+        case ScanlineFormat::N32BitTcArgb:
         {
-            m_aComponentTags.realloc(1);
-            m_aComponentTags[0] = rendering::ColorComponentTag::INDEX;
+            m_bPalette           = false;
+            m_nBitsPerInputPixel = 32;
+            m_nEndianness        = util::Endianness::LITTLE;
+            m_aLayout.IsMsbFirst = false; // doesn't matter
 
-            m_aComponentBitCounts.realloc(1);
-            m_aComponentBitCounts[0] = m_nBitsPerInputPixel;
+            m_aComponentTags.realloc(4);
+            sal_Int8* pTags = m_aComponentTags.getArray();
+            pTags[0]        = rendering::ColorComponentTag::ALPHA;
+            pTags[1]        = rendering::ColorComponentTag::RGB_RED;
+            pTags[2]        = rendering::ColorComponentTag::RGB_GREEN;
+            pTags[3]        = rendering::ColorComponentTag::RGB_BLUE;
 
-            m_nIndexIndex = 0;
+            m_aComponentBitCounts.realloc(4);
+            sal_Int32* pCounts = m_aComponentBitCounts.getArray();
+            pCounts[0]         = 8;
+            pCounts[1]         = 8;
+            pCounts[2]         = 8;
+            pCounts[3]         = 8;
+
+            m_nRedIndex   = 1;
+            m_nGreenIndex = 2;
+            m_nBlueIndex  = 3;
+            m_nAlphaIndex = 0;
         }
+        break;
 
-        m_nBitsPerOutputPixel = m_nBitsPerInputPixel;
-        if( m_aBmpEx.IsTransparent() )
+        case ScanlineFormat::N32BitTcBgra:
         {
-            // TODO(P1): need to interleave alpha with bitmap data -
-            // won't fuss with less-than-8 bit for now
-            m_nBitsPerOutputPixel = std::max(sal_Int32(8),m_nBitsPerInputPixel);
+            m_bPalette           = false;
+            m_nBitsPerInputPixel = 32;
+            m_nEndianness        = util::Endianness::LITTLE;
+            m_aLayout.IsMsbFirst = false; // doesn't matter
 
-            // check whether alpha goes in front or behind the
-            // bitcount sequence. If pixel format is little endian,
-            // put it behind all the other channels. If it's big
-            // endian, put it in front (because later, the actual data
-            // always gets written after the pixel data)
+            m_aComponentTags.realloc(4);
+            sal_Int8* pTags = m_aComponentTags.getArray();
+            pTags[0]        = rendering::ColorComponentTag::RGB_BLUE;
+            pTags[1]        = rendering::ColorComponentTag::RGB_GREEN;
+            pTags[2]        = rendering::ColorComponentTag::RGB_RED;
+            pTags[3]        = rendering::ColorComponentTag::ALPHA;
 
-            // TODO(Q1): slight catch - in the case of the
-            // BMP_FORMAT_32BIT_XX_ARGB formats, duplicate alpha
-            // channels might happen!
-            m_aComponentTags.realloc(m_aComponentTags.getLength()+1);
-            m_aComponentTags[m_aComponentTags.getLength()-1] = rendering::ColorComponentTag::ALPHA;
+            m_aComponentBitCounts.realloc(4);
+            sal_Int32* pCounts = m_aComponentBitCounts.getArray();
+            pCounts[0]         = 8;
+            pCounts[1]         = 8;
+            pCounts[2]         = 8;
+            pCounts[3]         = 8;
 
-            m_aComponentBitCounts.realloc(m_aComponentBitCounts.getLength()+1);
-            m_aComponentBitCounts[m_aComponentBitCounts.getLength()-1] = m_aBmpEx.IsAlpha() ? 8 : 1;
-
-            if( m_nEndianness == util::Endianness::BIG )
-            {
-                // put alpha in front of all the color channels
-                sal_Int8*  pTags  =m_aComponentTags.getArray();
-                sal_Int32* pCounts=m_aComponentBitCounts.getArray();
-                std::rotate(pTags,
-                            pTags+m_aComponentTags.getLength()-1,
-                            pTags+m_aComponentTags.getLength());
-                std::rotate(pCounts,
-                            pCounts+m_aComponentBitCounts.getLength()-1,
-                            pCounts+m_aComponentBitCounts.getLength());
-                ++m_nRedIndex;
-                ++m_nGreenIndex;
-                ++m_nBlueIndex;
-                ++m_nIndexIndex;
-                m_nAlphaIndex=0;
-            }
-
-            // always add a full byte to the pixel size, otherwise
-            // pixel packing hell breaks loose.
-            m_nBitsPerOutputPixel += 8;
-
-            // adapt scanline parameters
-            const Size aSize = m_aBitmap.GetSizePixel();
-            m_aLayout.ScanLineBytes  =
-            m_aLayout.ScanLineStride = (aSize.Width()*m_nBitsPerOutputPixel + 7)/8;
+            m_nRedIndex   = 2;
+            m_nGreenIndex = 1;
+            m_nBlueIndex  = 0;
+            m_nAlphaIndex = 3;
         }
+        break;
+
+        case ScanlineFormat::N32BitTcRgba:
+        {
+            m_bPalette           = false;
+            m_nBitsPerInputPixel = 32;
+            m_nEndianness        = util::Endianness::LITTLE;
+            m_aLayout.IsMsbFirst = false; // doesn't matter
+
+            m_aComponentTags.realloc(4);
+            sal_Int8* pTags = m_aComponentTags.getArray();
+            pTags[0]        = rendering::ColorComponentTag::RGB_RED;
+            pTags[1]        = rendering::ColorComponentTag::RGB_GREEN;
+            pTags[2]        = rendering::ColorComponentTag::RGB_BLUE;
+            pTags[3]        = rendering::ColorComponentTag::ALPHA;
+
+            m_aComponentBitCounts.realloc(4);
+            sal_Int32* pCounts = m_aComponentBitCounts.getArray();
+            pCounts[0]         = 8;
+            pCounts[1]         = 8;
+            pCounts[2]         = 8;
+            pCounts[3]         = 8;
+
+            m_nRedIndex   = 0;
+            m_nGreenIndex = 1;
+            m_nBlueIndex  = 2;
+            m_nAlphaIndex = 3;
+        }
+        break;
+
+        case ScanlineFormat::N32BitTcMask:
+            m_bPalette           = false;
+            m_nBitsPerInputPixel = 32;
+            m_nEndianness        = util::Endianness::LITTLE;
+            m_aLayout.IsMsbFirst = false; // doesn't matter
+            setComponentInfo( m_pBmpAcc->GetColorMask().GetRedMask(),
+                              m_pBmpAcc->GetColorMask().GetGreenMask(),
+                              m_pBmpAcc->GetColorMask().GetBlueMask() );
+            break;
+
+        default:
+            OSL_FAIL( "unsupported bitmap format" );
+            break;
     }
+
+    if( m_bPalette )
+    {
+        m_aComponentTags.realloc(1);
+        m_aComponentTags[0] = rendering::ColorComponentTag::INDEX;
+
+        m_aComponentBitCounts.realloc(1);
+        m_aComponentBitCounts[0] = m_nBitsPerInputPixel;
+
+        m_nIndexIndex = 0;
+    }
+
+    m_nBitsPerOutputPixel = m_nBitsPerInputPixel;
+    if( !m_aBmpEx.IsTransparent() )
+        return;
+
+    // TODO(P1): need to interleave alpha with bitmap data -
+    // won't fuss with less-than-8 bit for now
+    m_nBitsPerOutputPixel = std::max(sal_Int32(8),m_nBitsPerInputPixel);
+
+    // check whether alpha goes in front or behind the
+    // bitcount sequence. If pixel format is little endian,
+    // put it behind all the other channels. If it's big
+    // endian, put it in front (because later, the actual data
+    // always gets written after the pixel data)
+
+    // TODO(Q1): slight catch - in the case of the
+    // BMP_FORMAT_32BIT_XX_ARGB formats, duplicate alpha
+    // channels might happen!
+    m_aComponentTags.realloc(m_aComponentTags.getLength()+1);
+    m_aComponentTags[m_aComponentTags.getLength()-1] = rendering::ColorComponentTag::ALPHA;
+
+    m_aComponentBitCounts.realloc(m_aComponentBitCounts.getLength()+1);
+    m_aComponentBitCounts[m_aComponentBitCounts.getLength()-1] = m_aBmpEx.IsAlpha() ? 8 : 1;
+
+    if( m_nEndianness == util::Endianness::BIG )
+    {
+        // put alpha in front of all the color channels
+        sal_Int8*  pTags  =m_aComponentTags.getArray();
+        sal_Int32* pCounts=m_aComponentBitCounts.getArray();
+        std::rotate(pTags,
+                    pTags+m_aComponentTags.getLength()-1,
+                    pTags+m_aComponentTags.getLength());
+        std::rotate(pCounts,
+                    pCounts+m_aComponentBitCounts.getLength()-1,
+                    pCounts+m_aComponentBitCounts.getLength());
+        ++m_nRedIndex;
+        ++m_nGreenIndex;
+        ++m_nBlueIndex;
+        ++m_nIndexIndex;
+        m_nAlphaIndex=0;
+    }
+
+    // always add a full byte to the pixel size, otherwise
+    // pixel packing hell breaks loose.
+    m_nBitsPerOutputPixel += 8;
+
+    // adapt scanline parameters
+    const Size aSize = m_aBitmap.GetSizePixel();
+    m_aLayout.ScanLineBytes  =
+    m_aLayout.ScanLineStride = (aSize.Width()*m_nBitsPerOutputPixel + 7)/8;
 }
 
 VclCanvasBitmap::~VclCanvasBitmap()
@@ -468,8 +448,8 @@ uno::Sequence< sal_Int8 > SAL_CALL VclCanvasBitmap::getData( rendering::IntegerB
     tools::Rectangle aRequestedBytes( aRequestedArea );
 
     // adapt to byte boundaries
-    aRequestedBytes.Left()  = aRequestedArea.Left()*m_nBitsPerOutputPixel/8;
-    aRequestedBytes.Right() = (aRequestedArea.Right()*m_nBitsPerOutputPixel + 7)/8;
+    aRequestedBytes.SetLeft( aRequestedArea.Left()*m_nBitsPerOutputPixel/8 );
+    aRequestedBytes.SetRight( (aRequestedArea.Right()*m_nBitsPerOutputPixel + 7)/8 );
 
     // copy stuff to output sequence
     aRet.realloc(aRequestedBytes.getWidth()*aRequestedBytes.getHeight());
@@ -526,13 +506,14 @@ uno::Sequence< sal_Int8 > SAL_CALL VclCanvasBitmap::getData( rendering::IntegerB
                 const long nNonAlphaBytes( m_nBitsPerInputPixel/8 );
                 const long nScanlineOffsetLeft(aRequestedArea.Left()*nNonAlphaBytes);
                 Scanline  pScan = m_pBmpAcc->GetScanline(y) + nScanlineOffsetLeft;
+                Scanline pScanlineAlpha = m_pAlphaAcc->GetScanline( y );
 
                 // input integer multiple of byte - copy directly
                 for( long x=aRequestedArea.Left(); x<aRequestedArea.Right(); ++x )
                 {
                     for( long i=0; i<nNonAlphaBytes; ++i )
                         *pOutScan++ = *pScan++;
-                    *pOutScan++ = m_pAlphaAcc->GetPixelIndex( y, x );
+                    *pOutScan++ = m_pAlphaAcc->GetIndexFromData( pScanlineAlpha, x );
                 }
             }
 
@@ -610,7 +591,7 @@ uno::Sequence< sal_Int8 > SAL_CALL VclCanvasBitmap::getPixel( rendering::Integer
     return aRet;
 }
 
-uno::Reference< rendering::XBitmapPalette > SAL_CALL VclCanvasBitmap::getPalette()
+uno::Reference< rendering::XBitmapPalette > VclCanvasBitmap::getPalette()
 {
     SolarMutexGuard aGuard;
 
@@ -901,12 +882,12 @@ uno::Sequence< double > SAL_CALL VclCanvasBitmap::convertFromRGB( const uno::Seq
 
     if( m_bPalette )
     {
-        for( std::size_t i=0; i<nLen; ++i )
+        for( const auto& rIn : rgbColor )
         {
             pColors[m_nIndexIndex] = m_pBmpAcc->GetBestPaletteIndex(
-                    BitmapColor(toByteColor(rgbColor[i].Red),
-                                toByteColor(rgbColor[i].Green),
-                                toByteColor(rgbColor[i].Blue)));
+                    BitmapColor(toByteColor(rIn.Red),
+                                toByteColor(rIn.Green),
+                                toByteColor(rIn.Blue)));
             if( m_nAlphaIndex != -1 )
                 pColors[m_nAlphaIndex] = 1.0;
 
@@ -915,11 +896,11 @@ uno::Sequence< double > SAL_CALL VclCanvasBitmap::convertFromRGB( const uno::Seq
     }
     else
     {
-        for( std::size_t i=0; i<nLen; ++i )
+        for( const auto& rIn : rgbColor )
         {
-            pColors[m_nRedIndex]   = rgbColor[i].Red;
-            pColors[m_nGreenIndex] = rgbColor[i].Green;
-            pColors[m_nBlueIndex]  = rgbColor[i].Blue;
+            pColors[m_nRedIndex]   = rIn.Red;
+            pColors[m_nGreenIndex] = rIn.Green;
+            pColors[m_nBlueIndex]  = rIn.Blue;
             if( m_nAlphaIndex != -1 )
                 pColors[m_nAlphaIndex] = 1.0;
 
@@ -941,27 +922,27 @@ uno::Sequence< double > SAL_CALL VclCanvasBitmap::convertFromARGB( const uno::Se
 
     if( m_bPalette )
     {
-        for( std::size_t i=0; i<nLen; ++i )
+        for( const auto& rIn : rgbColor )
         {
             pColors[m_nIndexIndex] = m_pBmpAcc->GetBestPaletteIndex(
-                    BitmapColor(toByteColor(rgbColor[i].Red),
-                                toByteColor(rgbColor[i].Green),
-                                toByteColor(rgbColor[i].Blue)));
+                    BitmapColor(toByteColor(rIn.Red),
+                                toByteColor(rIn.Green),
+                                toByteColor(rIn.Blue)));
             if( m_nAlphaIndex != -1 )
-                pColors[m_nAlphaIndex] = rgbColor[i].Alpha;
+                pColors[m_nAlphaIndex] = rIn.Alpha;
 
             pColors += nComponentsPerPixel;
         }
     }
     else
     {
-        for( std::size_t i=0; i<nLen; ++i )
+        for( const auto& rIn : rgbColor )
         {
-            pColors[m_nRedIndex]   = rgbColor[i].Red;
-            pColors[m_nGreenIndex] = rgbColor[i].Green;
-            pColors[m_nBlueIndex]  = rgbColor[i].Blue;
+            pColors[m_nRedIndex]   = rIn.Red;
+            pColors[m_nGreenIndex] = rIn.Green;
+            pColors[m_nBlueIndex]  = rIn.Blue;
             if( m_nAlphaIndex != -1 )
-                pColors[m_nAlphaIndex] = rgbColor[i].Alpha;
+                pColors[m_nAlphaIndex] = rIn.Alpha;
 
             pColors += nComponentsPerPixel;
         }
@@ -981,13 +962,13 @@ uno::Sequence< double > SAL_CALL VclCanvasBitmap::convertFromPARGB( const uno::S
 
     if( m_bPalette )
     {
-        for( std::size_t i=0; i<nLen; ++i )
+        for( const auto& rIn : rgbColor )
         {
-            const double nAlpha( rgbColor[i].Alpha );
+            const double nAlpha( rIn.Alpha );
             pColors[m_nIndexIndex] = m_pBmpAcc->GetBestPaletteIndex(
-                    BitmapColor(toByteColor(rgbColor[i].Red / nAlpha),
-                                toByteColor(rgbColor[i].Green / nAlpha),
-                                toByteColor(rgbColor[i].Blue / nAlpha)));
+                    BitmapColor(toByteColor(rIn.Red / nAlpha),
+                                toByteColor(rIn.Green / nAlpha),
+                                toByteColor(rIn.Blue / nAlpha)));
             if( m_nAlphaIndex != -1 )
                 pColors[m_nAlphaIndex] = nAlpha;
 
@@ -996,12 +977,12 @@ uno::Sequence< double > SAL_CALL VclCanvasBitmap::convertFromPARGB( const uno::S
     }
     else
     {
-        for( std::size_t i=0; i<nLen; ++i )
+        for( const auto& rIn : rgbColor )
         {
-            const double nAlpha( rgbColor[i].Alpha );
-            pColors[m_nRedIndex]   = rgbColor[i].Red / nAlpha;
-            pColors[m_nGreenIndex] = rgbColor[i].Green / nAlpha;
-            pColors[m_nBlueIndex]  = rgbColor[i].Blue / nAlpha;
+            const double nAlpha( rIn.Alpha );
+            pColors[m_nRedIndex]   = rIn.Red / nAlpha;
+            pColors[m_nGreenIndex] = rIn.Green / nAlpha;
+            pColors[m_nBlueIndex]  = rIn.Blue / nAlpha;
             if( m_nAlphaIndex != -1 )
                 pColors[m_nAlphaIndex] = nAlpha;
 

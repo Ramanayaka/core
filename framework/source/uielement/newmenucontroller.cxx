@@ -18,33 +18,29 @@
  */
 
 #include <uielement/newmenucontroller.hxx>
+#include <menuconfiguration.hxx>
 
-#include "services.h"
-#include <classes/resource.hrc>
-#include <classes/fwkresid.hxx>
+#include <services.h>
 
-#include <com/sun/star/awt/XDevice.hpp>
 #include <com/sun/star/beans/PropertyValue.hpp>
-#include <com/sun/star/awt/MenuItemStyle.hpp>
 #include <com/sun/star/ui/theModuleUIConfigurationManagerSupplier.hpp>
 #include <com/sun/star/ui/XUIConfigurationManagerSupplier.hpp>
 #include <com/sun/star/ui/GlobalAcceleratorConfiguration.hpp>
 #include <com/sun/star/frame/ModuleManager.hpp>
+#include <com/sun/star/frame/XFrame.hpp>
+#include <com/sun/star/util/XURLTransformer.hpp>
 
 #include <vcl/svapp.hxx>
-#include <vcl/i18nhelp.hxx>
 #include <vcl/settings.hxx>
 #include <vcl/commandinfoprovider.hxx>
-#include <rtl/ustrbuf.hxx>
-#include <osl/file.hxx>
-#include <svtools/menuoptions.hxx>
 #include <svtools/acceleratorexecute.hxx>
 #include <svtools/imagemgr.hxx>
+#include <toolkit/awt/vclxmenu.hxx>
 #include <tools/urlobj.hxx>
 #include <unotools/dynamicmenuoptions.hxx>
 #include <unotools/moduleoptions.hxx>
 #include <osl/mutex.hxx>
-#include <memory>
+#include <cppuhelper/supportsservice.hxx>
 
 //  Defines
 #define aSlotNewDocDirect ".uno:AddDirect"
@@ -61,13 +57,20 @@ using namespace com::sun::star::ui;
 namespace framework
 {
 
-DEFINE_XSERVICEINFO_MULTISERVICE_2      (   NewMenuController                           ,
-                                            OWeakObject                                 ,
-                                            SERVICENAME_POPUPMENUCONTROLLER             ,
-                                            IMPLEMENTATIONNAME_NEWMENUCONTROLLER
-                                        )
+OUString SAL_CALL NewMenuController::getImplementationName()
+{
+    return "com.sun.star.comp.framework.NewMenuController";
+}
 
-DEFINE_INIT_SERVICE                     (   NewMenuController, {} )
+sal_Bool SAL_CALL NewMenuController::supportsService( const OUString& sServiceName )
+{
+    return cppu::supportsService(this, sServiceName);
+}
+
+css::uno::Sequence< OUString > SAL_CALL NewMenuController::getSupportedServiceNames()
+{
+    return { SERVICENAME_POPUPMENUCONTROLLER };
+}
 
 void NewMenuController::setMenuImages( PopupMenu* pPopupMenu, bool bSetImages )
 {
@@ -83,8 +86,8 @@ void NewMenuController::setMenuImages( PopupMenu* pPopupMenu, bool bSetImages )
             {
                 OUString aImageId;
                 OUString aCmd( pPopupMenu->GetItemCommand( nItemId ) );
-                sal_uLong nAttributePtr = pPopupMenu->GetUserValue( nItemId );
-                MenuAttributes* pAttributes = reinterpret_cast<MenuAttributes *>(nAttributePtr);
+                void* nAttributePtr = pPopupMenu->GetUserValue( nItemId );
+                MenuAttributes* pAttributes = static_cast<MenuAttributes *>(nAttributePtr);
                 if (pAttributes)
                     aImageId = pAttributes->aImageId;
 
@@ -129,24 +132,24 @@ void NewMenuController::determineAndSetNewDocAccel( PopupMenu* pPopupMenu, const
         }
     }
 
-    if ( !bFound )
+    if ( bFound )
+        return;
+
+    // Search for the default module name
+    OUString aDefaultModuleName( SvtModuleOptions().GetDefaultModuleName() );
+    if ( aDefaultModuleName.isEmpty() )
+        return;
+
+    for ( sal_uInt16 i = 0; i < nCount; i++ )
     {
-        // Search for the default module name
-        OUString aDefaultModuleName( SvtModuleOptions().GetDefaultModuleName() );
-        if ( !aDefaultModuleName.isEmpty() )
+        if ( pPopupMenu->GetItemType( i ) != MenuItemType::SEPARATOR )
         {
-            for ( sal_uInt16 i = 0; i < nCount; i++ )
+            nId = pPopupMenu->GetItemId( i );
+            aCommand = pPopupMenu->GetItemCommand( nId );
+            if ( aCommand.indexOf( aDefaultModuleName ) >= 0 )
             {
-                if ( pPopupMenu->GetItemType( i ) != MenuItemType::SEPARATOR )
-                {
-                    nId = pPopupMenu->GetItemId( i );
-                    aCommand = pPopupMenu->GetItemCommand( nId );
-                    if ( aCommand.indexOf( aDefaultModuleName ) >= 0 )
-                    {
-                        pPopupMenu->SetAccelKey( nId, rKeyCode );
-                        break;
-                    }
-                }
+                pPopupMenu->SetAccelKey( nId, rKeyCode );
+                break;
             }
         }
     }
@@ -154,110 +157,110 @@ void NewMenuController::determineAndSetNewDocAccel( PopupMenu* pPopupMenu, const
 
 void NewMenuController::setAccelerators( PopupMenu* pPopupMenu )
 {
-    if ( m_bModuleIdentified )
-    {
-        Reference< XAcceleratorConfiguration > xDocAccelCfg( m_xDocAcceleratorManager );
-        Reference< XAcceleratorConfiguration > xModuleAccelCfg( m_xModuleAcceleratorManager );
-        Reference< XAcceleratorConfiguration > xGlobalAccelCfg( m_xGlobalAcceleratorManager );
+    if ( !m_bModuleIdentified )
+        return;
 
-        if ( !m_bAcceleratorCfg )
+    Reference< XAcceleratorConfiguration > xDocAccelCfg( m_xDocAcceleratorManager );
+    Reference< XAcceleratorConfiguration > xModuleAccelCfg( m_xModuleAcceleratorManager );
+    Reference< XAcceleratorConfiguration > xGlobalAccelCfg( m_xGlobalAcceleratorManager );
+
+    if ( !m_bAcceleratorCfg )
+    {
+        // Retrieve references on demand
+        m_bAcceleratorCfg = true;
+        if ( !xDocAccelCfg.is() )
         {
-            // Retrieve references on demand
-            m_bAcceleratorCfg = true;
-            if ( !xDocAccelCfg.is() )
+            Reference< XController > xController = m_xFrame->getController();
+            Reference< XModel > xModel;
+            if ( xController.is() )
             {
-                Reference< XController > xController = m_xFrame->getController();
-                Reference< XModel > xModel;
-                if ( xController.is() )
+                xModel = xController->getModel();
+                if ( xModel.is() )
                 {
-                    xModel = xController->getModel();
-                    if ( xModel.is() )
+                    Reference< XUIConfigurationManagerSupplier > xSupplier( xModel, UNO_QUERY );
+                    if ( xSupplier.is() )
                     {
-                        Reference< XUIConfigurationManagerSupplier > xSupplier( xModel, UNO_QUERY );
-                        if ( xSupplier.is() )
+                        Reference< XUIConfigurationManager > xDocUICfgMgr = xSupplier->getUIConfigurationManager();
+                        if ( xDocUICfgMgr.is() )
                         {
-                            Reference< XUIConfigurationManager > xDocUICfgMgr( xSupplier->getUIConfigurationManager(), UNO_QUERY );
-                            if ( xDocUICfgMgr.is() )
-                            {
-                                xDocAccelCfg = xDocUICfgMgr->getShortCutManager();
-                                m_xDocAcceleratorManager = xDocAccelCfg;
-                            }
+                            xDocAccelCfg = xDocUICfgMgr->getShortCutManager();
+                            m_xDocAcceleratorManager = xDocAccelCfg;
                         }
                     }
                 }
             }
+        }
 
-            if ( !xModuleAccelCfg.is() )
+        if ( !xModuleAccelCfg.is() )
+        {
+            Reference< XModuleUIConfigurationManagerSupplier > xModuleCfgMgrSupplier =
+                theModuleUIConfigurationManagerSupplier::get( m_xContext );
+            Reference< XUIConfigurationManager > xUICfgMgr = xModuleCfgMgrSupplier->getUIConfigurationManager( m_aModuleIdentifier );
+            if ( xUICfgMgr.is() )
             {
-                Reference< XModuleUIConfigurationManagerSupplier > xModuleCfgMgrSupplier =
-                    theModuleUIConfigurationManagerSupplier::get( m_xContext );
-                Reference< XUIConfigurationManager > xUICfgMgr = xModuleCfgMgrSupplier->getUIConfigurationManager( m_aModuleIdentifier );
-                if ( xUICfgMgr.is() )
-                {
-                    xModuleAccelCfg = xUICfgMgr->getShortCutManager();
-                    m_xModuleAcceleratorManager = xModuleAccelCfg;
-                }
-            }
-
-            if ( !xGlobalAccelCfg.is() )
-            {
-                xGlobalAccelCfg = GlobalAcceleratorConfiguration::create( m_xContext );
-                m_xGlobalAcceleratorManager = xGlobalAccelCfg;
+                xModuleAccelCfg = xUICfgMgr->getShortCutManager();
+                m_xModuleAcceleratorManager = xModuleAccelCfg;
             }
         }
 
-        vcl::KeyCode                    aEmptyKeyCode;
-        sal_uInt16                      nItemCount( pPopupMenu->GetItemCount() );
-        std::vector< vcl::KeyCode >     aMenuShortCuts;
-        std::vector< OUString >    aCmds;
-        std::vector< sal_uInt16 >       aIds;
-        for ( sal_uInt16 i = 0; i < nItemCount; i++ )
+        if ( !xGlobalAccelCfg.is() )
         {
-            if ( pPopupMenu->GetItemType( i ) != MenuItemType::SEPARATOR )
-            {
-                sal_uInt16 nId( pPopupMenu->GetItemId( i ));
-                aIds.push_back( nId );
-                aMenuShortCuts.push_back( aEmptyKeyCode );
-                aCmds.push_back( pPopupMenu->GetItemCommand( nId ));
-            }
+            xGlobalAccelCfg = GlobalAcceleratorConfiguration::create( m_xContext );
+            m_xGlobalAcceleratorManager = xGlobalAccelCfg;
         }
+    }
 
-        sal_uInt32 nSeqCount( aIds.size() );
-
-        if ( m_bNewMenu )
-            nSeqCount+=1;
-
-        Sequence< OUString > aSeq( nSeqCount );
-
-        // Add a special command for our "New" menu.
-        if ( m_bNewMenu )
+    vcl::KeyCode                    aEmptyKeyCode;
+    sal_uInt16                      nItemCount( pPopupMenu->GetItemCount() );
+    std::vector< vcl::KeyCode >     aMenuShortCuts;
+    std::vector< OUString >    aCmds;
+    std::vector< sal_uInt16 >       aIds;
+    for ( sal_uInt16 i = 0; i < nItemCount; i++ )
+    {
+        if ( pPopupMenu->GetItemType( i ) != MenuItemType::SEPARATOR )
         {
-            aSeq[nSeqCount-1] = m_aCommandURL;
+            sal_uInt16 nId( pPopupMenu->GetItemId( i ));
+            aIds.push_back( nId );
             aMenuShortCuts.push_back( aEmptyKeyCode );
+            aCmds.push_back( pPopupMenu->GetItemCommand( nId ));
         }
+    }
 
-        const sal_uInt32 nCount = aCmds.size();
-        for ( sal_uInt32 i = 0; i < nCount; i++ )
-            aSeq[i] = aCmds[i];
+    sal_uInt32 nSeqCount( aIds.size() );
 
-        if ( m_xGlobalAcceleratorManager.is() )
-            retrieveShortcutsFromConfiguration( xGlobalAccelCfg, aSeq, aMenuShortCuts );
-        if ( m_xModuleAcceleratorManager.is() )
-            retrieveShortcutsFromConfiguration( xModuleAccelCfg, aSeq, aMenuShortCuts );
-        if ( m_xDocAcceleratorManager.is() )
-            retrieveShortcutsFromConfiguration( xDocAccelCfg, aSeq, aMenuShortCuts );
+    if ( m_bNewMenu )
+        nSeqCount+=1;
 
-        const sal_uInt32 nCount2 = aIds.size();
-        for ( sal_uInt32 i = 0; i < nCount2; i++ )
-            pPopupMenu->SetAccelKey( aIds[i], aMenuShortCuts[i] );
+    Sequence< OUString > aSeq( nSeqCount );
 
-        // Special handling for "New" menu short-cut should be set at the
-        // document which will be opened using it.
-        if ( m_bNewMenu )
-        {
-            if ( aMenuShortCuts[nSeqCount-1] != aEmptyKeyCode )
-                determineAndSetNewDocAccel( pPopupMenu, aMenuShortCuts[nSeqCount-1] );
-        }
+    // Add a special command for our "New" menu.
+    if ( m_bNewMenu )
+    {
+        aSeq[nSeqCount-1] = m_aCommandURL;
+        aMenuShortCuts.push_back( aEmptyKeyCode );
+    }
+
+    const sal_uInt32 nCount = aCmds.size();
+    for ( sal_uInt32 i = 0; i < nCount; i++ )
+        aSeq[i] = aCmds[i];
+
+    if ( m_xGlobalAcceleratorManager.is() )
+        retrieveShortcutsFromConfiguration( xGlobalAccelCfg, aSeq, aMenuShortCuts );
+    if ( m_xModuleAcceleratorManager.is() )
+        retrieveShortcutsFromConfiguration( xModuleAccelCfg, aSeq, aMenuShortCuts );
+    if ( m_xDocAcceleratorManager.is() )
+        retrieveShortcutsFromConfiguration( xDocAccelCfg, aSeq, aMenuShortCuts );
+
+    const sal_uInt32 nCount2 = aIds.size();
+    for ( sal_uInt32 i = 0; i < nCount2; i++ )
+        pPopupMenu->SetAccelKey( aIds[i], aMenuShortCuts[i] );
+
+    // Special handling for "New" menu short-cut should be set at the
+    // document which will be opened using it.
+    if ( m_bNewMenu )
+    {
+        if ( aMenuShortCuts[nSeqCount-1] != aEmptyKeyCode )
+            determineAndSetNewDocAccel( pPopupMenu, aMenuShortCuts[nSeqCount-1] );
     }
 }
 
@@ -266,21 +269,21 @@ void NewMenuController::retrieveShortcutsFromConfiguration(
     const Sequence< OUString >& rCommands,
     std::vector< vcl::KeyCode >& aMenuShortCuts )
 {
-    if ( rAccelCfg.is() )
+    if ( !rAccelCfg.is() )
+        return;
+
+    try
     {
-        try
+        css::awt::KeyEvent aKeyEvent;
+        Sequence< Any > aSeqKeyCode = rAccelCfg->getPreferredKeyEventsForCommandList( rCommands );
+        for ( sal_Int32 i = 0; i < aSeqKeyCode.getLength(); i++ )
         {
-            css::awt::KeyEvent aKeyEvent;
-            Sequence< Any > aSeqKeyCode = rAccelCfg->getPreferredKeyEventsForCommandList( rCommands );
-            for ( sal_Int32 i = 0; i < aSeqKeyCode.getLength(); i++ )
-            {
-                if ( aSeqKeyCode[i] >>= aKeyEvent )
-                    aMenuShortCuts[i] = svt::AcceleratorExecute::st_AWTKey2VCLKey( aKeyEvent );
-            }
+            if ( aSeqKeyCode[i] >>= aKeyEvent )
+                aMenuShortCuts[i] = svt::AcceleratorExecute::st_AWTKey2VCLKey( aKeyEvent );
         }
-        catch ( const IllegalArgumentException& )
-        {
-        }
+    }
+    catch ( const IllegalArgumentException& )
+    {
     }
 }
 
@@ -300,9 +303,9 @@ NewMenuController::~NewMenuController()
 }
 
 // private function
-void NewMenuController::fillPopupMenu( Reference< css::awt::XPopupMenu >& rPopupMenu )
+void NewMenuController::fillPopupMenu( Reference< css::awt::XPopupMenu > const & rPopupMenu )
 {
-    VCLXPopupMenu* pPopupMenu    = static_cast<VCLXPopupMenu *>(VCLXMenu::GetImplementation( rPopupMenu ));
+    VCLXPopupMenu* pPopupMenu    = static_cast<VCLXPopupMenu *>(comphelper::getUnoTunnelImplementation<VCLXMenu>( rPopupMenu ));
     PopupMenu*     pVCLPopupMenu = nullptr;
 
     SolarMutexGuard aSolarMutexGuard;
@@ -311,59 +314,59 @@ void NewMenuController::fillPopupMenu( Reference< css::awt::XPopupMenu >& rPopup
     if ( pPopupMenu )
         pVCLPopupMenu = static_cast<PopupMenu *>(pPopupMenu->GetMenu());
 
-    if ( pVCLPopupMenu )
+    if ( !pVCLPopupMenu )
+        return;
+
+    Reference< XDispatchProvider > xDispatchProvider( m_xFrame, UNO_QUERY );
+    URL aTargetURL;
+    aTargetURL.Complete = OUString::createFromAscii(m_bNewMenu ? aSlotNewDocDirect : aSlotAutoPilot);
+    m_xURLTransformer->parseStrict( aTargetURL );
+    Reference< XDispatch > xMenuItemDispatch = xDispatchProvider->queryDispatch( aTargetURL, OUString(), 0 );
+    if(xMenuItemDispatch == nullptr)
+        return;
+
+    const css::uno::Sequence< css::uno::Sequence< css::beans::PropertyValue > > aDynamicMenuEntries =
+        SvtDynamicMenuOptions().GetMenu( m_bNewMenu ? EDynamicMenuType::NewMenu : EDynamicMenuType::WizardMenu );
+
+    OUString aTitle;
+    OUString aURL;
+    OUString aTargetFrame;
+    OUString aImageId;
+    sal_uInt16 nItemId = 1;
+
+    for ( const auto& aDynamicMenuEntry : aDynamicMenuEntries )
     {
-        Reference< XDispatchProvider > xDispatchProvider( m_xFrame, UNO_QUERY );
-        URL aTargetURL;
-        aTargetURL.Complete = rtl::OUString::createFromAscii(m_bNewMenu ? aSlotNewDocDirect : aSlotAutoPilot);
-        m_xURLTransformer->parseStrict( aTargetURL );
-        Reference< XDispatch > xMenuItemDispatch = xDispatchProvider->queryDispatch( aTargetURL, OUString(), 0 );
-        if(xMenuItemDispatch == nullptr)
-            return;
-
-        css::uno::Sequence< css::uno::Sequence< css::beans::PropertyValue > > aDynamicMenuEntries =
-            SvtDynamicMenuOptions().GetMenu( m_bNewMenu ? EDynamicMenuType::NewMenu : EDynamicMenuType::WizardMenu );
-
-        OUString aTitle;
-        OUString aURL;
-        OUString aTargetFrame;
-        OUString aImageId;
-        sal_uInt16 nItemId = 1;
-
-        for ( const auto& aDynamicMenuEntry : aDynamicMenuEntries )
+        for ( const auto& aProperty : aDynamicMenuEntry )
         {
-            for ( const auto& aProperty : aDynamicMenuEntry )
-            {
-                if ( aProperty.Name == DYNAMICMENU_PROPERTYNAME_URL )
-                    aProperty.Value >>= aURL;
-                else if ( aProperty.Name == DYNAMICMENU_PROPERTYNAME_TITLE )
-                    aProperty.Value >>= aTitle;
-                else if ( aProperty.Name == DYNAMICMENU_PROPERTYNAME_IMAGEIDENTIFIER )
-                    aProperty.Value >>= aImageId;
-                else if ( aProperty.Name == DYNAMICMENU_PROPERTYNAME_TARGETNAME )
-                    aProperty.Value >>= aTargetFrame;
-            }
-
-            if ( aTitle.isEmpty() && aURL.isEmpty() )
-                continue;
-
-            if ( aURL == "private:separator" )
-                pVCLPopupMenu->InsertSeparator();
-            else
-            {
-                pVCLPopupMenu->InsertItem( nItemId, aTitle );
-                pVCLPopupMenu->SetItemCommand( nItemId, aURL );
-
-                sal_uIntPtr nAttributePtr = MenuAttributes::CreateAttribute( aTargetFrame, aImageId );
-                pVCLPopupMenu->SetUserValue( nItemId, nAttributePtr, MenuAttributes::ReleaseAttribute );
-
-                nItemId++;
-            }
+            if ( aProperty.Name == DYNAMICMENU_PROPERTYNAME_URL )
+                aProperty.Value >>= aURL;
+            else if ( aProperty.Name == DYNAMICMENU_PROPERTYNAME_TITLE )
+                aProperty.Value >>= aTitle;
+            else if ( aProperty.Name == DYNAMICMENU_PROPERTYNAME_IMAGEIDENTIFIER )
+                aProperty.Value >>= aImageId;
+            else if ( aProperty.Name == DYNAMICMENU_PROPERTYNAME_TARGETNAME )
+                aProperty.Value >>= aTargetFrame;
         }
 
-        if ( m_bShowImages )
-            setMenuImages( pVCLPopupMenu, m_bShowImages );
+        if ( aTitle.isEmpty() && aURL.isEmpty() )
+            continue;
+
+        if ( aURL == "private:separator" )
+            pVCLPopupMenu->InsertSeparator();
+        else
+        {
+            pVCLPopupMenu->InsertItem( nItemId, aTitle );
+            pVCLPopupMenu->SetItemCommand( nItemId, aURL );
+
+            void* nAttributePtr = MenuAttributes::CreateAttribute( aTargetFrame, aImageId );
+            pVCLPopupMenu->SetUserValue( nItemId, nAttributePtr, MenuAttributes::ReleaseAttribute );
+
+            nItemId++;
+        }
     }
+
+    if ( m_bShowImages )
+        setMenuImages( pVCLPopupMenu, m_bShowImages );
 }
 
 // XEventListener
@@ -392,62 +395,63 @@ void SAL_CALL NewMenuController::itemSelected( const css::awt::MenuEvent& rEvent
     Reference< css::awt::XPopupMenu > xPopupMenu;
     Reference< XComponentContext >    xContext;
 
-    osl::ClearableMutexGuard aLock( m_aMutex );
-    xPopupMenu = m_xPopupMenu;
-    xContext   = m_xContext;
-    aLock.clear();
-
-    if ( xPopupMenu.is() )
     {
-        VCLXPopupMenu* pPopupMenu = static_cast<VCLXPopupMenu *>(VCLXPopupMenu::GetImplementation( xPopupMenu ));
-        if ( pPopupMenu )
-        {
-            OUString aURL;
-            OUString aTargetFrame( m_aTargetFrame );
-
-            {
-                SolarMutexGuard aSolarMutexGuard;
-                PopupMenu* pVCLPopupMenu = static_cast<PopupMenu *>(pPopupMenu->GetMenu());
-                aURL = pVCLPopupMenu->GetItemCommand(rEvent.MenuId);
-                sal_uLong nAttributePtr = pVCLPopupMenu->GetUserValue(rEvent.MenuId);
-                MenuAttributes* pAttributes = reinterpret_cast<MenuAttributes *>(nAttributePtr);
-                if (pAttributes)
-                    aTargetFrame = pAttributes->aTargetFrame;
-            }
-
-            Sequence< PropertyValue > aArgsList( 1 );
-            aArgsList[0].Name = "Referer";
-            aArgsList[0].Value <<= OUString( "private:user" );
-
-            dispatchCommand( aURL, aArgsList, aTargetFrame );
-        }
+        osl::MutexGuard aLock(m_aMutex);
+        xPopupMenu = m_xPopupMenu;
+        xContext = m_xContext;
     }
+
+    if ( !xPopupMenu.is() )
+        return;
+
+    VCLXPopupMenu* pPopupMenu = static_cast<VCLXPopupMenu *>(comphelper::getUnoTunnelImplementation<VCLXMenu>( xPopupMenu ));
+    if ( !pPopupMenu )
+        return;
+
+    OUString aURL;
+    OUString aTargetFrame( m_aTargetFrame );
+
+    {
+        SolarMutexGuard aSolarMutexGuard;
+        PopupMenu* pVCLPopupMenu = static_cast<PopupMenu *>(pPopupMenu->GetMenu());
+        aURL = pVCLPopupMenu->GetItemCommand(rEvent.MenuId);
+        void* nAttributePtr = pVCLPopupMenu->GetUserValue(rEvent.MenuId);
+        MenuAttributes* pAttributes = static_cast<MenuAttributes *>(nAttributePtr);
+        if (pAttributes)
+            aTargetFrame = pAttributes->aTargetFrame;
+    }
+
+    Sequence< PropertyValue > aArgsList( 1 );
+    aArgsList[0].Name = "Referer";
+    aArgsList[0].Value <<= OUString( "private:user" );
+
+    dispatchCommand( aURL, aArgsList, aTargetFrame );
 }
 
 void SAL_CALL NewMenuController::itemActivated( const css::awt::MenuEvent& )
 {
     SolarMutexGuard aSolarMutexGuard;
-    if ( m_xFrame.is() && m_xPopupMenu.is() )
+    if ( !(m_xFrame.is() && m_xPopupMenu.is()) )
+        return;
+
+    VCLXPopupMenu* pPopupMenu = static_cast<VCLXPopupMenu *>(comphelper::getUnoTunnelImplementation<VCLXMenu>( m_xPopupMenu ));
+    if ( !pPopupMenu )
+        return;
+
+    const StyleSettings& rSettings = Application::GetSettings().GetStyleSettings();
+    bool bShowImages( rSettings.GetUseImagesInMenus() );
+    OUString aIconTheme( rSettings.DetermineIconTheme() );
+
+    PopupMenu* pVCLPopupMenu = static_cast<PopupMenu *>(pPopupMenu->GetMenu());
+
+    if ( m_bShowImages != bShowImages || m_aIconTheme != aIconTheme )
     {
-        VCLXPopupMenu* pPopupMenu = static_cast<VCLXPopupMenu *>(VCLXPopupMenu::GetImplementation( m_xPopupMenu ));
-        if ( pPopupMenu )
-        {
-            const StyleSettings& rSettings = Application::GetSettings().GetStyleSettings();
-            bool bShowImages( rSettings.GetUseImagesInMenus() );
-            OUString aIconTheme( rSettings.DetermineIconTheme() );
-
-            PopupMenu* pVCLPopupMenu = static_cast<PopupMenu *>(pPopupMenu->GetMenu());
-
-            if ( m_bShowImages != bShowImages || m_aIconTheme != aIconTheme )
-            {
-                m_bShowImages = bShowImages;
-                m_aIconTheme = aIconTheme;
-                setMenuImages( pVCLPopupMenu, m_bShowImages );
-            }
-
-            setAccelerators( pVCLPopupMenu );
-        }
+        m_bShowImages = bShowImages;
+        m_aIconTheme = aIconTheme;
+        setMenuImages( pVCLPopupMenu, m_bShowImages );
     }
+
+    setAccelerators( pVCLPopupMenu );
 }
 
 // XPopupMenuController
@@ -470,11 +474,11 @@ void NewMenuController::impl_setPopupMenu()
 
             if ( xModuleManager->getByName( m_aModuleIdentifier ) >>= aSeq )
             {
-                for ( sal_Int32 y = 0; y < aSeq.getLength(); y++ )
+                for ( PropertyValue const & prop : std::as_const(aSeq) )
                 {
-                    if ( aSeq[y].Name == "ooSetupFactoryEmptyDocumentURL" )
+                    if ( prop.Name == "ooSetupFactoryEmptyDocumentURL" )
                     {
-                        aSeq[y].Value >>= m_aEmptyDocURL;
+                        prop.Value >>= m_aEmptyDocURL;
                         break;
                     }
                 }
@@ -496,21 +500,29 @@ void SAL_CALL NewMenuController::initialize( const Sequence< Any >& aArguments )
     osl::MutexGuard aLock( m_aMutex );
 
     bool bInitalized( m_bInitialized );
-    if ( !bInitalized )
+    if ( bInitalized )
+        return;
+
+    svt::PopupMenuControllerBase::initialize( aArguments );
+
+    if ( m_bInitialized )
     {
-        svt::PopupMenuControllerBase::initialize( aArguments );
+        const StyleSettings& rSettings = Application::GetSettings().GetStyleSettings();
 
-        if ( m_bInitialized )
-        {
-            const StyleSettings& rSettings = Application::GetSettings().GetStyleSettings();
-
-            m_bShowImages   = rSettings.GetUseImagesInMenus();
-            m_aIconTheme    = rSettings.DetermineIconTheme();
-            m_bNewMenu      = m_aCommandURL == aSlotNewDocDirect;
-        }
+        m_bShowImages   = rSettings.GetUseImagesInMenus();
+        m_aIconTheme    = rSettings.DetermineIconTheme();
+        m_bNewMenu      = m_aCommandURL == aSlotNewDocDirect;
     }
 }
 
+}
+
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+framework_NewMenuController_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const& )
+{
+    return cppu::acquire(new framework::NewMenuController(context));
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

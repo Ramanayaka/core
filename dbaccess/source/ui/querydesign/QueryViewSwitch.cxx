@@ -17,15 +17,13 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "QueryViewSwitch.hxx"
-#include "QueryDesignView.hxx"
-#include "QueryTextView.hxx"
-#include "querycontainerwindow.hxx"
-#include "dbu_qry.hrc"
-#include "browserids.hxx"
-#include "adtabdlg.hxx"
-#include "querycontroller.hxx"
-#include "sqledit.hxx"
+#include <QueryViewSwitch.hxx>
+#include <QueryDesignView.hxx>
+#include <QueryTextView.hxx>
+#include <querycontainerwindow.hxx>
+#include <adtabdlg.hxx>
+#include <querycontroller.hxx>
+#include <sqledit.hxx>
 
 using namespace dbaui;
 using namespace ::com::sun::star::uno;
@@ -102,21 +100,21 @@ void OQueryViewSwitch::copy()
         m_pDesignView->copy();
 }
 
-bool OQueryViewSwitch::isCutAllowed()
+bool OQueryViewSwitch::isCutAllowed() const
 {
     if(m_pTextView->IsVisible())
         return m_pTextView->isCutAllowed();
     return m_pDesignView->isCutAllowed();
 }
 
-bool OQueryViewSwitch::isCopyAllowed()
+bool OQueryViewSwitch::isCopyAllowed() const
 {
     if(m_pTextView->IsVisible())
         return true;
     return m_pDesignView->isCopyAllowed();
 }
 
-bool OQueryViewSwitch::isPasteAllowed()
+bool OQueryViewSwitch::isPasteAllowed() const
 {
     if(m_pTextView->IsVisible())
         return true;
@@ -150,9 +148,9 @@ void OQueryViewSwitch::impl_forceSQLView()
     OAddTableDlg* pAddTabDialog( getAddTableDialog() );
 
     // hide the "Add Table" dialog
-    m_bAddTableDialogWasVisible = pAddTabDialog && pAddTabDialog->IsVisible();
-    if ( m_bAddTableDialogWasVisible )
-        pAddTabDialog->Hide();
+    m_bAddTableDialogWasVisible = pAddTabDialog != nullptr;
+    if (m_bAddTableDialogWasVisible)
+        pAddTabDialog->response(RET_CLOSE);
 
     // tell the views they're in/active
     m_pDesignView->stopTimer();
@@ -227,7 +225,7 @@ bool OQueryViewSwitch::impl_postViewSwitch( const bool i_bGraphicalDesign, const
         OAddTableDlg* pAddTabDialog( getAddTableDialog() );
         if ( pAddTabDialog )
             if ( i_bGraphicalDesign && m_bAddTableDialogWasVisible )
-                pAddTabDialog->Show();
+                m_pDesignView->getController().runDialogAsync();
 
         GrabFocus();
     }
@@ -272,21 +270,18 @@ void OQueryViewSwitch::SetPosSizePixel( Point _rPt,Size _rSize)
     m_pTextView->SetPosSizePixel( _rPt,_rSize);
 }
 
-Reference< XComponentContext > OQueryViewSwitch::getORB() const
+Reference< XComponentContext > const & OQueryViewSwitch::getORB() const
 {
     return m_pDesignView->getORB();
 }
 
-bool OQueryViewSwitch::reset()
+void OQueryViewSwitch::reset()
 {
     m_pDesignView->reset();
     if ( !m_pDesignView->initByParseIterator( nullptr ) )
-        return false;
+        return;
 
-    if ( switchView( nullptr ) )
-        return false;
-
-    return true;
+    switchView( nullptr );
 }
 
 void OQueryViewSwitch::setNoneVisbleRow(sal_Int32 _nRows)

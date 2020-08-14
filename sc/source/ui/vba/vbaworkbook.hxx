@@ -22,7 +22,6 @@
 #include <com/sun/star/frame/XModel.hpp>
 #include <ooo/vba/excel/XWorkbook.hpp>
 #include <cppuhelper/implbase.hxx>
-#include <vbahelper/vbahelperinterface.hxx>
 #include <vbahelper/vbadocumentbase.hxx>
 
 typedef cppu::ImplInheritanceHelper< VbaDocumentBase, ov::excel::XWorkbook > ScVbaWorkbook_BASE;
@@ -44,6 +43,8 @@ public:
     virtual css::uno::Reference< ov::excel::XWorksheet > SAL_CALL getActiveSheet() override;
     virtual sal_Bool SAL_CALL getPrecisionAsDisplayed() override;
     virtual void SAL_CALL setPrecisionAsDisplayed( sal_Bool _precisionAsDisplayed ) override;
+    virtual OUString SAL_CALL getAuthor() override;
+    virtual void SAL_CALL setAuthor( const OUString& _author ) override;
 
     // Methods
     virtual css::uno::Any SAL_CALL Worksheets( const css::uno::Any& aIndex ) override;

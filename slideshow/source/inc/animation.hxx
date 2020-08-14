@@ -20,16 +20,14 @@
 #ifndef INCLUDED_SLIDESHOW_SOURCE_INC_ANIMATION_HXX
 #define INCLUDED_SLIDESHOW_SOURCE_INC_ANIMATION_HXX
 
-#include <animatableshape.hxx>
-#include <shapeattributelayer.hxx>
-#include <disposable.hxx>
+#include "animatableshape.hxx"
+#include "shapeattributelayer.hxx"
+#include "disposable.hxx"
 
 
 /* Definition of Animation interface */
 
-namespace slideshow
-{
-    namespace internal
+namespace slideshow::internal
     {
         /** Interface defining a generic animation.
 
@@ -58,8 +56,7 @@ namespace slideshow
                 @param rAttrLayer
                 Attribute layer to play the animation on.
              */
-            virtual void prefetch( const AnimatableShapeSharedPtr&     rShape,
-                                   const ShapeAttributeLayerSharedPtr& rAttrLayer ) = 0;
+            virtual void prefetch( ) = 0;
 
             /** Notify that the animation is about to begin.
 
@@ -80,9 +77,6 @@ namespace slideshow
             virtual void end() = 0;
         };
 
-        typedef ::std::shared_ptr< Animation > AnimationSharedPtr;
-
-    }
 }
 
 #endif // INCLUDED_SLIDESHOW_SOURCE_INC_ANIMATION_HXX

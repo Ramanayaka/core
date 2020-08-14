@@ -22,10 +22,9 @@
 
 #include <connectivity/FValue.hxx>
 #include "MErrorResource.hxx"
+#include "MColumnAlias.hxx"
 
-namespace connectivity
-{
-    namespace mork
+namespace connectivity::mork
     {
         class OConnection;
         class MQueryHelper;
@@ -64,8 +63,7 @@ namespace connectivity
             bool   isExpr( ) const { return m_eNodeType == node_type::Expr; }
         };
 
-        class MQueryExpressionString : public MQueryExpressionBase {
-        protected:
+        class MQueryExpressionString final : public MQueryExpressionBase {
             OUString     m_aName;         // LHS
             MQueryOp::cond_type m_aBooleanCondition;
             OUString     m_aValue;        // RHS
@@ -96,12 +94,12 @@ namespace connectivity
             const OUString&    getValue() const { return m_aValue; }
         };
 
-        class MQueryExpression : public MQueryExpressionBase
+        class MQueryExpression final : public MQueryExpressionBase
         {
             friend class MQueryHelper;
 
         public:
-            typedef std::vector< MQueryExpressionBase* > ExprVector;
+            typedef std::vector< std::unique_ptr<MQueryExpressionBase> > ExprVector;
 
             typedef enum {
                 AND,
@@ -112,8 +110,8 @@ namespace connectivity
             void setExpressionCondition( bool_cond _cond )
                             { m_aExprCondType = _cond; }
 
-            void addExpression(MQueryExpressionBase * expr)
-                            { m_aExprVector.push_back(expr); }
+            void addExpression(std::unique_ptr<MQueryExpressionBase> expr)
+                            { m_aExprVector.push_back(std::move(expr)); }
 
             ExprVector const & getExpressions( ) const
                             { return m_aExprVector; }
@@ -126,19 +124,10 @@ namespace connectivity
                                  m_aExprCondType( OR )
                             {}
 
-            virtual ~MQueryExpression() override {
-                for (ExprVector::iterator i(m_aExprVector.begin());
-                     i != m_aExprVector.end(); ++i)
-                {
-                    delete *i;
-                }
-            }
-
-        protected:
+        private:
             ExprVector          m_aExprVector;
             bool_cond           m_aExprCondType;
 
-        private:
            MQueryExpression(const MQueryExpression&) = delete;
            MQueryExpression& operator=(const MQueryExpression&) = delete;
         };
@@ -146,7 +135,7 @@ namespace connectivity
         class MQueryHelperResultEntry
         {
         private:
-            typedef std::unordered_map< OString, OUString, OStringHash >  FieldMap;
+            typedef std::unordered_map< OString, OUString >  FieldMap;
 
             FieldMap                m_Fields;
 
@@ -161,11 +150,10 @@ namespace connectivity
         class MQueryHelper final
         {
         private:
-            typedef std::vector< MQueryHelperResultEntry* > resultsArray;
 
             mutable ::osl::Mutex        m_aMutex;
-            resultsArray        m_aResults;
-            void            append(MQueryHelperResultEntry* resEnt );
+            std::vector< std::unique_ptr<MQueryHelperResultEntry> > m_aResults;
+            void            append(std::unique_ptr<MQueryHelperResultEntry> resEnt );
             void            clear_results();
             OColumnAlias        m_rColumnAlias;
             ErrorDescriptor     m_aError;
@@ -177,18 +165,16 @@ namespace connectivity
 
             void                       reset();
             MQueryHelperResultEntry*   getByIndex( sal_uInt32 nRow );
-            static bool                queryComplete() { return true; }
             sal_Int32                  getResultCount() const;
-            bool                       checkRowAvailable( sal_Int32 nDBRow );
             bool                       getRowValue( ORowSetValue& rValue, sal_Int32 nDBRow,const OUString& aDBColumnName, sal_Int32 nType );
             sal_Int32                  executeQuery(OConnection* xConnection, MQueryExpression & expr);
             const OColumnAlias&        getColumnAlias() const { return m_rColumnAlias; }
             bool                       hadError() const { return m_aError.is(); }
             ErrorDescriptor&    getError() { return m_aError; }
 
-            void                       setAddressbook( OUString&);
+            void                       setAddressbook( OUString const &);
         };
-    }
+
 }
 
 #endif // INCLUDED_CONNECTIVITY_SOURCE_DRIVERS_MORK_MQUERYHELPER_HXX

@@ -22,10 +22,8 @@
 
 #include <memory>
 #include <com/sun/star/uno/Any.hxx>
-#include <com/sun/star/style/XStyle.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/beans/XPropertyState.hpp>
 #include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/lang/XSingleServiceFactory.hpp>
 #include <com/sun/star/container/XIndexAccess.hpp>
@@ -38,13 +36,11 @@
 
 #include <svl/style.hxx>
 
-#include <editeng/unoipset.hxx>
-
 class SdStyleSheet;
 class SdPage;
 struct SdStyleFamilyImpl;
 
-class SdStyleFamily : public ::cppu::WeakImplHelper< css::container::XNameContainer, css::container::XNamed, css::container::XIndexAccess, css::lang::XSingleServiceFactory,  css::lang::XServiceInfo, css::lang::XComponent, css::beans::XPropertySet >
+class SdStyleFamily final : public ::cppu::WeakImplHelper< css::container::XNameContainer, css::container::XNamed, css::container::XIndexAccess, css::lang::XSingleServiceFactory,  css::lang::XServiceInfo, css::lang::XComponent, css::beans::XPropertySet >
 {
 public:
     /// creates the style family for the given SfxStyleFamily

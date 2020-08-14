@@ -23,9 +23,11 @@
 #include <com/sun/star/table/BorderLineStyle.hpp>
 
 #include <tools/color.hxx>
-#include <svl/poolitem.hxx>
+#include <tools/mapunit.hxx>
 #include <editeng/editengdllapi.h>
-#include <svtools/ctrlbox.hxx>
+#include <svtools/borderline.hxx>
+
+class IntlWrapper;
 
 // Line defaults in twips (former Writer defaults):
 
@@ -35,6 +37,7 @@
 #define DEF_LINE_WIDTH_3        80
 #define DEF_LINE_WIDTH_4        100
 #define DEF_LINE_WIDTH_5        10
+#define DEF_LINE_WIDTH_6        5   // 0.25pt
 
 
 // Abstracts over values from css::table::BorderLineStyle
@@ -137,9 +140,8 @@ double EDITENG_DLLPUBLIC ConvertBorderWidthToWord(SvxBorderLineStyle, double);
 double EDITENG_DLLPUBLIC ConvertBorderWidthFromWord(SvxBorderLineStyle,
         double, int);
 
-class EDITENG_DLLPUBLIC SvxBorderLine
+class EDITENG_DLLPUBLIC SvxBorderLine final
 {
-protected:
     Color  aColor;
 
     long m_nWidth;
@@ -161,9 +163,6 @@ public:
             SvxBorderLineStyle nStyle = SvxBorderLineStyle::SOLID,
             Color (*pColorOutFn)( Color ) = &darkColor,
             Color (*pColorInFn)( Color ) = &darkColor );
-    SvxBorderLine( const SvxBorderLine& r );
-
-    SvxBorderLine& operator=( const SvxBorderLine& r );
 
     const Color&    GetColor() const { return aColor; }
     Color           GetColorOut( bool bLeftOrTop = true ) const;

@@ -17,12 +17,12 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "drawingml/embeddedwavaudiofile.hxx"
-#include "oox/helper/attributelist.hxx"
+#include <drawingml/embeddedwavaudiofile.hxx>
+#include <oox/helper/attributelist.hxx>
 #include <oox/token/namespaces.hxx>
 #include <oox/token/tokens.hxx>
 
-namespace oox { namespace drawingml {
+namespace oox::drawingml {
 
     // CT_EmbeddedWAVAudioFile
 OUString getEmbeddedWAVAudioFile( const core::Relations& rRelations, const AttributeList& rAttribs )
@@ -33,6 +33,6 @@ OUString getEmbeddedWAVAudioFile( const core::Relations& rRelations, const Attri
         return rRelations.getFragmentPathFromRelId( rAttribs.getString( R_TOKEN(embed) ).get() );
 }
 
-} }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -20,13 +20,14 @@
 #ifndef INCLUDED_XMLOFF_XMLPRMAP_HXX
 #define INCLUDED_XMLOFF_XMLPRMAP_HXX
 
-#include <rtl/ref.hxx>
 #include <xmloff/dllapi.h>
 #include <unotools/saveopt.hxx>
 #include <rtl/ustring.hxx>
 
 #include <salhelper/simplereferenceobject.hxx>
 #include <memory>
+
+namespace rtl { template <class reference_type> class Reference; }
 
 class SvXMLUnitConverter;
 class XMLPropertyHandler;
@@ -80,8 +81,11 @@ public:
     /** returns the entry context id. -1 is a valid index here. */
     sal_Int16 GetEntryContextId( sal_Int32 nIndex ) const;
 
-    /** returns the earliest odf version for which this property should be exported. */
-    SvtSaveOptions::ODFDefaultVersion GetEarliestODFVersionForExport( sal_Int32 nIndex ) const;
+    /** returns the earliest ODF version for which this property should be
+        exported as standard ODF element, which is the earliest ODF version
+        for which the property should not be exported as extension element.
+     */
+    SvtSaveOptions::ODFSaneDefaultVersion GetEarliestODFVersionForExport(sal_Int32 nIndex) const;
 
     /** Returns the index of an entry with the given XML-name and namespace
         If there is no matching entry the method returns -1 */
@@ -104,7 +108,7 @@ public:
 
     /** searches for an entry that matches the given api name, namespace and local name or -1 if nothing found */
     sal_Int32 FindEntryIndex(
-        const sal_Char* sApiName, sal_uInt16 nNameSpace, const OUString& sXMLName ) const;
+        const char* sApiName, sal_uInt16 nNameSpace, const OUString& sXMLName ) const;
 
     /** searches for an entry that matches the given ContextId or gives -1 if nothing found */
     sal_Int32 FindEntryIndex( const sal_Int16 nContextId ) const;

@@ -22,7 +22,7 @@
 
 #include <rtl/ustring.hxx>
 
-namespace xmloff { namespace EnhancedCustomShapeToken {
+namespace xmloff::EnhancedCustomShapeToken {
 
     enum EnhancedCustomShapeTokenEnum
     {
@@ -93,6 +93,7 @@ namespace xmloff { namespace EnhancedCustomShapeToken {
         EAS_MirroredY,
         EAS_ViewBox,
         EAS_TextRotateAngle,
+        EAS_TextPreRotateAngle,
         EAS_ExtrusionAllowed,
         EAS_ConcentricGradientFillAllowed,
         EAS_TextPathAllowed,
@@ -155,7 +156,7 @@ namespace xmloff { namespace EnhancedCustomShapeToken {
     EnhancedCustomShapeTokenEnum EASGet( const OUString& );
     OUString EASGet( const EnhancedCustomShapeTokenEnum );
 }
-}
+
 
 #endif
 

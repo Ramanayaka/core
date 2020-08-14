@@ -11,9 +11,9 @@
 #define INCLUDED_SC_INC_SCOPETOOLS_HXX
 
 #include "scdllapi.h"
-#include <vcl/vclptr.hxx>
 
 class ScDocument;
+class ScColumn;
 namespace vcl { class Window; }
 
 namespace sc {
@@ -24,13 +24,19 @@ namespace sc {
 class SC_DLLPUBLIC AutoCalcSwitch
 {
     ScDocument& mrDoc;
-    bool mbOldValue;
+    bool        mbOldValue;
+
+    AutoCalcSwitch(AutoCalcSwitch const &) = delete;
+    AutoCalcSwitch(AutoCalcSwitch &&) = delete;
+    AutoCalcSwitch & operator =(AutoCalcSwitch const &) = delete;
+    AutoCalcSwitch & operator =(AutoCalcSwitch &&) = delete;
+
 public:
     AutoCalcSwitch(ScDocument& rDoc, bool bAutoCalc);
     ~AutoCalcSwitch();
 };
 
-class SC_DLLPUBLIC ExpandRefsSwitch
+class ExpandRefsSwitch
 {
     ScDocument& mrDoc;
     bool mbOldValue;
@@ -48,7 +54,7 @@ public:
     ~UndoSwitch();
 };
 
-class SC_DLLPUBLIC IdleSwitch
+class IdleSwitch
 {
     ScDocument& mrDoc;
     bool mbOldValue;
@@ -57,12 +63,28 @@ public:
     ~IdleSwitch();
 };
 
-class WaitPointerSwitch
+/// Wrapper for ScDocument::DelayFormulaGrouping()
+class DelayFormulaGroupingSwitch
 {
-    VclPtr<vcl::Window> mpFrameWin;
+    ScDocument& mrDoc;
+    bool const mbOldValue;
 public:
-    WaitPointerSwitch(vcl::Window* pWin);
-    ~WaitPointerSwitch();
+    DelayFormulaGroupingSwitch(ScDocument& rDoc, bool delay);
+    ~DelayFormulaGroupingSwitch() COVERITY_NOEXCEPT_FALSE;
+    void reset();
+};
+
+/// Wrapper for ScDocument::EnableDelayStartListeningFormulaCells()
+class DelayStartListeningFormulaCells
+{
+    ScColumn& mColumn;
+    bool const mbOldValue;
+public:
+    DelayStartListeningFormulaCells(ScColumn& column, bool delay);
+    DelayStartListeningFormulaCells(ScColumn& column);
+    DelayStartListeningFormulaCells(const DelayStartListeningFormulaCells&) = delete;
+    ~DelayStartListeningFormulaCells();
+    void set();
 };
 
 }

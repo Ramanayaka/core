@@ -18,20 +18,11 @@
  */
 
 #include <sal/config.h>
+#include <sal/log.hxx>
 
-#include <algorithm>
-
-#include <basegfx/tools/canvastools.hxx>
-#include <com/sun/star/lang/XSingleServiceFactory.hpp>
-#include <com/sun/star/registry/XRegistryKey.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
+#include <com/sun/star/awt/XTopWindow.hpp>
+#include <cppuhelper/supportsservice.hxx>
 #include <tools/diagnose_ex.h>
-#include <vcl/bitmapex.hxx>
-#include <vcl/canvastools.hxx>
-#include <vcl/outdev.hxx>
-#include <vcl/window.hxx>
-
-#include <canvas/canvastools.hxx>
 
 #include "spritecanvas.hxx"
 #include "windowoutdevholder.hxx"
@@ -52,7 +43,7 @@ namespace vclcanvas
         SolarMutexGuard aGuard;
 
         // #i64742# Only call initialize when not in probe mode
-        if( maArguments.getLength() == 0 )
+        if( !maArguments.hasElements() )
             return;
 
         SAL_INFO("canvas.vcl", "SpriteCanvas created" );
@@ -69,26 +60,25 @@ namespace vclcanvas
 
         SAL_INFO("canvas.vcl", "VCLSpriteCanvas::initialize called" );
 
-        ENSURE_ARG_OR_THROW( maArguments.getLength() >= 1,
+        ENSURE_ARG_OR_THROW( maArguments.hasElements(),
                              "VCLSpriteCanvas::initialize: wrong number of arguments" );
 
         /* maArguments:
            0: ptr to creating instance (Window or VirtualDevice)
-           1: SystemEnvData as a streamed Any (or empty for VirtualDevice)
-           2: current bounds of creating instance
-           3: bool, denoting always on top state for Window (always false for VirtualDevice)
-           4: XWindow for creating Window (or empty for VirtualDevice)
-           5: SystemGraphicsData as a streamed Any
+           1: current bounds of creating instance
+           2: bool, denoting always on top state for Window (always false for VirtualDevice)
+           3: XWindow for creating Window (or empty for VirtualDevice)
+           4: SystemGraphicsData as a streamed Any
          */
         ENSURE_ARG_OR_THROW( maArguments.getLength() >= 4 &&
                              maArguments[0].getValueTypeClass() == uno::TypeClass_HYPER &&
-                             maArguments[4].getValueTypeClass() == uno::TypeClass_INTERFACE,
+                             maArguments[3].getValueTypeClass() == uno::TypeClass_INTERFACE,
                              "VCLSpriteCanvas::initialize: wrong number of arguments, or wrong types" );
 
         uno::Reference< awt::XWindow > xParentWindow;
-        maArguments[4] >>= xParentWindow;
+        maArguments[3] >>= xParentWindow;
 
-        OutDevProviderSharedPtr pOutDev( new WindowOutDevHolder(xParentWindow) );
+        OutDevProviderSharedPtr pOutDev = std::make_shared<WindowOutDevHolder>(xParentWindow);
 
         // setup helper
         maDeviceHelper.init( pOutDev );
@@ -139,7 +129,21 @@ namespace vclcanvas
 
     OUString SAL_CALL SpriteCanvas::getServiceName(  )
     {
-        return OUString( SPRITECANVAS_SERVICE_NAME );
+        return "com.sun.star.rendering.SpriteCanvas.VCL";
+    }
+
+    // XServiceInfo
+    css::uno::Sequence<OUString> SpriteCanvas::getSupportedServiceNames()
+    {
+        return { SpriteCanvas::getServiceName() };
+    }
+    OUString SpriteCanvas::getImplementationName()
+    {
+        return "com.sun.star.comp.rendering.SpriteCanvas.VCL";
+    }
+    sal_Bool SpriteCanvas::supportsService(const OUString& sServiceName)
+    {
+        return cppu::supportsService(this, sServiceName);
     }
 
     bool SpriteCanvas::repaint( const GraphicObjectSharedPtr&   rGrf,
@@ -153,6 +157,16 @@ namespace vclcanvas
 
         return maCanvasHelper.repaint( rGrf, viewState, renderState, rPt, rSz, rAttr );
     }
+}
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+com_sun_star_comp_rendering_SpriteCanvas_VCL_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const& args)
+{
+    auto p = new vclcanvas::SpriteCanvas(args, context);
+    cppu::acquire(p);
+    p->initialize();
+    return static_cast<cppu::OWeakObject*>(p);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

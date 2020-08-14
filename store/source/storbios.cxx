@@ -17,22 +17,20 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "sal/config.h"
+#include <sal/config.h>
 
 #include "storbios.hxx"
 
-#include "sal/types.h"
-#include "sal/macros.h"
-#include "sal/log.hxx"
+#include <sal/types.h>
+#include <sal/log.hxx>
 
-#include "rtl/alloc.h"
-#include "rtl/ref.hxx"
+#include <rtl/alloc.h>
+#include <rtl/ref.hxx>
 
-#include "osl/diagnose.h"
-#include "osl/mutex.hxx"
+#include <osl/diagnose.h>
+#include <osl/mutex.hxx>
 
-#include "store/types.h"
-#include "object.hxx"
+#include <store/types.h>
 #include "lockbyte.hxx"
 #include "storcach.hxx"
 
@@ -43,7 +41,9 @@ using namespace store;
  * OStoreSuperBlock.
  *
  *======================================================================*/
-#define STORE_MAGIC_SUPERBLOCK sal_uInt32(0x484D5343)
+constexpr sal_uInt32 STORE_MAGIC_SUPERBLOCK = 0x484D5343;
+
+namespace {
 
 struct OStoreSuperBlock
 {
@@ -119,8 +119,7 @@ struct OStoreSuperBlock
      */
     void guard()
     {
-        sal_uInt32 nCRC32 = 0;
-        nCRC32 = rtl_crc32 (nCRC32, &m_aGuard.m_nMagic, sizeof(sal_uInt32));
+        sal_uInt32 nCRC32 = rtl_crc32 (0, &m_aGuard.m_nMagic, sizeof(sal_uInt32));
         nCRC32 = rtl_crc32 (nCRC32, &m_aDescr, static_cast<sal_uInt32>(theSize - sizeof(G)));
         m_aGuard.m_nCRC32 = store::htonl(nCRC32);
     }
@@ -133,8 +132,7 @@ struct OStoreSuperBlock
         if (nMagic != STORE_MAGIC_SUPERBLOCK)
             return store_E_WrongFormat;
 
-        sal_uInt32 nCRC32 = 0;
-        nCRC32 = rtl_crc32 (nCRC32, &m_aGuard.m_nMagic, sizeof(sal_uInt32));
+        sal_uInt32 nCRC32 = rtl_crc32 (0, &m_aGuard.m_nMagic, sizeof(sal_uInt32));
         nCRC32 = rtl_crc32 (nCRC32, &m_aDescr, static_cast<sal_uInt32>(theSize - sizeof(G)));
         if (m_aGuard.m_nCRC32 != store::htonl(nCRC32))
             return store_E_InvalidChecksum;
@@ -142,6 +140,8 @@ struct OStoreSuperBlock
             return store_E_None;
     }
 };
+
+}
 
 /*========================================================================
  *
@@ -170,11 +170,11 @@ struct SuperBlockPage
      */
     static void * operator new (size_t n)
     {
-        return rtl_allocateMemory (sal::static_int_cast<sal_Size>(n));
+        return std::malloc(sal::static_int_cast<sal_Size>(n));
     }
     static void operator delete (void * p)
     {
-        rtl_freeMemory (p);
+        std::free (p);
     }
 
     static void * operator new (SAL_UNUSED_PARAMETER size_t, sal_uInt16 nPageSize)
@@ -183,7 +183,7 @@ struct SuperBlockPage
     }
     static void operator delete (void * p, SAL_UNUSED_PARAMETER sal_uInt16)
     {
-        rtl_freeMemory (p);
+        std::free (p);
     }
 
     /** Construction.
@@ -195,7 +195,7 @@ struct SuperBlockPage
 
     /** save.
      */
-    storeError save (OStorePageBIOS & rBIOS, sal_uInt32 nSize = theSize)
+    storeError save (OStorePageBIOS const & rBIOS, sal_uInt32 nSize = theSize)
     {
         m_aSuperOne.guard();
         m_aSuperTwo = m_aSuperOne;
@@ -205,20 +205,20 @@ struct SuperBlockPage
     /** Page allocation.
      */
     storeError unusedHead (
-        OStorePageBIOS & rBIOS,
+        OStorePageBIOS const & rBIOS,
         PageData &       rPageHead);
 
     storeError unusedPop (
-        OStorePageBIOS & rBIOS,
+        OStorePageBIOS const & rBIOS,
         PageData const & rPageHead);
 
     storeError unusedPush (
-        OStorePageBIOS & rBIOS,
+        OStorePageBIOS const & rBIOS,
         sal_uInt32       nAddr);
 
     /** verify (with repair).
      */
-    storeError verify (OStorePageBIOS & rBIOS);
+    storeError verify (OStorePageBIOS const & rBIOS);
 };
 
 } // namespace store
@@ -231,7 +231,7 @@ struct SuperBlockPage
 /*
  * unusedHead(): get freelist head (alloc page, step 1).
  */
-storeError SuperBlockPage::unusedHead (OStorePageBIOS & rBIOS, PageData & rPageHead)
+storeError SuperBlockPage::unusedHead (OStorePageBIOS const & rBIOS, PageData & rPageHead)
 {
     storeError eErrCode = verify (rBIOS);
     if (eErrCode != store_E_None)
@@ -274,7 +274,7 @@ storeError SuperBlockPage::unusedHead (OStorePageBIOS & rBIOS, PageData & rPageH
 /*
  * unusedPop(): pop freelist head (alloc page, step 2).
  */
-storeError SuperBlockPage::unusedPop (OStorePageBIOS & rBIOS, PageData const & rPageHead)
+storeError SuperBlockPage::unusedPop (OStorePageBIOS const & rBIOS, PageData const & rPageHead)
 {
     sal_uInt32 const nAddr = rPageHead.m_aUnused.location();
     OSL_PRECOND(nAddr != STORE_PAGE_NULL, "store::SuperBlock::unusedPop(): page not free");
@@ -290,7 +290,7 @@ storeError SuperBlockPage::unusedPop (OStorePageBIOS & rBIOS, PageData const & r
 /*
  * unusedPush(): push new freelist head.
  */
-storeError SuperBlockPage::unusedPush (OStorePageBIOS & rBIOS, sal_uInt32 nAddr)
+storeError SuperBlockPage::unusedPush (OStorePageBIOS const & rBIOS, sal_uInt32 nAddr)
 {
     storeError eErrCode = verify (rBIOS);
     if (eErrCode != store_E_None)
@@ -320,7 +320,7 @@ storeError SuperBlockPage::unusedPush (OStorePageBIOS & rBIOS, sal_uInt32 nAddr)
 /*
  * verify (with repair).
  */
-storeError SuperBlockPage::verify (OStorePageBIOS & rBIOS)
+storeError SuperBlockPage::verify (OStorePageBIOS const & rBIOS)
 {
     // Verify 1st copy.
     storeError eErrCode = m_aSuperOne.verify();
@@ -460,7 +460,6 @@ protected:
  * OStorePageBIOS::AceCache implementation.
  *
  *======================================================================*/
-extern "C"  typedef  int (SAL_CALL * ace_constructor_type)(void*,void*);
 
 OStorePageBIOS::AceCache &
 OStorePageBIOS::AceCache::get()
@@ -475,7 +474,7 @@ OStorePageBIOS::AceCache::AceCache()
     "store_ace_cache",
     sizeof (OStorePageBIOS::Ace),
     0, // objalign
-   reinterpret_cast<ace_constructor_type>( OStorePageBIOS::Ace::constructor),
+    OStorePageBIOS::Ace::constructor,
     nullptr, // destructor,
     nullptr, // reclaim,
     nullptr, // userarg,
@@ -532,9 +531,7 @@ OStorePageBIOS::AceCache::destroy (OStorePageBIOS::Ace * ace)
  * OStorePageBIOS.
  */
 OStorePageBIOS::OStorePageBIOS()
-    : m_xLockBytes (nullptr),
-      m_pSuper     (nullptr),
-      m_bWriteable (false)
+    : m_bWriteable (false)
 {
 }
 
@@ -591,10 +588,9 @@ storeError OStorePageBIOS::initialize_Impl (
     if (eAccessMode != storeAccessMode::Create)
     {
         // Load SuperBlock page.
-        if ((m_pSuper = new SuperBlockPage()) == nullptr)
-            return store_E_OutOfMemory;
+        m_pSuper.reset(new SuperBlockPage());
 
-        eErrCode = read (0, m_pSuper, SuperBlockPage::theSize);
+        eErrCode = read (0, m_pSuper.get(), SuperBlockPage::theSize);
         if (eErrCode == store_E_None)
         {
             // Verify SuperBlock page (with repair).
@@ -630,8 +626,7 @@ storeError OStorePageBIOS::initialize_Impl (
         rnPageSize = ((rnPageSize + STORE_MINIMUM_PAGESIZE - 1) & ~(STORE_MINIMUM_PAGESIZE - 1));
 
         // Create initial page (w/ SuperBlock).
-        if ((m_pSuper = new(rnPageSize) SuperBlockPage(rnPageSize)) == nullptr)
-            return store_E_OutOfMemory;
+        m_pSuper.reset(new(rnPageSize) SuperBlockPage(rnPageSize));
         eErrCode = m_pSuper->save (*this, rnPageSize);
     }
     if (eErrCode == store_E_None)
@@ -670,8 +665,7 @@ void OStorePageBIOS::cleanup_Impl()
     }
 
     // Release SuperBlock page.
-    delete m_pSuper;
-    m_pSuper = nullptr;
+    m_pSuper.reset();
 
     // Release PageCache.
     m_xCache.clear();
@@ -688,7 +682,7 @@ void OStorePageBIOS::cleanup_Impl()
  * Low Level: Precond: initialized, exclusive access.
  */
 storeError OStorePageBIOS::read (
-    sal_uInt32 nAddr, void *pData, sal_uInt32 nSize)
+    sal_uInt32 nAddr, void *pData, sal_uInt32 nSize) const
 {
     // Check precond.
     if (!m_xLockBytes.is())
@@ -703,7 +697,7 @@ storeError OStorePageBIOS::read (
  * Low Level: Precond: initialized, writeable, exclusive access.
  */
 storeError OStorePageBIOS::write (
-    sal_uInt32 nAddr, const void *pData, sal_uInt32 nSize)
+    sal_uInt32 nAddr, const void *pData, sal_uInt32 nSize) const
 {
     // Check precond.
     if (!m_xLockBytes.is())
@@ -874,7 +868,7 @@ storeError OStorePageBIOS::loadObjectAt (OStorePageObject & rPage, sal_uInt32 nA
  * loadObjectAt_Impl.
  * Internal: Precond: initialized, readable, exclusive access.
  */
-storeError OStorePageBIOS::loadObjectAt_Impl (OStorePageObject & rPage, sal_uInt32 nAddr)
+storeError OStorePageBIOS::loadObjectAt_Impl (OStorePageObject & rPage, sal_uInt32 nAddr) const
 {
     storeError eErrCode = m_xCache->lookupPageAt (rPage.get(), nAddr);
     if (eErrCode != store_E_NotExists)
@@ -920,7 +914,7 @@ storeError OStorePageBIOS::saveObjectAt (OStorePageObject & rPage, sal_uInt32 nA
  * saveObjectAt_Impl.
  * Internal: Precond: initialized, writeable, exclusive access.
  */
-storeError OStorePageBIOS::saveObjectAt_Impl (OStorePageObject & rPage, sal_uInt32 nAddr)
+storeError OStorePageBIOS::saveObjectAt_Impl (OStorePageObject & rPage, sal_uInt32 nAddr) const
 {
     // Guard page (incl. set location).
     storeError eErrCode = rPage.guard (nAddr);

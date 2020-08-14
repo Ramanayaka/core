@@ -20,10 +20,8 @@
 #define INCLUDED_SC_SOURCE_FILTER_INC_EEIMPORT_HXX
 
 #include <memory>
-#include "global.hxx"
-#include "address.hxx"
-#include "filter.hxx"
-#include "scdllapi.h"
+#include <address.hxx>
+#include <filter.hxx>
 #include <map>
 
 class ScDocument;
@@ -46,7 +44,7 @@ protected:
                         mpParser;      // must reset before mpEngine resets
     RowHeightMap        maRowHeights;
 
-    bool                GraphicSize( SCCOL nCol, SCROW nRow, SCTAB nTab,
+    bool                GraphicSize( SCCOL nCol, SCROW nRow,
                                      ScEEParseEntry* );
     void                InsertGraphic( SCCOL nCol, SCROW nRow, SCTAB nTab,
                                        ScEEParseEntry* );

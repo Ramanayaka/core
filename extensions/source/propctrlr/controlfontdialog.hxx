@@ -20,8 +20,8 @@
 #ifndef INCLUDED_EXTENSIONS_SOURCE_PROPCTRLR_CONTROLFONTDIALOG_HXX
 #define INCLUDED_EXTENSIONS_SOURCE_PROPCTRLR_CONTROLFONTDIALOG_HXX
 
+#include <comphelper/proparrhlp.hxx>
 #include <svtools/genericunodialog.hxx>
-#include "modulepcr.hxx"
 
 class SfxItemSet;
 class SfxItemPool;
@@ -37,7 +37,6 @@ namespace pcr
     class OControlFontDialog
                 :public OControlFontDialog_DBase
                 ,public OControlFontDialog_PBase
-                ,public PcrClient
     {
     protected:
         // <properties>
@@ -45,7 +44,7 @@ namespace pcr
                                 m_xControlModel;
         // </properties>
 
-        SfxItemSet*             m_pFontItems;           // item set for the dialog
+        std::unique_ptr<SfxItemSet> m_pFontItems;       // item set for the dialog
         SfxItemPool*            m_pItemPool;            // item pool for the item set for the dialog
         std::vector<SfxPoolItem*>*
                                 m_pItemPoolDefaults;    // pool defaults
@@ -61,14 +60,6 @@ namespace pcr
         virtual OUString SAL_CALL getImplementationName() override;
         virtual css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override;
 
-        // XServiceInfo - static methods
-        /// @throws css::uno::RuntimeException
-        static css::uno::Sequence< OUString > getSupportedServiceNames_static();
-        /// @throws css::uno::RuntimeException
-        static OUString getImplementationName_static();
-        static css::uno::Reference< css::uno::XInterface >
-                SAL_CALL Create(const css::uno::Reference< css::uno::XComponentContext >&);
-
         // XInitialization
         virtual void SAL_CALL initialize( const css::uno::Sequence< css::uno::Any >& aArguments ) override;
 
@@ -80,8 +71,8 @@ namespace pcr
         virtual ::cppu::IPropertyArrayHelper* createArrayHelper( ) const override;
 
     protected:
-    // OGenericUnoDialog overridables
-        virtual VclPtr<Dialog> createDialog(vcl::Window* _pParent) override;
+        // OGenericUnoDialog overridables
+        virtual std::unique_ptr<weld::DialogController> createDialog(const css::uno::Reference<css::awt::XWindow>& rParent) override;
         virtual void    executedDialog(sal_Int16 _nExecutionResult) override;
     };
 

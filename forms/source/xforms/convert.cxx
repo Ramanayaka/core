@@ -20,16 +20,13 @@
 
 #include "convert.hxx"
 
-#include "unohelper.hxx"
-#include <algorithm>
-#include <functional>
+#include <sstream>
 #include <o3tl/functional.hxx>
 #include <rtl/math.hxx>
 #include <rtl/ustrbuf.hxx>
 #include <osl/diagnose.h>
 #include <tools/date.hxx>
 #include <com/sun/star/uno/Type.hxx>
-#include <com/sun/star/xsd/WhiteSpaceTreatment.hpp>
 #include <com/sun/star/util/Date.hpp>
 #include <com/sun/star/util/DateTime.hpp>
 #include <com/sun/star/util/Time.hpp>
@@ -78,7 +75,7 @@ namespace
         double f = 0.0;
         rAny >>= f;
 
-        return rtl::math::isFinite( f )
+        return std::isfinite( f )
             ? rtl::math::doubleToUString( f, rtl_math_StringFormat_Automatic,
                                         rtl_math_DecimalPlaces_Max, '.',
                                         true )
@@ -287,12 +284,8 @@ void Convert::init()
 Convert& Convert::get()
 {
     // create our Singleton instance on demand
-    static Convert* pConvert = nullptr;
-    if( pConvert == nullptr )
-        pConvert = new Convert();
-
-    OSL_ENSURE( pConvert != nullptr, "no converter?" );
-    return *pConvert;
+    static Convert aConvert;
+    return aConvert;
 }
 
 bool Convert::hasType( const css::uno::Type& rType )
@@ -300,7 +293,7 @@ bool Convert::hasType( const css::uno::Type& rType )
     return maMap.find( rType ) != maMap.end();
 }
 
-css::uno::Sequence<css::uno::Type> Convert::getTypes()
+css::uno::Sequence<css::uno::Type> Convert::getTypes() const
 {
     return comphelper::mapKeysToSequence( maMap );
 }

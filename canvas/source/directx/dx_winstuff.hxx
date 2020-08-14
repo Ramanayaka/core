@@ -27,7 +27,7 @@
 
 
 #define WIN32_LEAN_AND_MEAN
-#include "prewin.h"
+#include <prewin.h>
 
 // Enabling Direct3D Debug Information Further more, with registry key
 // \\HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Direct3D\D3D9Debugging\\EnableCreationStack
@@ -49,12 +49,7 @@ typedef IDirect3DSurface9 surface_type;
 #define min(a,b) (((a) < (b)) ? (a) : (b))
 #endif
 
-#pragma warning(push, 1)
-#pragma warning(disable: 4458)
-
 #include <gdiplus.h>
-
-#pragma warning(pop)
 
 #undef max
 #undef min
@@ -66,9 +61,7 @@ namespace dxcanvas
     typedef std::shared_ptr< Gdiplus::Graphics >        GraphicsSharedPtr;
     typedef std::shared_ptr< Gdiplus::GraphicsPath >    GraphicsPathSharedPtr;
     typedef std::shared_ptr< Gdiplus::Bitmap >          BitmapSharedPtr;
-    typedef std::shared_ptr< Gdiplus::CachedBitmap >    CachedBitmapSharedPtr;
     typedef std::shared_ptr< Gdiplus::Font >            FontSharedPtr;
-    typedef std::shared_ptr< Gdiplus::Brush >           BrushSharedPtr;
     typedef std::shared_ptr< Gdiplus::TextureBrush >    TextureBrushSharedPtr;
 
     /** COM object RAII wrapper
@@ -154,7 +147,7 @@ namespace dxcanvas
 }
 
 
-#include "postwin.h"
+#include <postwin.h>
 
 #endif // INCLUDED_CANVAS_SOURCE_DIRECTX_DX_WINSTUFF_HXX
 

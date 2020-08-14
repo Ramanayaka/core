@@ -21,10 +21,10 @@
 #define INCLUDED_DBACCESS_SOURCE_UI_INC_IITEMSETHELPER_HXX
 
 #include <sal/types.h>
-#include <comphelper/uno3.hxx>
-#include "dsntypes.hxx"
+#include <com/sun/star/uno/Reference.hxx>
+#include <com/sun/star/uno/XComponentContext.hpp>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace sdbc {
         class XConnection;
         class XDriver;
@@ -32,7 +32,7 @@ namespace com { namespace sun { namespace star {
     namespace lang {
         class XMultiServiceFactory;
     }
-}}}
+}
 
 class SfxItemSet;
 namespace dbaui
@@ -51,7 +51,7 @@ namespace dbaui
     {
     public:
         virtual css::uno::Reference< css::uno::XComponentContext > getORB() const = 0;
-        virtual std::pair< css::uno::Reference< css::sdbc::XConnection >,sal_Bool> createConnection() = 0;
+        virtual std::pair< css::uno::Reference< css::sdbc::XConnection >,bool> createConnection() = 0;
         virtual css::uno::Reference< css::sdbc::XDriver > getDriver() = 0;
         virtual OUString getDatasourceType(const SfxItemSet& _rSet) const = 0;
         virtual void clearPassword() = 0;

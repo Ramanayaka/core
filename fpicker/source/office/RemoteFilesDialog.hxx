@@ -10,41 +10,24 @@
 #ifndef INCLUDED_SVTOOLS_REMOTEFILESDIALOG_HXX
 #define INCLUDED_SVTOOLS_REMOTEFILESDIALOG_HXX
 
-#include <comphelper/docpasswordrequest.hxx>
-
-#include <svtools/autocmpledit.hxx>
-#include <svtools/foldertree.hxx>
+#include "autocmpledit.hxx"
 #include <svtools/place.hxx>
-#include <svtools/PlaceEditDialog.hxx>
-#include <svtools/breadcrumb.hxx>
-#include <svtools/fileview.hxx>
-
-#include <vcl/errinf.hxx>
-#include <tools/resid.hxx>
 
 #include <unotools/viewoptions.hxx>
 
-#include <vcl/button.hxx>
-#include <vcl/fpicker.hrc>
-#include <vcl/menubtn.hxx>
-#include <vcl/dialog.hxx>
-#include <vcl/vclptr.hxx>
-#include <vcl/split.hxx>
 #include <vcl/svapp.hxx>
 
-#include <officecfg/Office/Common.hxx>
 #include <com/sun/star/beans/StringPair.hpp>
 #include <com/sun/star/uno/Sequence.hxx>
-#include <com/sun/star/task/PasswordContainer.hpp>
 #include <com/sun/star/task/XPasswordContainer2.hpp>
 
 #include <vector>
 
+#include "asyncfilepicker.hxx"
 #include "fpdialogbase.hxx"
-#include "fpsofficeResMgr.hxx"
-#include "OfficeFilePicker.hrc"
-#include "QueryFolderName.hxx"
-#include "iodlg.hrc"
+#include "breadcrumb.hxx"
+#include "fileview.hxx"
+#include "foldertree.hxx"
 
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::task;
@@ -65,26 +48,21 @@ enum SvtRemoteDlgType
 
 typedef std::shared_ptr< Place > ServicePtr;
 
-class FileViewContainer;
-
 class RemoteFilesDialog : public SvtFileDialog_Base
 {
 public:
-    RemoteFilesDialog( vcl::Window* pParent, PickerFlags nBits );
+    RemoteFilesDialog( weld::Window* pParent, PickerFlags nBits );
     virtual ~RemoteFilesDialog() override;
 
-    virtual void dispose() override;
-    virtual void Resize() override;
-    virtual short Execute() override;
-    void Show();
+    virtual short run() override;
 
     // SvtFileDialog_Base
 
     virtual SvtFileView* GetView() override;
 
     virtual void SetHasFilename( bool ) override;
-    virtual void SetBlackList( const css::uno::Sequence< OUString >& rBlackList ) override;
-    virtual const css::uno::Sequence< OUString >& GetBlackList() const override;
+    virtual void SetDenyList( const css::uno::Sequence< OUString >& rDenyList ) override;
+    virtual const css::uno::Sequence< OUString >& GetDenyList() const override;
     virtual void SetStandardDir( const OUString& rStdDir ) override;
     virtual const OUString& GetStandardDir() const override;
     virtual void SetPath( const OUString& rNewURL ) override;
@@ -110,15 +88,14 @@ public:
 
     virtual void EnableAutocompletion( bool = true) override;
 
-    virtual sal_Int32 getTargetColorDepth() override;
     virtual sal_Int32 getAvailableWidth() override;
     virtual sal_Int32 getAvailableHeight() override;
 
-    virtual void setImage( sal_Int16 aImageFormat, const css::uno::Any& rImage ) override;
+    virtual void setImage( const css::uno::Any& rImage ) override;
 
     virtual bool getShowState() override;
 
-    virtual Control* getControl( sal_Int16 nControlId, bool bLabelControl = false ) const override;
+    virtual weld::Widget* getControl( sal_Int16 nControlId, bool bLabelControl = false ) const override;
     virtual void enableControl( sal_Int16 nControlId, bool bEnable ) override;
     virtual OUString getCurFilter( ) const override;
 
@@ -128,40 +105,38 @@ private:
 
     SvtRemoteDlgMode m_eMode;
     SvtRemoteDlgType m_eType;
-    bool m_bMultiselection;
     bool m_bIsUpdated;
     bool m_bIsConnected;
     bool m_bServiceChanged;
 
     OUString m_sIniKey;
-    int m_nWidth;
-    int m_nHeight;
+
+    bool m_bIsInExecute;
 
     OUString m_sPath;
     OUString m_sStdDir;
     OUString m_sRootLabel;
     OUString m_sLastServiceUrl;
-    unsigned int m_nCurrentFilter;
+    int m_nCurrentFilter;
 
     ::rtl::Reference< ::svt::AsyncPickerAction > m_pCurrentAsyncAction;
 
-    css::uno::Sequence< OUString > m_aBlackList;
+    css::uno::Sequence< OUString > m_aDenyList;
 
-    VclPtr< PushButton > m_pOk_btn;
-    VclPtr< CancelButton > m_pCancel_btn;
-    VclPtr< MenuButton > m_pAddService_btn;
-    VclPtr< ListBox > m_pServices_lb;
-    VclPtr< Breadcrumb > m_pPath;
-    VclPtr< PushButton > m_pNewFolder;
-    VclPtr< PushButton > m_pListView_btn;
-    VclPtr< PushButton > m_pIconView_btn;
-    VclPtr< Splitter > m_pSplitter;
-    VclPtr< FolderTree > m_pTreeView;
-    VclPtr< SvtFileView > m_pFileView;
-    VclPtr< FileViewContainer > m_pContainer;
-    VclPtr< ListBox > m_pFilter_lb;
-    VclPtr< AutocompleteEdit > m_pName_ed;
-    VclPtr<PopupMenu> m_pAddMenu;
+    std::unique_ptr<weld::Button> m_xOk_btn;
+    std::unique_ptr<weld::Button> m_xCancel_btn;
+    std::unique_ptr<weld::MenuButton> m_xManageServices;
+    std::unique_ptr<weld::ComboBox> m_xServices_lb;
+    std::unique_ptr<weld::Container> m_xPathContainer;
+    std::unique_ptr<Breadcrumb> m_xPath;
+    std::unique_ptr<weld::Button> m_xNewFolder;
+    std::unique_ptr<weld::ToggleButton> m_xListView_btn;
+    std::unique_ptr<weld::ToggleButton> m_xIconView_btn;
+    std::unique_ptr<FolderTree> m_xTreeView;
+    std::unique_ptr<SvtFileView> m_xFileView;
+    std::unique_ptr<weld::Container> m_xContainer;
+    std::unique_ptr<weld::ComboBox> m_xFilter_lb;
+    std::unique_ptr<AutocompleteEdit> m_xName_ed;
 
     std::vector< ServicePtr > m_aServices;
     std::vector< std::pair< OUString, OUString > > m_aFilters;
@@ -173,40 +148,40 @@ private:
     /* If failure returns < 0 */
     int GetSelectedServicePos();
 
-    FileViewResult OpenURL( OUString const & sURL );
+    void OpenURL( OUString const & sURL );
 
     void AddFileExtension();
 
+    void EnableExtraMenuItems(bool bEnable);
     void EnableControls();
     void DisableControls();
 
-    void SavePassword( const OUString& rURL, const OUString& rUser
-                    , const OUString& rPassword, bool bPersistent );
+    void SavePassword(const OUString& rURL, const OUString& rUser,
+                      const OUString& rPassword, bool bPersistent);
 
-    DECL_LINK ( AddServiceHdl, Button*, void );
-    DECL_LINK ( SelectServiceHdl, ListBox&, void );
-    DECL_LINK ( EditServiceMenuHdl, MenuButton *, void );
+    void AddService();
 
-    DECL_LINK( DoubleClickHdl, SvTreeListBox*, bool );
-    DECL_LINK( SelectHdl, SvTreeListBox*, void );
+    DECL_LINK ( SelectServiceHdl, weld::ComboBox&, void );
+    DECL_LINK ( EditServiceMenuHdl, const OString&, void );
 
-    DECL_LINK( FileNameGetFocusHdl, Control&, void );
-    DECL_LINK( FileNameModifyHdl, Edit&, void );
+    DECL_LINK( DoubleClickHdl, SvtFileView*, bool );
+    DECL_LINK( SelectHdl, SvtFileView*, void );
 
-    DECL_LINK( SplitHdl, Splitter*, void );
+    DECL_LINK( FileNameGetFocusHdl, weld::Widget&, void );
+    DECL_LINK( FileNameModifyHdl, weld::Entry&, void );
 
-    DECL_LINK( SelectFilterHdl, ListBox&, void );
+    DECL_LINK( SelectFilterHdl, weld::ComboBox&, void );
 
-    DECL_LINK( TreeSelectHdl, SvTreeListBox*, void );
+    DECL_LINK( TreeSelectHdl, weld::TreeView&, void );
 
-    DECL_LINK( SelectBreadcrumbHdl, Breadcrumb *, void );
+    DECL_LINK( SelectBreadcrumbHdl, Breadcrumb*, bool );
 
-    DECL_LINK( NewFolderHdl, Button*, void );
-    DECL_LINK( IconViewHdl, Button*, void );
-    DECL_LINK( ListViewHdl, Button*, void );
+    DECL_LINK( NewFolderHdl, weld::Button&, void );
+    DECL_LINK( IconViewHdl, weld::Button&, void );
+    DECL_LINK( ListViewHdl, weld::Button&, void );
 
-    DECL_LINK( OkHdl, Button*, void );
-    DECL_LINK( CancelHdl, Button*, void );
+    DECL_LINK( OkHdl, weld::Button&, void );
+    DECL_LINK( CancelHdl, weld::Button&, void );
 };
 
 #endif // INCLUDED_SVTOOLS_REMOTEFILESDIALOG_HXX

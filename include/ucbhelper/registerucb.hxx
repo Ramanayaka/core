@@ -20,17 +20,16 @@
 #ifndef INCLUDED_UCBHELPER_REGISTERUCB_HXX
 #define INCLUDED_UCBHELPER_REGISTERUCB_HXX
 
-#include <com/sun/star/uno/RuntimeException.hpp>
-#include <com/sun/star/uno/Reference.h>
-#include <com/sun/star/ucb/XContentProviderManager.hpp>
+#include <rtl/ustring.hxx>
 #include <vector>
 
 #include <ucbhelper/ucbhelperdllapi.h>
 
-namespace com { namespace sun { namespace star {
-    namespace lang { class XMultiServiceFactory; }
+namespace com::sun::star::uno { template <class interface_type> class Reference; }
+namespace com::sun::star {
     namespace uno { class XComponentContext; }
-} } }
+    namespace ucb { class XContentProviderManager; }
+}
 
 
 namespace ucbhelper {

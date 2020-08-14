@@ -21,16 +21,23 @@
 
 #include <sfx2/objsh.hxx>
 
-#include <svtools/transfer.hxx>
+#include <vcl/transfer.hxx>
 #include <vcl/graph.hxx>
+#include <vcl/vclptr.hxx>
 #include <sfx2/lnkbase.hxx>
 #include <com/sun/star/embed/XEmbeddedObject.hpp>
+#include <o3tl/deleter.hxx>
 #include <o3tl/typed_flags_set.hxx>
+#include <svx/swframetypes.hxx>
+#include <memory>
+
+#include <swdllapi.h>
 
 class Graphic;
 class ImageMap;
 class INetBookmark;
 class INetImage;
+class SfxAbstractPasteDialog;
 class SwDoc;
 class SwDocFac;
 class SwTextBlocks;
@@ -38,6 +45,7 @@ class SwWrtShell;
 class SvxClipboardFormatItem;
 class SwFrameShell;
 class SwView_Impl;
+class SwPasteContext;
 enum class SwPasteSdr;
 
 enum class TransferBufferType : sal_uInt16
@@ -54,6 +62,14 @@ enum class TransferBufferType : sal_uInt16
 namespace o3tl {
     template<> struct typed_flags<TransferBufferType> : is_typed_flags<TransferBufferType, 0x00ef> {};
 }
+// paste table into a table
+enum class PasteTableType
+{
+        PASTE_DEFAULT, // paste table by overwriting table cells
+        PASTE_ROW,     // paste table as rows above
+        PASTE_COLUMN,  // paste table as columns before
+        PASTE_TABLE    // paste table as nested table
+};
 
 class SW_DLLPUBLIC SwTransferable : public TransferableHelper
 {
@@ -66,11 +82,13 @@ class SW_DLLPUBLIC SwTransferable : public TransferableHelper
     /* #96392# Added pCreatorView to distinguish SwFrameShell from
        SwWrtShell. */
     const SwFrameShell *m_pCreatorView;
-    SwDocFac        *m_pClpDocFac;
-    Graphic         *m_pClpGraphic, *m_pClpBitmap, *m_pOrigGraphic;
-    INetBookmark    *m_pBookmark;     // URL and description!
-    ImageMap        *m_pImageMap;
-    INetImage       *m_pTargetURL;
+    std::unique_ptr<SwDocFac, o3tl::default_delete<SwDocFac>> m_pClpDocFac;
+    std::unique_ptr<Graphic>        m_pClpGraphic;
+    std::unique_ptr<Graphic>        m_pClpBitmap;
+    Graphic                         *m_pOrigGraphic;
+    std::unique_ptr<INetBookmark>   m_pBookmark;     // URL and description!
+    std::unique_ptr<ImageMap>       m_pImageMap;
+    std::unique_ptr<INetImage>      m_pTargetURL;
 
     TransferBufferType m_eBufferType;
 
@@ -91,7 +109,7 @@ class SW_DLLPUBLIC SwTransferable : public TransferableHelper
                                         SotClipboardFormatId nFormat, SotExchangeDest nDestination );
 
     static bool PasteFileContent( TransferableDataHelper&,
-                                    SwWrtShell& rSh, SotClipboardFormatId nFormat, bool bMsg );
+                                    SwWrtShell& rSh, SotClipboardFormatId nFormat, bool bMsg, bool bIgnoreComments = false );
     static bool PasteOLE( TransferableDataHelper& rData, SwWrtShell& rSh,
                             SotClipboardFormatId nFormat, SotExchangeActionFlags nActionFlags, bool bMsg );
     static bool PasteTargetURL( TransferableDataHelper& rData, SwWrtShell& rSh,
@@ -116,7 +134,7 @@ class SW_DLLPUBLIC SwTransferable : public TransferableHelper
 
     static bool PasteFileName( TransferableDataHelper& rData,
                             SwWrtShell& rSh, SotClipboardFormatId nFormat, SwPasteSdr nAction,
-                            const Point* pPt, SotExchangeActionFlags nActionFlags, bool bMsg, bool * graphicInserted );
+                            const Point* pPt, SotExchangeActionFlags nActionFlags, bool * graphicInserted );
 
     static bool PasteDBData( TransferableDataHelper& rData, SwWrtShell& rSh,
                             SotClipboardFormatId nFormat, bool bLink, const Point* pDragPt,
@@ -128,7 +146,8 @@ class SW_DLLPUBLIC SwTransferable : public TransferableHelper
 
     bool PrivateDrop( SwWrtShell& rSh, const Point& rDragPt, bool bMove,
                         bool bIsXSelection );
-    bool PrivatePaste( SwWrtShell& rShell );
+
+    bool PrivatePaste( SwWrtShell& rShell, SwPasteContext* pContext = nullptr, PasteTableType ePasteTable = PasteTableType::PASTE_DEFAULT );
 
     void SetDataForDragAndDrop( const Point& rSttPos );
 
@@ -140,10 +159,11 @@ protected:
     virtual bool GetData( const css::datatransfer::DataFlavor& rFlavor, const OUString& rDestDoc ) override;
     virtual bool        WriteObject( tools::SvRef<SotStorageStream>& rxOStm,
                                         void* pUserObject,
-                                        SotClipboardFormatId nUserObjectId,
+                                        sal_uInt32 nUserObjectId,
                                         const css::datatransfer::DataFlavor& rFlavor ) override;
     virtual void        DragFinished( sal_Int8 nDropAction ) override;
     virtual void        ObjectReleased() override;
+    virtual sal_Bool SAL_CALL isComplex() override;
 
     using TransferableHelper::StartDrag;
 
@@ -155,33 +175,43 @@ public:
 
     // set properties on the document, like PageMargin, VisArea.
     // And set real Size
-    static void InitOle( SfxObjectShell* pDoc, SwDoc& rDoc );
+    static void InitOle( SfxObjectShell* pDoc );
 
     // copy - methods and helper methods for the copy
     int  Cut();
     int  Copy( bool bIsCut = false );
     int  PrepareForCopy( bool bIsCut = false );
     void  CalculateAndCopy();                // special for Calculator
-    int  CopyGlossary( SwTextBlocks& rGlossary, const OUString& rStr );
+    bool  CopyGlossary( SwTextBlocks& rGlossary, const OUString& rStr );
 
     // remove the DDE-Link format promise
     void RemoveDDELinkFormat( const vcl::Window& rWin );
 
     // paste - methods and helper methods for the paste
     static bool IsPaste( const SwWrtShell&, const TransferableDataHelper& );
-    static bool Paste( SwWrtShell&, TransferableDataHelper&, RndStdIds nAnchorType = RndStdIds::FLY_AT_PARA );
+    static bool Paste( SwWrtShell&, TransferableDataHelper&, RndStdIds nAnchorType = RndStdIds::FLY_AT_PARA,
+                          bool bIgnoreComments = false, PasteTableType ePasteTable = PasteTableType::PASTE_DEFAULT );
     static bool PasteData( TransferableDataHelper& rData,
                           SwWrtShell& rSh, sal_uInt8 nAction, SotExchangeActionFlags nActionFlags,
                           SotClipboardFormatId nFormat,
                           SotExchangeDest nDestination, bool bIsPasteFormat,
                           bool bIsDefault,
                           const Point* pDDPos = nullptr, sal_Int8 nDropAction = 0,
-                          bool bPasteSelection = false, RndStdIds nAnchorType = RndStdIds::FLY_AT_PARA );
+                          bool bPasteSelection = false, RndStdIds nAnchorType = RndStdIds::FLY_AT_PARA,
+                          bool bIgnoreComments = false,
+                          SwPasteContext* pContext = nullptr,
+                          PasteTableType nPaste = PasteTableType::PASTE_DEFAULT );
 
     static bool IsPasteSpecial( const SwWrtShell& rWrtShell,
                                 const TransferableDataHelper& );
+    static bool IsPasteOwnFormat( const TransferableDataHelper& );
     static bool PasteUnformatted( SwWrtShell& rSh, TransferableDataHelper& );
-    static bool PasteSpecial( SwWrtShell& rSh, TransferableDataHelper&, SotClipboardFormatId& rFormatUsed );
+    /**
+     * @brief PrePasteSpecial Prepares the given dialog without actually running it
+     * @param rSh
+     * @param rFormatUsed
+     */
+    static void PrePasteSpecial( const SwWrtShell& rSh, TransferableDataHelper&, const VclPtr<SfxAbstractPasteDialog>& pDlg );
     static bool PasteFormat( SwWrtShell& rSh, TransferableDataHelper& rData,
                              SotClipboardFormatId nFormat );
 
@@ -207,6 +237,9 @@ public:
     static const css::uno::Sequence< sal_Int8 >& getUnoTunnelId();
 
     virtual sal_Int64 SAL_CALL getSomething( const css::uno::Sequence< sal_Int8 >& rId ) override;
+
+    static void SelectPasteFormat(TransferableDataHelper& rData, sal_uInt8& nAction,
+                                  SotClipboardFormatId& nFormat);
 };
 
 #endif

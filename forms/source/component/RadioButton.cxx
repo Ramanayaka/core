@@ -19,20 +19,18 @@
 
 #include "RadioButton.hxx"
 #include "GroupManager.hxx"
-#include "property.hxx"
-#include "property.hrc"
-#include "services.hxx"
+#include <property.hxx>
+#include <services.hxx>
 #include <comphelper/basicio.hxx>
-#include <comphelper/processfactory.hxx>
+#include <comphelper/property.hxx>
 #include <com/sun/star/container/XIndexAccess.hpp>
-#include <com/sun/star/awt/XVclWindowPeer.hpp>
+#include <com/sun/star/form/FormComponentType.hpp>
 
 namespace frm
 {
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::sdb;
 using namespace ::com::sun::star::sdbc;
-using namespace ::com::sun::star::sdbcx;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::form;
@@ -119,39 +117,38 @@ void ORadioButtonModel::SetSiblingPropsTo(const OUString& rPropName, const Any& 
     // my name
     OUString sMyGroup;
     if (hasProperty(PROPERTY_GROUP_NAME, this))
-        this->getPropertyValue(PROPERTY_GROUP_NAME) >>= sMyGroup;
+        getPropertyValue(PROPERTY_GROUP_NAME) >>= sMyGroup;
     if (sMyGroup.isEmpty())
         sMyGroup = m_aName;
 
     // Iterate over my siblings
     Reference<XIndexAccess> xIndexAccess(getParent(), UNO_QUERY);
-    if (xIndexAccess.is())
+    if (!xIndexAccess.is())
+        return;
+
+    Reference<XPropertySet> xMyProps = this;
+    OUString sCurrentGroup;
+    sal_Int32 nNumSiblings = xIndexAccess->getCount();
+    for (sal_Int32 i=0; i<nNumSiblings; ++i)
     {
-        Reference<XPropertySet> xMyProps(
-            static_cast<XWeak*>(this), css::uno::UNO_QUERY);
-        OUString sCurrentGroup;
-        sal_Int32 nNumSiblings = xIndexAccess->getCount();
-        for (sal_Int32 i=0; i<nNumSiblings; ++i)
-        {
-            Reference<XPropertySet> xSiblingProperties(xIndexAccess->getByIndex(i), UNO_QUERY);
-            if (!xSiblingProperties.is())
-                continue;
-            if (xMyProps == xSiblingProperties)
-                continue;   // do not set myself
+        Reference<XPropertySet> xSiblingProperties(xIndexAccess->getByIndex(i), UNO_QUERY);
+        if (!xSiblingProperties.is())
+            continue;
+        if (xMyProps == xSiblingProperties)
+            continue;   // do not set myself
 
-            // Only if it's a RadioButton
-            if (!hasProperty(PROPERTY_CLASSID, xSiblingProperties))
-                continue;
-            sal_Int16 nType = 0;
-            xSiblingProperties->getPropertyValue(PROPERTY_CLASSID) >>= nType;
-            if (nType != FormComponentType::RADIOBUTTON)
-                continue;
+        // Only if it's a RadioButton
+        if (!hasProperty(PROPERTY_CLASSID, xSiblingProperties))
+            continue;
+        sal_Int16 nType = 0;
+        xSiblingProperties->getPropertyValue(PROPERTY_CLASSID) >>= nType;
+        if (nType != FormComponentType::RADIOBUTTON)
+            continue;
 
-            // The group association is attached to the name
-            sCurrentGroup = OGroupManager::GetGroupName( xSiblingProperties );
-            if (sCurrentGroup == sMyGroup)
-                xSiblingProperties->setPropertyValue(rPropName, rValue);
-        }
+        // The group association is attached to the name
+        sCurrentGroup = OGroupManager::GetGroupName( xSiblingProperties );
+        if (sCurrentGroup == sMyGroup)
+            xSiblingProperties->setPropertyValue(rPropName, rValue);
     }
 }
 
@@ -178,63 +175,62 @@ void ORadioButtonModel::setFastPropertyValue_NoBroadcast(sal_Int32 nHandle, cons
         setControlSource();
     }
 
-    if (nHandle == PROPERTY_ID_DEFAULT_STATE)
-    {
-        sal_Int16 nValue;
-        rValue >>= nValue;
-        if (1 == nValue)
-        {   // Reset the 'default checked' for all Radios of the same group.
-            // Because (as the Highlander already knew): "There can be only one"
-            Any aZero;
-            nValue = 0;
-            aZero <<= nValue;
-            SetSiblingPropsTo(PROPERTY_DEFAULT_STATE, aZero);
-        }
+    if (nHandle != PROPERTY_ID_DEFAULT_STATE)
+        return;
+
+    sal_Int16 nValue;
+    rValue >>= nValue;
+    if (1 == nValue)
+    {   // Reset the 'default checked' for all Radios of the same group.
+        // Because (as the Highlander already knew): "There can be only one"
+        Any aZero;
+        nValue = 0;
+        aZero <<= nValue;
+        SetSiblingPropsTo(PROPERTY_DEFAULT_STATE, aZero);
     }
 }
 
 void ORadioButtonModel::setControlSource()
 {
     Reference<XIndexAccess> xIndexAccess(getParent(), UNO_QUERY);
-    if (xIndexAccess.is())
+    if (!xIndexAccess.is())
+        return;
+
+    OUString sName, sGroupName;
+
+    if (hasProperty(PROPERTY_GROUP_NAME, this))
+        getPropertyValue(PROPERTY_GROUP_NAME) >>= sGroupName;
+    getPropertyValue(PROPERTY_NAME) >>= sName;
+
+    Reference<XPropertySet> xMyProps = this;
+    for (sal_Int32 i=0; i<xIndexAccess->getCount(); ++i)
     {
-        OUString sName, sGroupName;
+        Reference<XPropertySet> xSiblingProperties(xIndexAccess->getByIndex(i), UNO_QUERY);
+        if (!xSiblingProperties.is())
+            continue;
 
-        if (hasProperty(PROPERTY_GROUP_NAME, this))
-            this->getPropertyValue(PROPERTY_GROUP_NAME) >>= sGroupName;
-        this->getPropertyValue(PROPERTY_NAME) >>= sName;
+        if (xMyProps == xSiblingProperties)
+            // Only if I didn't find myself
+            continue;
 
-        Reference<XPropertySet> xMyProps(
-            static_cast<XWeak*>(this), css::uno::UNO_QUERY);
-        for (sal_Int32 i=0; i<xIndexAccess->getCount(); ++i)
+        sal_Int16 nType = 0;
+        xSiblingProperties->getPropertyValue(PROPERTY_CLASSID) >>= nType;
+        if (nType != FormComponentType::RADIOBUTTON)
+            // Only RadioButtons
+            continue;
+
+        OUString sSiblingName, sSiblingGroupName;
+        if (hasProperty(PROPERTY_GROUP_NAME, xSiblingProperties))
+            xSiblingProperties->getPropertyValue(PROPERTY_GROUP_NAME) >>= sSiblingGroupName;
+        xSiblingProperties->getPropertyValue(PROPERTY_NAME) >>= sSiblingName;
+
+        if ((sGroupName.isEmpty() && sSiblingGroupName.isEmpty() &&                 // (no group name
+             sName == sSiblingName) ||                                              //  names match) or
+            (!sGroupName.isEmpty() && !sSiblingGroupName.isEmpty() &&               // (have group name
+             sGroupName == sSiblingGroupName))                                      //  they match)
         {
-            Reference<XPropertySet> xSiblingProperties(xIndexAccess->getByIndex(i), UNO_QUERY);
-            if (!xSiblingProperties.is())
-                continue;
-
-            if (xMyProps == xSiblingProperties)
-                // Only if I didn't find myself
-                continue;
-
-            sal_Int16 nType = 0;
-            xSiblingProperties->getPropertyValue(PROPERTY_CLASSID) >>= nType;
-            if (nType != FormComponentType::RADIOBUTTON)
-                // Only RadioButtons
-                continue;
-
-            OUString sSiblingName, sSiblingGroupName;
-            if (hasProperty(PROPERTY_GROUP_NAME, xSiblingProperties))
-                xSiblingProperties->getPropertyValue(PROPERTY_GROUP_NAME) >>= sSiblingGroupName;
-            xSiblingProperties->getPropertyValue(PROPERTY_NAME) >>= sSiblingName;
-
-            if ((sGroupName.isEmpty() && sSiblingGroupName.isEmpty() &&                 // (no group name
-                 sName == sSiblingName) ||                                              //  names match) or
-                (!sGroupName.isEmpty() && !sSiblingGroupName.isEmpty() &&               // (have group name
-                 sGroupName == sSiblingGroupName))                                      //  they match)
-            {
-                setPropertyValue(PROPERTY_CONTROLSOURCE, xSiblingProperties->getPropertyValue(PROPERTY_CONTROLSOURCE));
-                break;
-            }
+            setPropertyValue(PROPERTY_CONTROLSOURCE, xSiblingProperties->getPropertyValue(PROPERTY_CONTROLSOURCE));
+            break;
         }
     }
 }
@@ -250,7 +246,7 @@ void ORadioButtonModel::describeFixedProperties( Sequence< Property >& _rProps )
 
 OUString SAL_CALL ORadioButtonModel::getServiceName()
 {
-    return OUString(FRM_COMPONENT_RADIOBUTTON);   // old (non-sun) name for compatibility !
+    return FRM_COMPONENT_RADIOBUTTON;   // old (non-sun) name for compatibility !
 }
 
 
@@ -263,7 +259,7 @@ void SAL_CALL ORadioButtonModel::write(const Reference<XObjectOutputStream>& _rx
 
     // Properties
     _rxOutStream << getReferenceValue();
-    _rxOutStream << (sal_Int16)getDefaultChecked();
+    _rxOutStream << static_cast<sal_Int16>(getDefaultChecked());
     writeHelpTextCompatibly(_rxOutStream);
 
     // from version 0x0003 : common properties
@@ -305,7 +301,7 @@ void SAL_CALL ORadioButtonModel::read(const Reference<XObjectInputStream>& _rxIn
     }
 
     setReferenceValue( sReferenceValue );
-    setDefaultChecked( (ToggleState)nDefaultChecked );
+    setDefaultChecked( static_cast<ToggleState>(nDefaultChecked) );
 
     // Display default values after read
     if ( !getControlSource().isEmpty() )
@@ -318,11 +314,11 @@ void ORadioButtonModel::_propertyChanged(const PropertyChangeEvent& _rEvent)
 {
     if ( _rEvent.PropertyName == PROPERTY_STATE )
     {
-        if ( _rEvent.NewValue == (sal_Int16)1 )
+        if ( _rEvent.NewValue == sal_Int16(1) )
         {
             // If my status has changed to 'checked', I have to reset all my siblings, which are in the same group as I am
             Any aZero;
-            aZero <<= (sal_Int16)0;
+            aZero <<= sal_Int16(0);
             SetSiblingPropsTo( PROPERTY_STATE, aZero );
         }
     }
@@ -340,8 +336,7 @@ void ORadioButtonModel::_propertyChanged(const PropertyChangeEvent& _rEvent)
 
 Any ORadioButtonModel::translateDbColumnToControlValue()
 {
-    return makeAny( (sal_Int16)
-        ( ( m_xColumn->getString() == getReferenceValue() ) ? TRISTATE_TRUE : TRISTATE_FALSE )
+    return makeAny( static_cast<sal_Int16>( ( m_xColumn->getString() == getReferenceValue() ) ? TRISTATE_TRUE : TRISTATE_FALSE )
     );
 }
 
@@ -352,7 +347,7 @@ Any ORadioButtonModel::translateExternalValueToControlValue( const Any& _rExtern
     sal_Int16 nState = TRISTATE_FALSE;
     if ( ( aControlValue >>= nState ) && ( nState == TRISTATE_INDET ) )
         // radio buttons do not have the DONTKNOW state
-        aControlValue <<= (sal_Int16)TRISTATE_FALSE;
+        aControlValue <<= sal_Int16(TRISTATE_FALSE);
     return aControlValue;
 }
 
@@ -380,14 +375,14 @@ bool ORadioButtonModel::commitControlValueToDbColumn( bool /*_bPostReset*/ )
 
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_form_ORadioButtonModel_get_implementation(css::uno::XComponentContext* component,
         css::uno::Sequence<css::uno::Any> const &)
 {
     return cppu::acquire(new frm::ORadioButtonModel(component));
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_form_ORadioButtonControl_get_implementation(css::uno::XComponentContext* component,
         css::uno::Sequence<css::uno::Any> const &)
 {

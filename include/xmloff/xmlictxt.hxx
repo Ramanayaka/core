@@ -23,27 +23,36 @@
 #include <sal/config.h>
 #include <xmloff/dllapi.h>
 #include <sal/types.h>
-#include <com/sun/star/xml/sax/XAttributeList.hpp>
 #include <com/sun/star/xml/sax/XFastContextHandler.hpp>
-#include <tools/ref.hxx>
+#include <com/sun/star/lang/XTypeProvider.hpp>
 #include <rtl/ustring.hxx>
-#include <cppuhelper/implbase.hxx>
-#include <xmloff/nmspmap.hxx>
+#include <xmloff/namespacemap.hxx>
 #include <memory>
 
-class SvXMLNamespaceMap;
+namespace com::sun::star::xml::sax { class XAttributeList; }
+
 class SvXMLImport;
 
-class XMLOFF_DLLPUBLIC SvXMLImportContext : public cppu::WeakImplHelper< css::xml::sax::XFastContextHandler >
+class SvXMLImportContext;
+
+typedef rtl::Reference<SvXMLImportContext> SvXMLImportContextRef;
+
+/**
+This class deliberately does not support XWeak, to improve performance when loading
+large documents.
+*/
+class XMLOFF_DLLPUBLIC SvXMLImportContext : public css::xml::sax::XFastContextHandler,
+                                            public css::lang::XTypeProvider
+
 {
     friend class SvXMLImport;
 
-    SvXMLImport& mrImport;
-
-    sal_uInt16       mnPrefix;
-    OUString maLocalName;
-
+    SvXMLImport&                       mrImport;
+    OUString                           maLocalName;
     std::unique_ptr<SvXMLNamespaceMap> m_pRewindMap;
+    oslInterlockedCount                m_nRefCount;
+    sal_uInt16                         mnPrefix;
+    bool                               mbPrefixAndLocalNameFilledIn;
 
     SAL_DLLPRIVATE std::unique_ptr<SvXMLNamespaceMap> TakeRewindMap() { return std::move(m_pRewindMap); }
     SAL_DLLPRIVATE void PutRewindMap(std::unique_ptr<SvXMLNamespaceMap> p) { m_pRewindMap = std::move(p); }
@@ -55,8 +64,9 @@ protected:
 
 public:
 
-    sal_uInt16 GetPrefix() const { return mnPrefix; }
-    const OUString& GetLocalName() const { return maLocalName; }
+    bool IsPrefixFilledIn() const { return mnPrefix != 0; }
+    sal_uInt16 GetPrefix() const { assert(mbPrefixAndLocalNameFilledIn && "those fields not filled, probably fast-parser context"); return mnPrefix; }
+    const OUString& GetLocalName() const { assert(mbPrefixAndLocalNameFilledIn && "those fields not filled, probably fast-parser context"); return maLocalName; }
 
     /** A contexts constructor does anything that is required if an element
      * starts. Namespace processing has been done already.
@@ -71,21 +81,21 @@ public:
      * ends. By default, nothing is done.
      * Note that virtual methods cannot be used inside destructors. Use
      * EndElement instead if this is required. */
-    virtual ~SvXMLImportContext() override;
+    virtual ~SvXMLImportContext();
 
     /** Create a children element context. By default, the import's
      * CreateContext method is called to create a new default context. */
-    virtual SvXMLImportContext *CreateChildContext( sal_uInt16 nPrefix,
+    virtual SvXMLImportContextRef CreateChildContext( sal_uInt16 nPrefix,
                                    const OUString& rLocalName,
                                    const css::uno::Reference< css::xml::sax::XAttributeList >& xAttrList );
 
     /** StartElement is called after a context has been constructed and
-     * before a elements context is parsed. It may be used for actions that
+     * before an elements context is parsed. It may be used for actions that
      * require virtual methods. The default is to do nothing. */
     virtual void StartElement( const css::uno::Reference< css::xml::sax::XAttributeList >& xAttrList );
 
     /** EndElement is called before a context will be destructed, but
-     * after a elements context has been parsed. It may be used for actions
+     * after an elements context has been parsed. It may be used for actions
      * that require virtual methods. The default is to do nothing. */
     virtual void EndElement();
 
@@ -113,12 +123,17 @@ public:
 
     virtual void SAL_CALL characters(const OUString & aChars) override;
 
-    void AddFirstRef();
-    void AddNextRef();
-    void ReleaseRef();
-};
+    // XInterface
+    virtual css::uno::Any SAL_CALL queryInterface( const css::uno::Type& aType ) final override;
+    virtual void SAL_CALL acquire() throw () final override
+    { osl_atomic_increment(&m_nRefCount); }
+    virtual void SAL_CALL release() throw () final override
+    { if (osl_atomic_decrement(&m_nRefCount) == 0) delete this; }
 
-typedef rtl::Reference<SvXMLImportContext> SvXMLImportContextRef;
+    // XTypeProvider
+    virtual css::uno::Sequence< css::uno::Type > SAL_CALL getTypes(  ) final override;
+    virtual css::uno::Sequence< sal_Int8 > SAL_CALL getImplementationId(  ) final override;
+};
 
 #endif // INCLUDED_XMLOFF_XMLICTXT_HXX
 

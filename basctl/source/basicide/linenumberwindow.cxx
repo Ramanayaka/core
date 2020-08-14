@@ -9,6 +9,8 @@
 
 #include "baside2.hxx"
 
+#include <vcl/event.hxx>
+#include <vcl/textview.hxx>
 #include <vcl/xtextedt.hxx>
 #include <vcl/settings.hxx>
 
@@ -71,14 +73,15 @@ void LineNumberWindow::Paint( vcl::RenderContext& rRenderContext, const tools::R
 
     // reserve enough for 3 digit minimum, with a bit to spare for comfort
     m_nWidth = m_nBaseWidth * 3 + m_nBaseWidth / 2;
-    sal_uInt32 i = (nEndLine + 1) / 1000;
+    auto nMaxLineNumber = std::max(nEndLine, txtEngine->GetParagraphCount() + 1);
+    sal_uInt32 i = (nMaxLineNumber + 1) / 1000;
     while (i)
     {
         i /= 10;
         m_nWidth += m_nBaseWidth;
     }
 
-    sal_Int64 y = (nStartLine - 1) * (sal_Int64)nLineHeight;
+    sal_Int64 y = (nStartLine - 1) * static_cast<sal_Int64>(nLineHeight);
     for (sal_uInt32 n = nStartLine; n <= nEndLine; ++n, y += nLineHeight)
         rRenderContext.DrawText(Point(0, y - m_nCurYOffset), OUString::number(n));
 }

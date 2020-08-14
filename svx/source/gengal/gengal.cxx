@@ -8,38 +8,34 @@
  */
 
 #include <sal/config.h>
+#include <sal/log.hxx>
 
 #include <stdio.h>
-#ifndef _WIN32
-#include <unistd.h>
-#endif
 
 #include <vector>
-
-#include <unotools/streamwrap.hxx>
-#include <unotools/ucbstreamhelper.hxx>
 
 #include <comphelper/processfactory.hxx>
 #include <cppuhelper/bootstrap.hxx>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
-#include <com/sun/star/lang/XInitialization.hpp>
-#include <com/sun/star/registry/XSimpleRegistry.hpp>
 #include <com/sun/star/ucb/UniversalContentBroker.hpp>
+#include <com/sun/star/frame/Desktop.hpp>
 
 #include <tools/urlobj.hxx>
 #include <vcl/vclmain.hxx>
 
 #include <osl/file.hxx>
 #include <osl/process.h>
-#include <rtl/bootstrap.hxx>
 #include <sfx2/app.hxx>
 #include <sal/types.h>
+#include <tools/diagnose_ex.h>
 #include <vcl/svapp.hxx>
 
 #include <svx/galtheme.hxx>
 #include <svx/gallery1.hxx>
 
 using namespace ::com::sun::star;
+
+namespace {
 
 class GalApp : public Application
 {
@@ -57,28 +53,14 @@ protected:
     void DeInit() override;
 };
 
-Gallery* createGallery( const OUString& rURL )
-{
-    return new Gallery( rURL );
-}
-
-void disposeGallery( Gallery* pGallery )
-{
-    delete pGallery;
 }
 
 static void createTheme( const OUString& aThemeName, const OUString& aGalleryURL,
                          const OUString& aDestDir, std::vector<INetURLObject> &rFiles,
                          bool bRelativeURLs )
 {
-    Gallery* pGallery;
+    std::unique_ptr<Gallery> pGallery(new Gallery( aGalleryURL ));
 
-    pGallery = createGallery( aGalleryURL );
-    if (!pGallery ) {
-            fprintf( stderr, "Could't create '%s'\n",
-                     OUStringToOString( aGalleryURL, RTL_TEXTENCODING_UTF8 ).getStr() );
-            exit( 1 );
-    }
     fprintf( stderr, "Work on gallery '%s'\n",
              OUStringToOString( aGalleryURL, RTL_TEXTENCODING_UTF8 ).getStr() );
 
@@ -108,28 +90,22 @@ static void createTheme( const OUString& aThemeName, const OUString& aGalleryURL
              OUStringToOString( aDestDir, RTL_TEXTENCODING_UTF8 ).getStr() );
     pGalTheme->SetDestDir( aDestDir, bRelativeURLs );
 
-    std::vector<INetURLObject>::const_iterator aIter;
-
-    for( aIter = rFiles.begin(); aIter != rFiles.end(); ++aIter )
+    for( const auto& rFile : rFiles )
     {
 //  Should/could use:
 //    if ( ! pGalTheme->InsertFileOrDirURL( aURL ) ) {
 //    Requires a load more components ...
 
-        Graphic aGraphic;
-
-        if ( ! pGalTheme->InsertURL( *aIter ) )
+        if ( ! pGalTheme->InsertURL( rFile ) )
             fprintf( stderr, "Failed to import '%s'\n",
-                     OUStringToOString( aIter->GetMainURL(INetURLObject::DecodeMechanism::NONE), RTL_TEXTENCODING_UTF8 ).getStr() );
+                     OUStringToOString( rFile.GetMainURL(INetURLObject::DecodeMechanism::NONE), RTL_TEXTENCODING_UTF8 ).getStr() );
         else
-            fprintf( stderr, "Imported file '%s' (%" SAL_PRI_SIZET "u)\n",
-                     OUStringToOString( aIter->GetMainURL(INetURLObject::DecodeMechanism::NONE), RTL_TEXTENCODING_UTF8 ).getStr(),
+            fprintf( stderr, "Imported file '%s' (%" SAL_PRIuUINT32 ")\n",
+                     OUStringToOString( rFile.GetMainURL(INetURLObject::DecodeMechanism::NONE), RTL_TEXTENCODING_UTF8 ).getStr(),
                      pGalTheme->GetObjectCount() );
     }
 
     pGallery->ReleaseTheme( pGalTheme, aListener );
-
-    disposeGallery( pGallery );
 }
 
 static int PrintHelp()
@@ -201,16 +177,16 @@ void GalApp::Init()
         css::ucb::UniversalContentBroker::create(xComponentContext);
     } catch (const uno::Exception &e) {
         fprintf( stderr, "Bootstrap exception '%s'\n",
-                 rtl::OUStringToOString( e.Message, RTL_TEXTENCODING_UTF8 ).getStr() );
+                 OUStringToOString( e.Message, RTL_TEXTENCODING_UTF8 ).getStr() );
         exit( 1 );
     }
 }
 
-std::vector<OUString> ReadResponseFile_Impl(OUString const& rInput)
+static std::vector<OUString> ReadResponseFile_Impl(OUString const& rInput)
 {
     osl::File file(rInput);
     osl::FileBase::RC rc = file.open(osl_File_OpenFlag_Read);
-    OString const uInput(rtl::OUStringToOString(rInput, RTL_TEXTENCODING_UTF8));
+    OString const uInput(OUStringToOString(rInput, RTL_TEXTENCODING_UTF8));
     if (osl::FileBase::E_None != rc)
     {
         fprintf(stderr, "error while opening response file: %s (%d)\n",
@@ -219,7 +195,7 @@ std::vector<OUString> ReadResponseFile_Impl(OUString const& rInput)
     }
 
     std::vector<OUString> ret;
-    OUStringBuffer b;
+    OUStringBuffer b(256);
     char buf[1<<16];
     while (true)
     {
@@ -261,7 +237,7 @@ std::vector<OUString> ReadResponseFile_Impl(OUString const& rInput)
     return ret;
 }
 
-void
+static void
 ReadResponseFile(std::vector<INetURLObject> & rFiles, OUString const& rInput)
 {
     std::vector<OUString> files(ReadResponseFile_Impl(rInput));
@@ -317,14 +293,14 @@ int GalApp::Main()
 
         createTheme( aName, aPath, aDestDir, aFiles, mbRelativeURLs );
     }
-    catch (const uno::Exception& e)
+    catch (const uno::Exception&)
     {
-        SAL_WARN("svx", "Fatal exception: " << e.Message);
+        TOOLS_WARN_EXCEPTION("svx", "Fatal");
         return EXIT_FAILURE;
     }
     catch (const std::exception &e)
     {
-        SAL_WARN("svx", "Fatal exception: " << e.what());
+        SAL_WARN("svx", "Fatal: " << e.what());
         return 1;
     }
 
@@ -333,6 +309,8 @@ int GalApp::Main()
 
 void GalApp::DeInit()
 {
+    auto xDesktop = css::frame::Desktop::create(comphelper::getProcessComponentContext());
+    xDesktop->terminate();
     uno::Reference< lang::XComponent >(
         comphelper::getProcessComponentContext(),
         uno::UNO_QUERY_THROW )-> dispose();

@@ -18,13 +18,12 @@
  */
 
 #include <sal/macros.h>
-#include <com/sun/star/container/XContentEnumerationAccess.hpp>
-#include <com/sun/star/container/XEnumeration.hpp>
+#include <com/sun/star/beans/XPropertySet.hpp>
+#include <com/sun/star/container/ElementExistException.hpp>
 #include <com/sun/star/container/XNameAccess.hpp>
-#include <com/sun/star/container/XNameContainer.hpp>
-#include <com/sun/star/container/XNameReplace.hpp>
 #include <com/sun/star/configuration/theDefaultProvider.hpp>
 #include <com/sun/star/i18n/BreakIterator.hpp>
+#include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 #include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
@@ -35,47 +34,38 @@
 #include <com/sun/star/linguistic2/ProofreadingResult.hpp>
 #include <com/sun/star/linguistic2/LinguServiceEvent.hpp>
 #include <com/sun/star/linguistic2/LinguServiceEventFlags.hpp>
-#include <com/sun/star/registry/XRegistryKey.hpp>
 #include <com/sun/star/text/TextMarkupType.hpp>
 #include <com/sun/star/text/TextMarkupDescriptor.hpp>
-#include <com/sun/star/text/XTextMarkup.hpp>
 #include <com/sun/star/text/XMultiTextMarkup.hpp>
 #include <com/sun/star/text/XFlatParagraph.hpp>
 #include <com/sun/star/text/XFlatParagraphIterator.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
-#include <com/sun/star/lang/XSingleComponentFactory.hpp>
+#include <com/sun/star/lang/XSingleServiceFactory.hpp>
 
 #include <sal/config.h>
+#include <sal/log.hxx>
+#include <o3tl/safeint.hxx>
 #include <osl/conditn.hxx>
-#include <osl/thread.hxx>
-#include <cppuhelper/implementationentry.hxx>
-#include <cppuhelper/interfacecontainer.h>
 #include <cppuhelper/factory.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <i18nlangtag/languagetag.hxx>
 #include <comphelper/processfactory.hxx>
 #include <comphelper/propertysequence.hxx>
-#include <comphelper/extract.hxx>
+#include <tools/debug.hxx>
+#include <tools/diagnose_ex.h>
+#include <rtl/ref.hxx>
 
-#include <deque>
 #include <map>
-#include <vector>
 
-#include "linguistic/misc.hxx"
-#include "defs.hxx"
-#include "lngopt.hxx"
-#include "lngreg.hxx"
+#include <linguistic/misc.hxx>
 
 #include "gciterator.hxx"
 
 using namespace linguistic;
 using namespace ::com::sun::star;
 
-static OUString GrammarCheckingIterator_getImplementationName() throw();
-static uno::Sequence< OUString > GrammarCheckingIterator_getSupportedServiceNames() throw();
-
 // white space list: obtained from the fonts.config.txt of a Linux system.
-static const sal_Unicode aWhiteSpaces[] =
+const sal_Unicode aWhiteSpaces[] =
 {
     0x0020,   /* SPACE */
     0x00a0,   /* NO-BREAK SPACE */
@@ -127,7 +117,11 @@ static const sal_Unicode aWhiteSpaces[] =
     0xfffb    /* INTERLINEAR ANNOTATION TERMINATOR */
 };
 
-static const int nWhiteSpaces = SAL_N_ELEMENTS( aWhiteSpaces );
+//  Information about reason for proofreading (ProofInfo)
+   const sal_Int32 PROOFINFO_GET_PROOFRESULT = 1;
+   const sal_Int32 PROOFINFO_MARK_PARAGRAPH = 2;
+
+const int nWhiteSpaces = SAL_N_ELEMENTS( aWhiteSpaces );
 
 static bool lcl_IsWhiteSpace( sal_Unicode cChar )
 {
@@ -165,8 +159,9 @@ static sal_Int32 lcl_SkipWhiteSpaces( const OUString &rText, sal_Int32 nStartPos
     sal_Int32 nRes = nStartPos;
     if (0 <= nStartPos && nStartPos < nLen)
     {
+        const sal_Unicode* const pEnd = rText.getStr() + nLen;
         const sal_Unicode *pText = rText.getStr() + nStartPos;
-        while (nStartPos < nLen && lcl_IsWhiteSpace( *pText ))
+        while (pText != pEnd && lcl_IsWhiteSpace(*pText))
             ++pText;
         nRes = pText - rText.getStr();
     }
@@ -203,14 +198,11 @@ static sal_Int32 lcl_BacktraceWhiteSpaces( const OUString &rText, sal_Int32 nSta
     if (0 <= nPosBefore && nPosBefore < nLen && lcl_IsWhiteSpace( pStart[ nPosBefore ] ))
     {
         nStartPos = nPosBefore;
-        if (0 <= nStartPos && nStartPos < nLen)
-        {
-            const sal_Unicode *pText = rText.getStr() + nStartPos;
-            while (pText > pStart && lcl_IsWhiteSpace( *pText ))
-                --pText;
-            // now add 1 since we want to point to the first char after the last char in the sentence...
-            nRes = pText - pStart + 1;
-        }
+        const sal_Unicode *pText = rText.getStr() + nStartPos;
+        while (pText > pStart && lcl_IsWhiteSpace( *pText ))
+            --pText;
+        // now add 1 since we want to point to the first char after the last char in the sentence...
+        nRes = pText - pStart + 1;
     }
 
     DBG_ASSERT( 0 <= nRes && nRes <= nLen, "lcl_BacktraceWhiteSpaces return value out of range" );
@@ -218,11 +210,15 @@ static sal_Int32 lcl_BacktraceWhiteSpaces( const OUString &rText, sal_Int32 nSta
 }
 
 
-extern "C" void lcl_workerfunc (void * gci)
+extern "C" {
+
+static void lcl_workerfunc (void * gci)
 {
     osl_setThreadName("GrammarCheckingIterator");
 
     static_cast<GrammarCheckingIterator*>(gci)->DequeueAndCheck();
+}
+
 }
 
 static lang::Locale lcl_GetPrimaryLanguageOfSentence(
@@ -234,15 +230,59 @@ static lang::Locale lcl_GetPrimaryLanguageOfSentence(
 }
 
 
+LngXStringKeyMap::LngXStringKeyMap() {}
+
+void SAL_CALL LngXStringKeyMap::insertValue(const OUString& aKey, const css::uno::Any& aValue)
+{
+    std::map<OUString, css::uno::Any>::const_iterator aIter = maMap.find(aKey);
+    if (aIter != maMap.end())
+        throw css::container::ElementExistException();
+
+    maMap[aKey] = aValue;
+}
+
+css::uno::Any SAL_CALL LngXStringKeyMap::getValue(const OUString& aKey)
+{
+    std::map<OUString, css::uno::Any>::const_iterator aIter = maMap.find(aKey);
+    if (aIter == maMap.end())
+        throw css::container::NoSuchElementException();
+
+    return (*aIter).second;
+}
+
+sal_Bool SAL_CALL LngXStringKeyMap::hasValue(const OUString& aKey)
+{
+    return maMap.find(aKey) != maMap.end();
+}
+
+::sal_Int32 SAL_CALL LngXStringKeyMap::getCount() { return maMap.size(); }
+
+OUString SAL_CALL LngXStringKeyMap::getKeyByIndex(::sal_Int32 nIndex)
+{
+    if (nIndex < 0 || o3tl::make_unsigned(nIndex) >= maMap.size())
+        throw css::lang::IndexOutOfBoundsException();
+
+    return OUString();
+}
+
+css::uno::Any SAL_CALL LngXStringKeyMap::getValueByIndex(::sal_Int32 nIndex)
+{
+    if (nIndex < 0 || o3tl::make_unsigned(nIndex) >= maMap.size())
+        throw css::lang::IndexOutOfBoundsException();
+
+    return css::uno::Any();
+}
+
+
 GrammarCheckingIterator::GrammarCheckingIterator() :
     m_bEnd( false ),
     m_aCurCheckedDocId(),
     m_bGCServicesChecked( false ),
     m_nDocIdCounter( 0 ),
+    m_thread(nullptr),
     m_aEventListeners( MyMutex::get() ),
     m_aNotifyListeners( MyMutex::get() )
 {
-    m_thread = osl_createThread( lcl_workerfunc, this );
 }
 
 
@@ -311,22 +351,24 @@ void GrammarCheckingIterator::AddEntry(
     // we may not need/have a xFlatParaIterator (e.g. if checkGrammarAtPos was called)
     // but we always need a xFlatPara...
     uno::Reference< text::XFlatParagraph > xPara( xFlatPara );
-    if (xPara.is())
-    {
-        FPEntry aNewFPEntry;
-        aNewFPEntry.m_xParaIterator = xFlatParaIterator;
-        aNewFPEntry.m_xPara         = xFlatPara;
-        aNewFPEntry.m_aDocId        = rDocId;
-        aNewFPEntry.m_nStartIndex   = nStartIndex;
-        aNewFPEntry.m_bAutomatic    = bAutomatic;
+    if (!xPara.is())
+        return;
 
-        // add new entry to the end of this queue
-        ::osl::Guard< ::osl::Mutex > aGuard( MyMutex::get() );
-        m_aFPEntriesQueue.push_back( aNewFPEntry );
+    FPEntry aNewFPEntry;
+    aNewFPEntry.m_xParaIterator = xFlatParaIterator;
+    aNewFPEntry.m_xPara         = xFlatPara;
+    aNewFPEntry.m_aDocId        = rDocId;
+    aNewFPEntry.m_nStartIndex   = nStartIndex;
+    aNewFPEntry.m_bAutomatic    = bAutomatic;
 
-        // wake up the thread in order to do grammar checking
-        m_aWakeUpThread.set();
-    }
+    // add new entry to the end of this queue
+    ::osl::Guard< ::osl::Mutex > aGuard( MyMutex::get() );
+    if (!m_thread)
+        m_thread = osl_createThread( lcl_workerfunc, this );
+    m_aFPEntriesQueue.push_back( aNewFPEntry );
+
+    // wake up the thread in order to do grammar checking
+    m_aWakeUpThread.set();
 }
 
 
@@ -366,10 +408,9 @@ void GrammarCheckingIterator::ProcessResult(
                 text::TextMarkupDescriptor * pDescriptors = aDescriptors.getArray();
 
                 // at pos 0 .. nErrors-1 -> all grammar errors
-                for (sal_Int32 i = 0;  i < nErrors;  ++i)
+                for (const linguistic2::SingleProofreadingError &rError : rRes.aErrors)
                 {
-                    const linguistic2::SingleProofreadingError &rError = rRes.aErrors[i];
-                    text::TextMarkupDescriptor &rDesc = aDescriptors[i];
+                    text::TextMarkupDescriptor &rDesc = *pDescriptors++;
 
                     rDesc.nType   = rError.nErrorType;
                     rDesc.nOffset = rError.nErrorStart;
@@ -381,14 +422,32 @@ void GrammarCheckingIterator::ProcessResult(
                     // differently for example. But no special handling right now.
                     if (rDesc.nType == text::TextMarkupType::SPELLCHECK)
                         rDesc.nType = text::TextMarkupType::PROOFREADING;
+
+                    uno::Reference< container::XStringKeyMap > xKeyMap(
+                        new LngXStringKeyMap());
+                    for( const beans::PropertyValue& rProperty : rError.aProperties )
+                    {
+                        if ( rProperty.Name == "LineColor" )
+                        {
+                            xKeyMap->insertValue(rProperty.Name,
+                                                 rProperty.Value);
+                            rDesc.xMarkupInfoContainer = xKeyMap;
+                        }
+                        else if ( rProperty.Name == "LineType" )
+                        {
+                            xKeyMap->insertValue(rProperty.Name,
+                                                 rProperty.Value);
+                            rDesc.xMarkupInfoContainer = xKeyMap;
+                        }
+                    }
                 }
 
                 // at pos nErrors -> sentence markup
                 // nSentenceLength: includes the white-spaces following the sentence end...
                 const sal_Int32 nSentenceLength = rRes.nStartOfNextSentencePosition - rRes.nStartOfSentencePosition;
-                pDescriptors[ nErrors ].nType   = text::TextMarkupType::SENTENCE;
-                pDescriptors[ nErrors ].nOffset = rRes.nStartOfSentencePosition;
-                pDescriptors[ nErrors ].nLength = nSentenceLength;
+                pDescriptors->nType   = text::TextMarkupType::SENTENCE;
+                pDescriptors->nOffset = rRes.nStartOfSentencePosition;
+                pDescriptors->nLength = nSentenceLength;
 
                 xMulti->commitMultiTextMarkup( aDescriptors ) ;
             }
@@ -487,13 +546,15 @@ uno::Reference< linguistic2::XProofreader > GrammarCheckingIterator::GetGrammarC
 }
 
 static uno::Sequence<beans::PropertyValue>
-lcl_makeProperties(uno::Reference<text::XFlatParagraph> const& xFlatPara)
+lcl_makeProperties(uno::Reference<text::XFlatParagraph> const& xFlatPara, sal_Int32 nProofInfo)
 {
     uno::Reference<beans::XPropertySet> const xProps(
             xFlatPara, uno::UNO_QUERY_THROW);
+    css::uno::Any a (nProofInfo);
     return comphelper::InitPropertySequence({
         { "FieldPositions", xProps->getPropertyValue("FieldPositions") },
-        { "FootnotePositions", xProps->getPropertyValue("FootnotePositions") }
+        { "FootnotePositions", xProps->getPropertyValue("FootnotePositions") },
+        { "ProofInfo", a }
     });
 }
 
@@ -542,57 +603,63 @@ void GrammarCheckingIterator::DequeueAndCheck()
                     const bool bModified = xFlatPara->isModified();
                     if (!bModified)
                     {
-                        // ---- THREAD SAFE START ----
-                        ::osl::ClearableGuard< ::osl::Mutex > aGuard( MyMutex::get() );
-
-                        sal_Int32 nStartPos = aFPEntryItem.m_nStartIndex;
-                        sal_Int32 nSuggestedEnd = GetSuggestedEndOfSentence( aCurTxt, nStartPos, aCurLocale );
-                        DBG_ASSERT( (nSuggestedEnd == 0 && aCurTxt.isEmpty()) || nSuggestedEnd > nStartPos,
-                                    "nSuggestedEndOfSentencePos calculation failed?" );
-
                         linguistic2::ProofreadingResult aRes;
 
-                        uno::Reference< linguistic2::XProofreader > xGC( GetGrammarChecker( aCurLocale ), uno::UNO_QUERY );
-                        if (xGC.is())
+                        // ---- THREAD SAFE START ----
                         {
-                            aGuard.clear();
-                            uno::Sequence<beans::PropertyValue> const aProps(
-                                lcl_makeProperties(xFlatPara));
-                            aRes = xGC->doProofreading( aCurDocId, aCurTxt,
-                                                        aCurLocale, nStartPos, nSuggestedEnd, aProps );
+                            osl::ClearableMutexGuard aGuard(MyMutex::get());
 
-                            //!! work-around to prevent looping if the grammar checker
-                            //!! failed to properly identify the sentence end
-                            if (
-                                aRes.nBehindEndOfSentencePosition <= nStartPos &&
-                                aRes.nBehindEndOfSentencePosition != nSuggestedEnd
-                            )
+                            sal_Int32 nStartPos = aFPEntryItem.m_nStartIndex;
+                            sal_Int32 nSuggestedEnd
+                                = GetSuggestedEndOfSentence(aCurTxt, nStartPos, aCurLocale);
+                            DBG_ASSERT((nSuggestedEnd == 0 && aCurTxt.isEmpty())
+                                           || nSuggestedEnd > nStartPos,
+                                       "nSuggestedEndOfSentencePos calculation failed?");
+
+                            uno::Reference<linguistic2::XProofreader> xGC =
+                                GetGrammarChecker(aCurLocale);
+                            if (xGC.is())
                             {
-                                SAL_WARN( "linguistic", "!! Grammarchecker failed to provide end of sentence !!" );
+                                aGuard.clear();
+                                uno::Sequence<beans::PropertyValue> const aProps(
+                                    lcl_makeProperties(xFlatPara, PROOFINFO_MARK_PARAGRAPH));
+                                aRes = xGC->doProofreading(aCurDocId, aCurTxt, aCurLocale,
+                                                           nStartPos, nSuggestedEnd, aProps);
+
+                                //!! work-around to prevent looping if the grammar checker
+                                //!! failed to properly identify the sentence end
+                                if (aRes.nBehindEndOfSentencePosition <= nStartPos
+                                    && aRes.nBehindEndOfSentencePosition != nSuggestedEnd)
+                                {
+                                    SAL_WARN(
+                                        "linguistic",
+                                        "!! Grammarchecker failed to provide end of sentence !!");
+                                    aRes.nBehindEndOfSentencePosition = nSuggestedEnd;
+                                }
+
+                                aRes.xFlatParagraph = xFlatPara;
+                                aRes.nStartOfSentencePosition = nStartPos;
+                            }
+                            else
+                            {
+                                // no grammar checker -> no error
+                                // but we need to provide the data below in order to continue with the next sentence
+                                aRes.aDocumentIdentifier = aCurDocId;
+                                aRes.xFlatParagraph = xFlatPara;
+                                aRes.aText = aCurTxt;
+                                aRes.aLocale = aCurLocale;
+                                aRes.nStartOfSentencePosition = nStartPos;
                                 aRes.nBehindEndOfSentencePosition = nSuggestedEnd;
                             }
+                            aRes.nStartOfNextSentencePosition
+                                = lcl_SkipWhiteSpaces(aCurTxt, aRes.nBehindEndOfSentencePosition);
+                            aRes.nBehindEndOfSentencePosition = lcl_BacktraceWhiteSpaces(
+                                aCurTxt, aRes.nStartOfNextSentencePosition);
 
-                            aRes.xFlatParagraph      = xFlatPara;
-                            aRes.nStartOfSentencePosition = nStartPos;
+                            //guard has to be cleared as ProcessResult calls out of this class
                         }
-                        else
-                        {
-                            // no grammar checker -> no error
-                            // but we need to provide the data below in order to continue with the next sentence
-                            aRes.aDocumentIdentifier = aCurDocId;
-                            aRes.xFlatParagraph      = xFlatPara;
-                            aRes.aText               = aCurTxt;
-                            aRes.aLocale             = aCurLocale;
-                            aRes.nStartOfSentencePosition       = nStartPos;
-                            aRes.nBehindEndOfSentencePosition   = nSuggestedEnd;
-                        }
-                        aRes.nStartOfNextSentencePosition = lcl_SkipWhiteSpaces( aCurTxt, aRes.nBehindEndOfSentencePosition );
-                        aRes.nBehindEndOfSentencePosition = lcl_BacktraceWhiteSpaces( aCurTxt, aRes.nStartOfNextSentencePosition );
-
-                        //guard has to be cleared as ProcessResult calls out of this class
-                        aGuard.clear();
-                        ProcessResult( aRes, xFPIterator, aFPEntryItem.m_bAutomatic );
                         // ---- THREAD SAFE END ----
+                        ProcessResult( aRes, xFPIterator, aFPEntryItem.m_bAutomatic );
                     }
                     else
                     {
@@ -602,12 +669,9 @@ void GrammarCheckingIterator::DequeueAndCheck()
                         AddEntry( xFPIterator, xFlatParaNext, aCurDocId, 0, aFPEntryItem.m_bAutomatic );
                     }
                 }
-                catch (css::uno::Exception & e)
+                catch (css::uno::Exception &)
                 {
-                    SAL_WARN(
-                        "linguistic",
-                        "GrammarCheckingIterator::DequeueAndCheck ignoring UNO"
-                            " exception " << e.Message);
+                    TOOLS_WARN_EXCEPTION("linguistic", "GrammarCheckingIterator::DequeueAndCheck ignoring");
                 }
             }
 
@@ -711,7 +775,7 @@ linguistic2::ProofreadingResult SAL_CALL GrammarCheckingIterator::checkSentenceA
             if (xGC.is())
             {
                 uno::Sequence<beans::PropertyValue> const aProps(
-                        lcl_makeProperties(xFlatPara));
+                        lcl_makeProperties(xFlatPara, PROOFINFO_GET_PROOFRESULT));
                 aTmpRes = xGC->doProofreading( aDocId, rText,
                     aCurLocale, nStartPos, nSuggestedEndOfSentencePos, aProps );
 
@@ -798,13 +862,11 @@ sal_Int32 GrammarCheckingIterator::GetSuggestedEndOfSentence(
 
 void SAL_CALL GrammarCheckingIterator::resetIgnoreRules(  )
 {
-    GCReferences_t::iterator aIt( m_aGCReferencesByService.begin() );
-    while (aIt != m_aGCReferencesByService.end())
+    for (auto const& elem : m_aGCReferencesByService)
     {
-        uno::Reference< linguistic2::XProofreader > xGC( aIt->second );
+        uno::Reference< linguistic2::XProofreader > xGC(elem.second);
         if (xGC.is())
             xGC->resetIgnoreRules();
-        ++aIt;
     }
 }
 
@@ -857,25 +919,25 @@ sal_Bool SAL_CALL GrammarCheckingIterator::isProofreading(
 void SAL_CALL GrammarCheckingIterator::processLinguServiceEvent(
     const linguistic2::LinguServiceEvent& rLngSvcEvent )
 {
-    if (rLngSvcEvent.nEvent == linguistic2::LinguServiceEventFlags::PROOFREAD_AGAIN)
+    if (rLngSvcEvent.nEvent != linguistic2::LinguServiceEventFlags::PROOFREAD_AGAIN)
+        return;
+
+    try
     {
-        try
-        {
-             uno::Reference< uno::XInterface > xThis( static_cast< OWeakObject * >(this) );
-             linguistic2::LinguServiceEvent aEvent( xThis, linguistic2::LinguServiceEventFlags::PROOFREAD_AGAIN );
-             m_aNotifyListeners.notifyEach(
-                    &linguistic2::XLinguServiceEventListener::processLinguServiceEvent,
-                    aEvent);
-        }
-        catch (uno::RuntimeException &)
-        {
-             throw;
-        }
-        catch (const ::uno::Exception &rE)
-        {
-            // ignore
-            SAL_WARN("linguistic", "processLinguServiceEvent: exception: " << rE.Message);
-        }
+         uno::Reference< uno::XInterface > xThis( static_cast< OWeakObject * >(this) );
+         linguistic2::LinguServiceEvent aEvent( xThis, linguistic2::LinguServiceEventFlags::PROOFREAD_AGAIN );
+         m_aNotifyListeners.notifyEach(
+                &linguistic2::XLinguServiceEventListener::processLinguServiceEvent,
+                aEvent);
+    }
+    catch (uno::RuntimeException &)
+    {
+         throw;
+    }
+    catch (const ::uno::Exception &)
+    {
+        // ignore
+        TOOLS_WARN_EXCEPTION("linguistic", "processLinguServiceEvent");
     }
 }
 
@@ -1011,20 +1073,18 @@ void GrammarCheckingIterator::GetConfiguredGCSvcs_Impl()
         uno::Reference< container::XNameAccess > xNA( GetUpdateAccess(), uno::UNO_QUERY_THROW );
         xNA.set( xNA->getByName( "GrammarCheckerList" ), uno::UNO_QUERY_THROW );
         const uno::Sequence< OUString > aElementNames( xNA->getElementNames() );
-        const OUString *pElementNames = aElementNames.getConstArray();
 
-        sal_Int32 nLen = aElementNames.getLength();
-        for (sal_Int32 i = 0;  i < nLen;  ++i)
+        for (const OUString& rElementName : aElementNames)
         {
             uno::Sequence< OUString > aImplNames;
-            uno::Any aTmp( xNA->getByName( pElementNames[i] ) );
+            uno::Any aTmp( xNA->getByName( rElementName ) );
             if (aTmp >>= aImplNames)
             {
-                if (aImplNames.getLength() > 0)
+                if (aImplNames.hasElements())
                 {
                     // only the first entry is used, there should be only one grammar checker per language
                     const OUString aImplName( aImplNames[0] );
-                    const LanguageType nLang = LanguageTag::convertToLanguageType( pElementNames[i] );
+                    const LanguageType nLang = LanguageTag::convertToLanguageType( rElementName );
                     aTmpGCImplNamesByLang[ nLang ] = aImplName;
                 }
             }
@@ -1034,9 +1094,9 @@ void GrammarCheckingIterator::GetConfiguredGCSvcs_Impl()
             }
         }
     }
-    catch (uno::Exception &)
+    catch (uno::Exception const &)
     {
-        SAL_WARN( "linguistic", "exception caught. Failed to get configured services" );
+        TOOLS_WARN_EXCEPTION( "linguistic", "exception caught. Failed to get configured services" );
     }
 
     {
@@ -1057,13 +1117,13 @@ sal_Bool SAL_CALL GrammarCheckingIterator::supportsService(
 
 OUString SAL_CALL GrammarCheckingIterator::getImplementationName(  )
 {
-    return GrammarCheckingIterator_getImplementationName();
+    return "com.sun.star.lingu2.ProofreadingIterator";
 }
 
 
 uno::Sequence< OUString > SAL_CALL GrammarCheckingIterator::getSupportedServiceNames(  )
 {
-    return GrammarCheckingIterator_getSupportedServiceNames();
+    return  { "com.sun.star.linguistic2.ProofreadingIterator" };
 }
 
 
@@ -1075,7 +1135,7 @@ void GrammarCheckingIterator::SetServiceList(
 
     LanguageType nLanguage = LinguLocaleToLanguage( rLocale );
     OUString aImplName;
-    if (rSvcImplNames.getLength() > 0)
+    if (rSvcImplNames.hasElements())
         aImplName = rSvcImplNames[0];   // there is only one grammar checker per language
 
     if (!LinguIsUnspecified(nLanguage) && nLanguage != LANGUAGE_DONTKNOW)
@@ -1110,44 +1170,15 @@ uno::Sequence< OUString > GrammarCheckingIterator::GetServiceList(
 }
 
 
-static OUString GrammarCheckingIterator_getImplementationName() throw()
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+linguistic_GrammarCheckingIterator_get_implementation(
+    css::uno::XComponentContext* , css::uno::Sequence<css::uno::Any> const&)
 {
-    return OUString( "com.sun.star.lingu2.ProofreadingIterator" );
+    static rtl::Reference<GrammarCheckingIterator> g_Instance(new GrammarCheckingIterator());
+    g_Instance->acquire();
+    return static_cast<cppu::OWeakObject*>(g_Instance.get());
 }
 
 
-static uno::Sequence< OUString > GrammarCheckingIterator_getSupportedServiceNames() throw()
-{
-    uno::Sequence<OUString> aSNS { "com.sun.star.linguistic2.ProofreadingIterator" };
-    return aSNS;
-}
-
-/// @throws uno::Exception
-static uno::Reference< uno::XInterface > SAL_CALL GrammarCheckingIterator_createInstance(
-    const uno::Reference< lang::XMultiServiceFactory > & /*rxSMgr*/ )
-{
-    return static_cast< ::cppu::OWeakObject * >(new GrammarCheckingIterator());
-}
-
-
-void * SAL_CALL GrammarCheckingIterator_getFactory(
-    const sal_Char *pImplName,
-    lang::XMultiServiceFactory *pServiceManager )
-{
-    void * pRet = nullptr;
-    if ( GrammarCheckingIterator_getImplementationName().equalsAscii( pImplName ) )
-    {
-        uno::Reference< lang::XSingleServiceFactory > xFactory =
-            cppu::createOneInstanceFactory(
-                pServiceManager,
-                GrammarCheckingIterator_getImplementationName(),
-                GrammarCheckingIterator_createInstance,
-                GrammarCheckingIterator_getSupportedServiceNames());
-        // acquire, because we return an interface pointer instead of a reference
-        xFactory->acquire();
-        pRet = xFactory.get();
-    }
-    return pRet;
-}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

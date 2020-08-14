@@ -53,7 +53,6 @@ enum ScFormulaVectorState
 {
     FormulaVectorDisabled,
     FormulaVectorDisabledNotInSubSet,
-    FormulaVectorDisabledNotInSoftwareSubset,
     FormulaVectorDisabledByOpCode,
     FormulaVectorDisabledByStackVariable,
 
@@ -98,30 +97,26 @@ struct RangeMatrix
 
 struct MultiDataCellState
 {
-    enum StateType { Invalid = 0, Empty, HasOneCell, HasMultipleCells };
+    enum StateType : sal_uInt8 { Invalid = 0, Empty, HasOneCell, HasMultipleCells };
 
-    StateType meState;
-
-    SCCOL mnCol1; //< first non-empty column
     SCROW mnRow1; //< first non-empty row
-    SCTAB mnTab1; //< first non-empty sheet
+    SCCOL mnCol1; //< first non-empty column
+    StateType meState;
 
     MultiDataCellState();
     MultiDataCellState( StateType eState );
 };
 
-enum AreaOverlapType
+enum class AreaOverlapType
 {
-    AreaInside,
-    AreaPartialOverlap,
-    AreaInsideOrOverlap,
-    OneRowInsideArea,
-    OneColumnInsideArea
+    Inside,
+    InsideOrOverlap,
+    OneRowInside,
+    OneColumnInside
 };
 
 enum class ListenerGroupType
 {
-    Single,
     Group,
     Both
 };

@@ -18,7 +18,9 @@
  */
 
 #include "WrappedNumberFormatProperty.hxx"
-#include "macros.hxx"
+#include "Chart2ModelContact.hxx"
+#include <com/sun/star/chart2/XAxis.hpp>
+#include <com/sun/star/chart2/XDataSeries.hpp>
 #include <unonames.hxx>
 #include <osl/diagnose.h>
 
@@ -26,9 +28,7 @@ using namespace ::com::sun::star;
 using ::com::sun::star::uno::Reference;
 using ::com::sun::star::uno::Any;
 
-namespace chart
-{
-namespace wrapper
+namespace chart::wrapper
 {
 
 WrappedNumberFormatProperty::WrappedNumberFormatProperty(const std::shared_ptr<Chart2ModelContact>& spChart2ModelContact)
@@ -48,7 +48,7 @@ void WrappedNumberFormatProperty::setPropertyValue( const Any& rOuterValue, cons
         throw lang::IllegalArgumentException( "Property 'NumberFormat' requires value of type sal_Int32", nullptr, 0 );
 
     if(xInnerPropertySet.is())
-        xInnerPropertySet->setPropertyValue(getInnerName(), this->convertOuterToInnerValue(rOuterValue));
+        xInnerPropertySet->setPropertyValue(getInnerName(), convertOuterToInnerValue(rOuterValue));
 }
 
 Any WrappedNumberFormatProperty::getPropertyValue( const Reference< beans::XPropertySet >& xInnerPropertySet ) const
@@ -64,7 +64,7 @@ Any WrappedNumberFormatProperty::getPropertyValue( const Reference< beans::XProp
         sal_Int32 nKey = 0;
         Reference< chart2::XDataSeries > xSeries( xInnerPropertySet, uno::UNO_QUERY );
         if( xSeries.is() )
-            nKey = m_spChart2ModelContact->getExplicitNumberFormatKeyForSeries( xSeries );
+            nKey = Chart2ModelContact::getExplicitNumberFormatKeyForSeries( xSeries );
         else
         {
             Reference< chart2::XAxis > xAxis( xInnerPropertySet, uno::UNO_QUERY );
@@ -116,7 +116,6 @@ Any WrappedLinkNumberFormatProperty::getPropertyDefault( const Reference< beans:
     return uno::Any( true ); // bLink
 }
 
-} //namespace wrapper
-} //namespace chart
+} //namespace chart::wrapper
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

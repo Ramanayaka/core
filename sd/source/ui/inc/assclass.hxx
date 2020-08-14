@@ -20,20 +20,20 @@
 #ifndef INCLUDED_SD_SOURCE_UI_INC_ASSCLASS_HXX
 #define INCLUDED_SD_SOURCE_UI_INC_ASSCLASS_HXX
 
-#include <vector>
 #include <memory>
+#include <vector>
 
-#include "sddllapi.h"
+#include <sddllapi.h>
 
 #define MAX_PAGES 10
 
-namespace vcl { class Window; }
+namespace weld { class Widget; }
 
 class SD_DLLPUBLIC Assistent
 {
     /** contains for every page the controls, which have to be
         connected? correctly */
-    std::vector<VclPtr<vcl::Window> > maPages[MAX_PAGES];
+    std::vector<weld::Widget*> maPages[MAX_PAGES];
 
     /// number of pages
     int mnPages;
@@ -51,7 +51,7 @@ public:
     void DisablePage( int nPage );
 
     /// adds a control to the specified page
-    bool InsertControl(int nDestPage, vcl::Window* pUsedControl);
+    bool InsertControl(int nDestPage, weld::Widget* pUsedControl);
 
     void NextPage();
 

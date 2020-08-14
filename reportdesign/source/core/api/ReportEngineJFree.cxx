@@ -17,37 +17,27 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 #include <com/sun/star/beans/PropertyValue.hpp>
-#include "ReportEngineJFree.hxx"
-#include <comphelper/enumhelper.hxx>
-#include <comphelper/documentconstants.hxx>
+#include <ReportEngineJFree.hxx>
 #include <comphelper/storagehelper.hxx>
 #include <connectivity/dbtools.hxx>
 #include <comphelper/mimeconfighelper.hxx>
-#include <comphelper/property.hxx>
 #include <comphelper/string.hxx>
 #include <cppuhelper/supportsservice.hxx>
-#include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <com/sun/star/beans/NamedValue.hpp>
 #include <com/sun/star/frame/Desktop.hpp>
 #include <com/sun/star/frame/XComponentLoader.hpp>
 #include <com/sun/star/frame/FrameSearchFlag.hpp>
 #include <com/sun/star/embed/XTransactedObject.hpp>
-#include <com/sun/star/sdb/XCompletedExecution.hpp>
-#include <com/sun/star/sdb/XSingleSelectQueryAnalyzer.hpp>
-#include <com/sun/star/sdb/XSingleSelectQueryComposer.hpp>
-#include <com/sun/star/sdb/CommandType.hpp>
 
-#include <com/sun/star/task/XInteractionHandler.hpp>
 #include <com/sun/star/task/XJob.hpp>
 
 #include <unotools/useroptions.hxx>
 #include <unotools/tempfile.hxx>
 #include <unotools/sharedunocomponent.hxx>
 
-#include "Tools.hxx"
-#include "corestrings.hrc"
-#include "core_resource.hrc"
-#include "core_resource.hxx"
+#include <strings.hxx>
+#include <strings.hrc>
+#include <core_resource.hxx>
 
 #include <connectivity/CommonTools.hxx>
 #include <rtl/ustrbuf.hxx>
@@ -83,33 +73,14 @@ void SAL_CALL OReportEngineJFree::dispose()
     m_xActiveConnection.clear();
 }
 
-OUString OReportEngineJFree::getImplementationName_Static(  )
-{
-    return OUString("com.sun.star.comp.report.OReportEngineJFree");
-}
-
-
 OUString SAL_CALL OReportEngineJFree::getImplementationName(  )
 {
-    return getImplementationName_Static();
+    return "com.sun.star.comp.report.OReportEngineJFree";
 }
-
-uno::Sequence< OUString > OReportEngineJFree::getSupportedServiceNames_Static(  )
-{
-    uno::Sequence< OUString > aServices { "com.sun.star.report.ReportEngine" };
-
-    return aServices;
-}
-
-uno::Reference< uno::XInterface > OReportEngineJFree::create(uno::Reference< uno::XComponentContext > const & xContext)
-{
-    return *(new OReportEngineJFree(xContext));
-}
-
 
 uno::Sequence< OUString > SAL_CALL OReportEngineJFree::getSupportedServiceNames(  )
 {
-    return getSupportedServiceNames_Static();
+    return { "com.sun.star.report.ReportEngine" };
 }
 
 sal_Bool SAL_CALL OReportEngineJFree::supportsService(const OUString& ServiceName)
@@ -154,109 +125,103 @@ void SAL_CALL OReportEngineJFree::setStatusIndicator( const uno::Reference< task
 
 OUString OReportEngineJFree::getNewOutputName()
 {
-    OUString sOutputName;
+    ::osl::MutexGuard aGuard(m_aMutex);
+    ::connectivity::checkDisposed(ReportEngineBase::rBHelper.bDisposed);
+    if ( !m_xReport.is() || !m_xActiveConnection.is() )
+        throw lang::IllegalArgumentException();
+
+    static const char s_sMediaType[] = "MediaType";
+
+    MimeConfigurationHelper aConfighelper(m_xContext);
+    const OUString sMimeType = m_xReport->getMimeType();
+    std::shared_ptr<const SfxFilter> pFilter = SfxFilter::GetDefaultFilter( aConfighelper.GetDocServiceNameFromMediaType(sMimeType) );
+    OUString sExt(".rpt");
+    if ( pFilter )
+        sExt = ::comphelper::string::stripStart(pFilter->GetDefaultExtension(), '*');
+
+    uno::Reference< embed::XStorage > xTemp = OStorageHelper::GetTemporaryStorage(/*sFileTemp,embed::ElementModes::WRITE | embed::ElementModes::TRUNCATE,*/ m_xContext);
+    utl::DisposableComponent aTemp(xTemp);
+    uno::Sequence< beans::PropertyValue > aEmpty;
+    uno::Reference< beans::XPropertySet> xStorageProp(xTemp,uno::UNO_QUERY);
+    if ( xStorageProp.is() )
     {
-        ::osl::MutexGuard aGuard(m_aMutex);
-        ::connectivity::checkDisposed(ReportEngineBase::rBHelper.bDisposed);
-        if ( !m_xReport.is() || !m_xActiveConnection.is() )
-            throw lang::IllegalArgumentException();
+        xStorageProp->setPropertyValue( s_sMediaType, uno::makeAny(sMimeType));
+    }
+    m_xReport->storeToStorage(xTemp,aEmpty); // store to temp file because it may contain information which isn't in the database yet.
 
-        static const char s_sMediaType[] = "MediaType";
-        try
+    uno::Sequence< beans::NamedValue > aConvertedProperties(8);
+    sal_Int32 nPos = 0;
+    aConvertedProperties[nPos].Name = "InputStorage";
+    aConvertedProperties[nPos++].Value <<= xTemp;
+    aConvertedProperties[nPos].Name = "OutputStorage";
+
+    OUString sFileURL;
+    OUString sName = m_xReport->getCaption();
+    if ( sName.isEmpty() )
+        sName = m_xReport->getName();
+    {
+        ::utl::TempFile aTestFile(sName, false, &sExt);
+        if ( !aTestFile.IsValid() )
         {
-            MimeConfigurationHelper aConfighelper(m_xContext);
-            const OUString sMimeType = m_xReport->getMimeType();
-            std::shared_ptr<const SfxFilter> pFilter = SfxFilter::GetDefaultFilter( aConfighelper.GetDocServiceNameFromMediaType(sMimeType) );
-            OUString sExt(".rpt");
-            if ( pFilter )
-                sExt = ::comphelper::string::stripStart(pFilter->GetDefaultExtension(), '*');
-
-            uno::Reference< embed::XStorage > xTemp = OStorageHelper::GetTemporaryStorage(/*sFileTemp,embed::ElementModes::WRITE | embed::ElementModes::TRUNCATE,*/ m_xContext);
-            utl::DisposableComponent aTemp(xTemp);
-            uno::Sequence< beans::PropertyValue > aEmpty;
-            uno::Reference< beans::XPropertySet> xStorageProp(xTemp,uno::UNO_QUERY);
-            if ( xStorageProp.is() )
-            {
-                xStorageProp->setPropertyValue( s_sMediaType, uno::makeAny(sMimeType));
-            }
-            m_xReport->storeToStorage(xTemp,aEmpty); // store to temp file because it may contain information which isn't in the database yet.
-
-            uno::Sequence< beans::NamedValue > aConvertedProperties(8);
-            sal_Int32 nPos = 0;
-            aConvertedProperties[nPos].Name = "InputStorage";
-            aConvertedProperties[nPos++].Value <<= xTemp;
-            aConvertedProperties[nPos].Name = "OutputStorage";
-
-            OUString sFileURL;
-            OUString sName = m_xReport->getCaption();
-            if ( sName.isEmpty() )
-                sName = m_xReport->getName();
-            {
-                ::utl::TempFile aTestFile(sName, false, &sExt);
-                if ( !aTestFile.IsValid() )
-                {
-                    sName = RPT_RESSTRING(RID_STR_REPORT);
-                    ::utl::TempFile aFile(sName, false, &sExt);
-                    sFileURL = aFile.GetURL();
-                }
-                else
-                    sFileURL = aTestFile.GetURL();
-            }
-
-            uno::Reference< embed::XStorage > xOut = OStorageHelper::GetStorageFromURL(sFileURL,embed::ElementModes::WRITE | embed::ElementModes::TRUNCATE, m_xContext);
-            utl::DisposableComponent aOut(xOut);
-            xStorageProp.set(xOut,uno::UNO_QUERY);
-            if ( xStorageProp.is() )
-            {
-                xStorageProp->setPropertyValue( s_sMediaType, uno::makeAny(sMimeType));
-            }
-
-            aConvertedProperties[nPos++].Value <<= xOut;
-
-            aConvertedProperties[nPos].Name = PROPERTY_REPORTDEFINITION;
-            aConvertedProperties[nPos++].Value <<= m_xReport;
-
-            aConvertedProperties[nPos].Name = PROPERTY_ACTIVECONNECTION;
-            aConvertedProperties[nPos++].Value <<= m_xActiveConnection;
-
-            aConvertedProperties[nPos].Name = PROPERTY_MAXROWS;
-            aConvertedProperties[nPos++].Value <<= m_nMaxRows;
-
-            // some meta data
-            SvtUserOptions aUserOpts;
-            OUStringBuffer sAuthor(aUserOpts.GetFirstName());
-            sAuthor.append(" ");
-            sAuthor.append(aUserOpts.GetLastName());
-            aConvertedProperties[nPos].Name = "Author";
-            aConvertedProperties[nPos++].Value <<= sAuthor.makeStringAndClear();
-
-            aConvertedProperties[nPos].Name = "Title";
-            aConvertedProperties[nPos++].Value <<= m_xReport->getCaption();
-
-            // create job factory and initialize
-            const OUString sReportEngineServiceName = ::dbtools::getDefaultReportEngineServiceName(m_xContext);
-            uno::Reference<task::XJob> xJob(m_xContext->getServiceManager()->createInstanceWithContext(sReportEngineServiceName,m_xContext),uno::UNO_QUERY_THROW);
-            if ( !m_xReport->getCommand().isEmpty() )
-            {
-                xJob->execute(aConvertedProperties);
-                if ( xStorageProp.is() )
-                {
-                    sOutputName = sFileURL;
-                }
-            }
-
-            uno::Reference<embed::XTransactedObject> xTransact(xOut,uno::UNO_QUERY);
-            if ( !sOutputName.isEmpty() && xTransact.is() )
-                xTransact->commit();
-
-            if ( sOutputName.isEmpty() )
-                throw lang::IllegalArgumentException();
+            sName = RptResId(RID_STR_REPORT);
+            ::utl::TempFile aFile(sName, false, &sExt);
+            sFileURL = aFile.GetURL();
         }
-        catch(const uno::Exception&)
+        else
+            sFileURL = aTestFile.GetURL();
+    }
+
+    uno::Reference< embed::XStorage > xOut = OStorageHelper::GetStorageFromURL(sFileURL,embed::ElementModes::WRITE | embed::ElementModes::TRUNCATE, m_xContext);
+    utl::DisposableComponent aOut(xOut);
+    xStorageProp.set(xOut,uno::UNO_QUERY);
+    if ( xStorageProp.is() )
+    {
+        xStorageProp->setPropertyValue( s_sMediaType, uno::makeAny(sMimeType));
+    }
+
+    aConvertedProperties[nPos++].Value <<= xOut;
+
+    aConvertedProperties[nPos].Name = PROPERTY_REPORTDEFINITION;
+    aConvertedProperties[nPos++].Value <<= m_xReport;
+
+    aConvertedProperties[nPos].Name = PROPERTY_ACTIVECONNECTION;
+    aConvertedProperties[nPos++].Value <<= m_xActiveConnection;
+
+    aConvertedProperties[nPos].Name = PROPERTY_MAXROWS;
+    aConvertedProperties[nPos++].Value <<= m_nMaxRows;
+
+    // some meta data
+    SvtUserOptions aUserOpts;
+    OUStringBuffer sAuthor(aUserOpts.GetFirstName());
+    sAuthor.append(" ");
+    sAuthor.append(aUserOpts.GetLastName());
+    aConvertedProperties[nPos].Name = "Author";
+    aConvertedProperties[nPos++].Value <<= sAuthor.makeStringAndClear();
+
+    aConvertedProperties[nPos].Name = "Title";
+    aConvertedProperties[nPos++].Value <<= m_xReport->getCaption();
+
+    OUString sOutputName;
+
+    // create job factory and initialize
+    const OUString sReportEngineServiceName = ::dbtools::getDefaultReportEngineServiceName(m_xContext);
+    uno::Reference<task::XJob> xJob(m_xContext->getServiceManager()->createInstanceWithContext(sReportEngineServiceName,m_xContext),uno::UNO_QUERY_THROW);
+    if ( !m_xReport->getCommand().isEmpty() )
+    {
+        xJob->execute(aConvertedProperties);
+        if ( xStorageProp.is() )
         {
-            throw;
+             sOutputName = sFileURL;
         }
     }
+
+    uno::Reference<embed::XTransactedObject> xTransact(xOut,uno::UNO_QUERY);
+    if ( !sOutputName.isEmpty() && xTransact.is() )
+        xTransact->commit();
+
+    if ( sOutputName.isEmpty() )
+        throw lang::IllegalArgumentException();
+
     return sOutputName;
 }
 
@@ -271,10 +236,10 @@ uno::Reference< frame::XModel > SAL_CALL OReportEngineJFree::createDocumentAlive
     return createDocumentAlive(_frame,false);
 }
 
-uno::Reference< frame::XModel > SAL_CALL OReportEngineJFree::createDocumentAlive( const uno::Reference< frame::XFrame >& _frame,bool _bHidden )
+uno::Reference< frame::XModel > OReportEngineJFree::createDocumentAlive( const uno::Reference< frame::XFrame >& _frame,bool _bHidden )
 {
     uno::Reference< frame::XModel > xModel;
-    OUString sOutputName = getNewOutputName(); // starts implicite the report generator
+    OUString sOutputName = getNewOutputName(); // starts implicitly the report generator
     if ( !sOutputName.isEmpty() )
     {
         ::osl::MutexGuard aGuard(m_aMutex);
@@ -283,9 +248,9 @@ uno::Reference< frame::XModel > SAL_CALL OReportEngineJFree::createDocumentAlive
         if ( !xFrameLoad.is() )
         {
             // if there is no frame given, find the right
-            xFrameLoad.set( frame::Desktop::create(m_xContext), uno::UNO_QUERY);
+            xFrameLoad = frame::Desktop::create(m_xContext);
             sal_Int32 const nFrameSearchFlag = frame::FrameSearchFlag::TASKS | frame::FrameSearchFlag::CREATE;
-            uno::Reference< frame::XFrame> xFrame = uno::Reference< frame::XFrame>(xFrameLoad,uno::UNO_QUERY)->findFrame("_blank",nFrameSearchFlag);
+            uno::Reference< frame::XFrame> xFrame = uno::Reference< frame::XFrame>(xFrameLoad,uno::UNO_QUERY_THROW)->findFrame("_blank",nFrameSearchFlag);
             xFrameLoad.set( xFrame,uno::UNO_QUERY);
         }
 
@@ -330,10 +295,8 @@ util::URL SAL_CALL OReportEngineJFree::createDocument( )
 
 void SAL_CALL OReportEngineJFree::interrupt(  )
 {
-    {
-        ::osl::MutexGuard aGuard(m_aMutex);
-        ::connectivity::checkDisposed(ReportEngineBase::rBHelper.bDisposed);
-    }
+    ::osl::MutexGuard aGuard(m_aMutex);
+    ::connectivity::checkDisposed(ReportEngineBase::rBHelper.bDisposed);
 }
 
 uno::Reference< beans::XPropertySetInfo > SAL_CALL OReportEngineJFree::getPropertySetInfo(  )
@@ -396,5 +359,12 @@ void SAL_CALL OReportEngineJFree::setMaxRows( ::sal_Int32 MaxRows )
 
 } // namespace reportdesign
 
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+reportdesign_OReportEngineJFree_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const&)
+{
+    return cppu::acquire(new reportdesign::OReportEngineJFree(context));
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

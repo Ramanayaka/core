@@ -16,6 +16,8 @@ $(eval $(call gb_CppunitTest_use_externals,sd_import_tests,\
 	libxml2 \
 ))
 
+$(eval $(call gb_CppunitTest_use_common_precompiled_header,sd_import_tests))
+
 $(eval $(call gb_CppunitTest_add_exception_objects,sd_import_tests, \
     sd/qa/unit/import-tests \
 ))
@@ -73,12 +75,16 @@ $(eval $(call gb_CppunitTest_use_components,sd_import_tests,\
     configmgr/source/configmgr \
     dbaccess/util/dba \
     desktop/source/deployment/deployment \
+    drawinglayer/drawinglayer \
     embeddedobj/util/embobj \
+    emfio/emfio \
     filter/source/config/cache/filterconfig1 \
 	filter/source/odfflatxml/odfflatxml \
     filter/source/svg/svgfilter \
+    filter/source/pdf/pdffilter \
     filter/source/xmlfilteradaptor/xmlfa \
 	filter/source/xmlfilterdetect/xmlfd \
+	filter/source/storagefilterdetect/storagefd \
     forms/util/frm \
     framework/util/fwk \
     i18npool/util/i18npool \
@@ -90,12 +96,13 @@ $(eval $(call gb_CppunitTest_use_components,sd_import_tests,\
     sd/util/sd \
     sd/util/sdfilt \
     sd/util/sdd \
-    $(if $(ENABLE_PDFIMPORT),sdext/source/pdfimport/pdfimport) \
+    $(if $(ENABLE_POPPLER),sdext/source/pdfimport/pdfimport) \
     sfx2/util/sfx \
     sot/util/sot \
     svl/source/fsstor/fsstorage \
     svtools/util/svt \
     svx/util/svxcore \
+    svgio/svgio \
     toolkit/util/tk \
     ucb/source/core/ucb1 \
     ucb/source/ucp/expand/ucpexpand1 \
@@ -106,6 +113,8 @@ $(eval $(call gb_CppunitTest_use_components,sd_import_tests,\
     unoxml/source/rdf/unordf \
     unoxml/source/service/unoxml \
     uui/util/uui \
+    vcl/vcl.common \
+    xmlscript/util/xmlscript \
     xmloff/util/xo \
     xmlsecurity/util/xmlsecurity \
 ))
@@ -116,10 +125,8 @@ $(eval $(call gb_CppunitTest_use_packages,sd_import_tests,\
 	oox_customshapes \
 ))
 
-ifneq ($(ENABLE_PDFIMPORT),)
+ifneq ($(ENABLE_POPPLER),)
 $(eval $(call gb_CppunitTest_use_executable,sd_import_tests,xpdfimport))
 endif
-
-$(call gb_CppunitTest_get_target,sd_import_tests) : $(call gb_AllLangResTarget_get_target,sd)
 
 # vim: set noet sw=4 ts=4:

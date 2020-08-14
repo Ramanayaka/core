@@ -21,14 +21,15 @@
 #define INCLUDED_UNOTOOLS_MODULEOPTIONS_HXX
 
 #include <unotools/unotoolsdllapi.h>
-#include <salhelper/singletonref.hxx>
-#include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/uno/Sequence.hxx>
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
-#include <osl/mutex.hxx>
 #include <unotools/options.hxx>
 #include <memory>
+
+namespace osl { class Mutex; }
+namespace com::sun::star::frame { class XModel; }
+namespace com::sun::star::beans { struct PropertyValue; }
 
 /*-************************************************************************************************************
     @short          forward declaration to our private date container implementation
@@ -46,7 +47,7 @@ class SvtModuleOptions_Impl;
     @devstatus      ready to use
     @threadsafe     yes
 *//*-*************************************************************************************************************/
-class SAL_WARN_UNUSED UNOTOOLS_DLLPUBLIC SvtModuleOptions : public utl::detail::Options
+class SAL_WARN_UNUSED UNOTOOLS_DLLPUBLIC SvtModuleOptions final : public utl::detail::Options
 {
     public:
 
@@ -153,7 +154,7 @@ class SAL_WARN_UNUSED UNOTOOLS_DLLPUBLIC SvtModuleOptions : public utl::detail::
 
         static OUString GetFactoryShortName(EFactory eFactory);
 
-        OUString GetDefaultModuleName();
+        OUString GetDefaultModuleName() const;
 
         bool   IsMath     () const;
         bool   IsChart    () const;

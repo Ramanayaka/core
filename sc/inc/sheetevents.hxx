@@ -21,15 +21,18 @@
 #define INCLUDED_SC_INC_SHEETEVENTS_HXX
 
 #include <rtl/ustring.hxx>
+#include <memory>
+
+#include <optional>
 
 enum class ScSheetEventId {
     FOCUS, UNFOCUS, SELECT, DOUBLECLICK, RIGHTCLICK, CHANGE, CALCULATE, COUNT,
-    NOTFOUND = -1 // used as a an error return value
+    NOTFOUND = -1 // used as an error return value
 };
 
 class ScSheetEvents
 {
-    OUString** mpScriptNames;
+    std::unique_ptr<std::optional<OUString>[]> mpScriptNames;
 
     void        Clear();
 

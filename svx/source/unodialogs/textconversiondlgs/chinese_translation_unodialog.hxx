@@ -17,10 +17,8 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_SVX_SOURCE_UNODIALOGS_TEXTCONVERSIONDLGS_CHINESE_TRANSLATION_UNODIALOG_HXX
-#define INCLUDED_SVX_SOURCE_UNODIALOGS_TEXTCONVERSIONDLGS_CHINESE_TRANSLATION_UNODIALOG_HXX
+#pragma once
 
-#include <cppuhelper/component.hxx>
 #include <com/sun/star/awt/XWindow.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/lang/XInitialization.hpp>
@@ -29,14 +27,13 @@
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <cppuhelper/implbase.hxx>
 #include <comphelper/interfacecontainer2.hxx>
-#include <vcl/vclptr.hxx>
 
 
 namespace textconversiondlgs
 {
 
 
-/** This class provides the chinese translation dialog as an uno component.
+/** This class provides the chinese translation dialog as a uno component.
 
 It can be created via lang::XMultiComponentFactory::createInstanceWithContext
 with servicename "com.sun.star.linguistic2.ChineseTranslationDialog"
@@ -75,16 +72,6 @@ public:
     virtual sal_Bool SAL_CALL supportsService( const OUString& ServiceName ) override;
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 
-    static OUString getImplementationName_Static();
-    static css::uno::Sequence< OUString > getSupportedServiceNames_Static();
-
-    /// @throws css::uno::Exception
-    static css::uno::Reference< css::uno::XInterface > SAL_CALL
-            create( css::uno::Reference< css::uno::XComponentContext > const & )
-    {
-        return static_cast<cppu::OWeakObject *>( new ChineseTranslation_UnoDialog );
-    }
-
     // lang::XInitialization
     virtual void SAL_CALL initialize( const css::uno::Sequence< css::uno::Any >& aArguments ) override;
 
@@ -114,7 +101,7 @@ private:
     css::uno::Reference<
         css::awt::XWindow >              m_xParentWindow;
 
-    VclPtr<ChineseTranslationDialog>     m_pDialog;
+    std::unique_ptr<ChineseTranslationDialog> m_xDialog;
 
     bool m_bDisposed; ///Dispose call ready.
     bool m_bInDispose;///In dispose call
@@ -124,7 +111,5 @@ private:
 
 
 } //end namespace
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -17,10 +17,10 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "extended/AccessibleBrowseBoxHeaderBar.hxx"
-#include <svtools/accessibletableprovider.hxx>
-#include <comphelper/servicehelper.hxx>
-
+#include <extended/AccessibleBrowseBoxHeaderBar.hxx>
+#include <toolkit/helper/convert.hxx>
+#include <vcl/accessibletableprovider.hxx>
+#include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 
 using ::com::sun::star::uno::Reference;
 using ::com::sun::star::uno::Sequence;
@@ -28,7 +28,6 @@ using ::com::sun::star::uno::Any;
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::accessibility;
-using namespace ::svt;
 
 
 namespace accessibility {
@@ -38,8 +37,8 @@ namespace accessibility {
 
 AccessibleBrowseBoxHeaderBar::AccessibleBrowseBoxHeaderBar(
         const Reference< XAccessible >& rxParent,
-        IAccessibleTableProvider&                      rBrowseBox,
-        AccessibleBrowseBoxObjType      eObjType ) :
+        vcl::IAccessibleTableProvider& rBrowseBox,
+        vcl::AccessibleBrowseBoxObjType eObjType ) :
     AccessibleBrowseBoxTableBase( rxParent, rBrowseBox,eObjType )
 {
     OSL_ENSURE( isRowBar() || isColumnBar(),
@@ -64,7 +63,7 @@ AccessibleBrowseBoxHeaderBar::getAccessibleChild( sal_Int32 nChildIndex )
 
 sal_Int32 SAL_CALL AccessibleBrowseBoxHeaderBar::getAccessibleIndexInParent()
 {
-    return isRowBar() ? BBINDEX_ROWHEADERBAR : BBINDEX_COLUMNHEADERBAR;
+    return isRowBar() ? vcl::BBINDEX_ROWHEADERBAR : vcl::BBINDEX_COLUMNHEADERBAR;
 }
 
 // XAccessibleComponent -------------------------------------------------------
@@ -86,6 +85,8 @@ AccessibleBrowseBoxHeaderBar::getAccessibleAtPoint( const awt::Point& rPoint )
 
 void SAL_CALL AccessibleBrowseBoxHeaderBar::grabFocus()
 {
+    SolarMethodGuard aGuard(getMutex());
+
     ensureIsAlive();
     // focus on header not supported
 }
@@ -112,12 +113,16 @@ OUString SAL_CALL AccessibleBrowseBoxHeaderBar::getAccessibleColumnDescription( 
 
 Reference< XAccessibleTable > SAL_CALL AccessibleBrowseBoxHeaderBar::getAccessibleRowHeaders()
 {
+    SolarMethodGuard aGuard(getMutex());
+
     ensureIsAlive();
     return nullptr;        // no headers in headers
 }
 
 Reference< XAccessibleTable > SAL_CALL AccessibleBrowseBoxHeaderBar::getAccessibleColumnHeaders()
 {
+    SolarMethodGuard aGuard(getMutex());
+
     ensureIsAlive();
     return nullptr;        // no headers in headers
 }
@@ -285,7 +290,7 @@ void SAL_CALL AccessibleBrowseBoxHeaderBar::release() throw ()
 
 OUString SAL_CALL AccessibleBrowseBoxHeaderBar::getImplementationName()
 {
-    return OUString( "com.sun.star.comp.svtools.AccessibleBrowseBoxHeaderBar" );
+    return "com.sun.star.comp.svtools.AccessibleBrowseBoxHeaderBar";
 }
 
 Sequence< sal_Int8 > SAL_CALL AccessibleBrowseBoxHeaderBar::getImplementationId()
@@ -339,7 +344,7 @@ sal_Int32 AccessibleBrowseBoxHeaderBar::implGetChildIndexFromSelectedIndex(
     if( (nSelectedChildIndex < 0) || (nSelectedChildIndex >= aSelSeq.getLength()) )
         throw lang::IndexOutOfBoundsException();
 
-    return aSelSeq[ nSelectedChildIndex ];
+    return aSelSeq.getConstArray()[ nSelectedChildIndex ];
 }
 
 void AccessibleBrowseBoxHeaderBar::ensureIsValidHeaderIndex( sal_Int32 nIndex )

@@ -20,22 +20,20 @@
 #ifndef INCLUDED_OSL_FILE_HXX
 #define INCLUDED_OSL_FILE_HXX
 
-#include <sal/config.h>
+#include "sal/config.h"
 
 #include <string.h>
 
-#include <cassert>
 #include <cstddef>
 
-#include <sal/log.hxx>
-#include <osl/time.h>
-#include <rtl/ustring.hxx>
+#include "sal/log.hxx"
+#include "osl/time.h"
+#include "rtl/ustring.hxx"
 
-#include <osl/file.h>
-#include <osl/diagnose.h>
-#include <rtl/byteseq.hxx>
+#include "osl/file.h"
+#include "osl/diagnose.h"
 
-#include <stdio.h>
+namespace rtl { class ByteSequence; }
 
 namespace osl
 {
@@ -80,8 +78,8 @@ public:
         E_NOTTY        = osl_File_E_NOTTY,          ///< inappropriate I/O control operation
         E_FBIG         = osl_File_E_FBIG,           ///< file too large
         E_NOSPC        = osl_File_E_NOSPC,          ///< no space left on device, write failed
-        E_SPIPE        = osl_File_E_ROFS,           ///< invalid seek operation (such as on pipe)
-        E_ROFS         = osl_File_E_SPIPE,          ///< illegal modification to read-only filesystem
+        E_SPIPE        = osl_File_E_SPIPE,          ///< invalid seek operation (such as on pipe)
+        E_ROFS         = osl_File_E_ROFS,           ///< illegal modification to read-only filesystem
         E_MLINK        = osl_File_E_MLINK,          ///< too many links to file
         E_PIPE         = osl_File_E_PIPE,           ///< broken pipe; no process reading from other end of pipe
         E_DOM          = osl_File_E_DOM,            ///< domain error (mathematical error)
@@ -141,7 +139,7 @@ public:
         Base directory URL to which the relative path is related to.
 
         @param[in] ustrRelativeFileURL
-        An URL of a file or directory relative to the directory path specified by ustrBaseDirectoryURL
+        A URL of a file or directory relative to the directory path specified by ustrBaseDirectoryURL
         or an absolute path.
         If ustrRelativeFileURL denotes an absolute path ustrBaseDirectoryURL will be ignored.
 
@@ -208,7 +206,7 @@ public:
         return static_cast< RC >( osl_getFileURLFromSystemPath( ustrSystemPath.pData, &ustrFileURL.pData ) );
     }
 
-    /** Searche a full qualified system path or a file URL.
+    /** Search a full qualified system path or a file URL.
 
         @param[in] ustrFileName
         A system dependent path, a file URL, a file or relative directory
@@ -412,7 +410,7 @@ class VolumeInfo
 
     VolumeInfo( VolumeInfo& ) SAL_DELETED_FUNCTION;
 
-    /** Assginment operator.
+    /** Assignment operator.
     */
 
     VolumeInfo& operator = ( VolumeInfo& ) SAL_DELETED_FUNCTION;
@@ -460,7 +458,7 @@ public:
         return (_aInfo.uAttributes & osl_Volume_Attribute_Remote) != 0;
     }
 
-    /** Check the removeable flag.
+    /** Check the removable flag.
 
         @return
         true if attributes are valid and the volume is removable else false.
@@ -896,7 +894,7 @@ class File: public FileBase
 
     File( File& ) SAL_DELETED_FUNCTION;
 
-    /** Assginment operator.
+    /** Assignment operator.
     */
 
     File& operator = ( File& ) SAL_DELETED_FUNCTION;
@@ -930,7 +928,7 @@ public:
 
     /** Open a regular file.
 
-        Open a file. Only regular files can be openend.
+        Open a file. Only regular files can be opened.
 
         @param[in] uFlags
         Specifies the open mode.
@@ -1017,7 +1015,7 @@ public:
         @see getPos()
     */
 
-    RC setPos( sal_uInt32 uHow, sal_Int64 uPos ) SAL_WARN_UNUSED_RESULT
+    SAL_WARN_UNUSED_RESULT RC setPos( sal_uInt32 uHow, sal_Int64 uPos )
     {
         return static_cast< RC >( osl_setFilePos( _pData, uHow, uPos ) );
     }
@@ -1300,6 +1298,39 @@ public:
         return static_cast< RC >( osl_moveFile( ustrSourceFileURL.pData, ustrDestFileURL.pData ) );
     }
 
+    /** Move a file to a new destination or rename it, taking old file's identity (if exists).
+
+        Moves or renames a file, replacing an existing file if exist. If the old file existed,
+        moved file's metadata, e.g. creation time (on FSes which keep files' creation time) or
+        ACLs, are set to old one's (to keep the old file's identity) - currently this is only
+        implemented fully on Windows; on other platforms, this is mostly equivalent to osl_moveFile.
+
+        @param[in] ustrSourceFileURL
+        Full qualified URL of the source file.
+
+        @param[in] ustrDestFileURL
+        Full qualified URL of the destination file.
+
+        @retval E_None on success
+        @retval E_INVAL the format of the parameters was not valid
+        @retval E_NOMEM not enough memory for allocating structures
+        @retval E_ACCES permission denied
+        @retval E_PERM operation not permitted
+        @retval E_NAMETOOLONG file name too long
+        @retval E_NOENT no such file
+        @retval E_ROFS read-only file system
+        @retval E_BUSY device or resource busy
+
+        @see move()
+
+        @since LibreOffice 6.2
+    */
+    static RC replace(const ::rtl::OUString& ustrSourceFileURL,
+                      const ::rtl::OUString& ustrDestFileURL)
+    {
+        return static_cast<RC>(osl_replaceFile(ustrSourceFileURL.pData, ustrDestFileURL.pData));
+    }
+
     /** Remove a regular file.
 
         @param[in] ustrFileURL
@@ -1319,7 +1350,6 @@ public:
         @retval E_IO on I/O errors
         @retval E_BUSY device or resource busy
         @retval E_INTR function call was interrupted
-        @retval E_LOOP too many symbolic links encountered
         @retval E_MULTIHOP multihop attempted
         @retval E_NOLINK link has been severed
         @retval E_TXTBSY text file busy
@@ -1591,10 +1621,10 @@ public:
 // private use.
 extern "C" inline void SAL_CALL onDirectoryCreated(void* pData, rtl_uString* aDirectoryUrl)
 {
-    (static_cast<DirectoryCreationObserver*>(pData))->DirectoryCreated(aDirectoryUrl);
+    static_cast<DirectoryCreationObserver*>(pData)->DirectoryCreated(aDirectoryUrl);
 }
 
-/** The directory class object provides a enumeration of DirectoryItems.
+/** The directory class object provides an enumeration of DirectoryItems.
 
     @see DirectoryItem
     @see File
@@ -1650,7 +1680,7 @@ public:
         @retval E_None on success
         @retval E_INVAL the format of the parameters was not valid
         @retval E_NOENT the specified path doesn't exist
-        @retval E_NOTDIR the specified path is not an directory
+        @retval E_NOTDIR the specified path is not a directory
         @retval E_NOMEM not enough memory for allocating structures
         @retval E_ACCES permission denied
         @retval E_MFILE too many open files used by the process
@@ -1709,7 +1739,7 @@ public:
         @retval E_None on success
         @retval E_INVAL the format of the parameters was not valid
         @retval E_NOENT the specified path doesn't exist
-        @retval E_NOTDIR the specified path is not an directory
+        @retval E_NOTDIR the specified path is not a directory
         @retval E_NOMEM not enough memory for allocating structures
         @retval E_ACCES permission denied
         @retval E_MFILE too many open files used by the process
@@ -1755,7 +1785,7 @@ public:
             osl_releaseDirectoryItem( rItem._pData );
             rItem._pData = NULL;
         }
-        return ( RC) osl_getNextDirectoryItem( _pData, &rItem._pData, nHint );
+        return static_cast<RC>(osl_getNextDirectoryItem( _pData, &rItem._pData, nHint ));
     }
 
 
@@ -1850,7 +1880,6 @@ public:
         @retval E_BUSY device or resource busy
         @retval E_ROFS read-only file system
         @retval E_LOOP too many symbolic links encountered
-        @retval E_BUSY device or resource busy
         @retval E_EXIST file exists
         @retval E_IO on I/O errors
         @retval E_MULTIHOP multihop attempted
@@ -1906,7 +1935,7 @@ public:
     {
         return static_cast< RC >(osl_createDirectoryPath(
             aDirectoryUrl.pData,
-            (aDirectoryCreationObserver) ? onDirectoryCreated : NULL,
+            aDirectoryCreationObserver ? onDirectoryCreated : NULL,
             aDirectoryCreationObserver));
     }
 };

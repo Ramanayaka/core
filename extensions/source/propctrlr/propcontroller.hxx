@@ -21,50 +21,35 @@
 #define INCLUDED_EXTENSIONS_SOURCE_PROPCTRLR_PROPCONTROLLER_HXX
 
 #include "composeduiupdate.hxx"
-#include "formbrowsertools.hxx"
-#include "formmetadata.hxx"
 #include "proplinelistener.hxx"
 #include "propcontrolobserver.hxx"
 #include "browserview.hxx"
-#include "modulepcr.hxx"
-#include "propertyinfo.hxx"
 
 #include <com/sun/star/awt/XFocusListener.hpp>
-#include <com/sun/star/beans/XPropertyState.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/beans/XPropertyChangeListener.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
-#include <com/sun/star/form/XForm.hpp>
-#include <com/sun/star/sdbc/XRowSet.hpp>
 #include <com/sun/star/uno/Sequence.hxx>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/lang/XEventListener.hpp>
-#include <com/sun/star/sdbc/XConnection.hpp>
 #include <com/sun/star/awt/XLayoutConstrains.hpp>
-#include <com/sun/star/awt/XControlContainer.hpp>
 #include <com/sun/star/inspection/XPropertyControlFactory.hpp>
 #include <com/sun/star/inspection/XObjectInspector.hpp>
 #include <com/sun/star/inspection/XObjectInspectorUI.hpp>
 #include <com/sun/star/inspection/XPropertyHandler.hpp>
 #include <com/sun/star/lang/XInitialization.hpp>
-#include <connectivity/dbtools.hxx>
-#include <cppuhelper/interfacecontainer.hxx>
+#include <comphelper/interfacecontainer2.hxx>
+#include <comphelper/uno3.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <comphelper/broadcasthelper.hxx>
+#include <vcl/weld.hxx>
 
 #include <map>
 #include <memory>
 #include <unordered_map>
 #include <vector>
 
-namespace vcl { class Window; }
-
-
 namespace pcr
 {
-
-
     class OPropertyEditor;
     struct OLineDescriptor;
 
@@ -102,7 +87,8 @@ namespace pcr
         ::comphelper::OInterfaceContainerHelper2   m_aDisposeListeners;
         ::comphelper::OInterfaceContainerHelper2   m_aControlObservers;
         // meta data about the properties
-        VclPtr<OPropertyBrowserView>        m_pView;
+        std::unique_ptr<weld::Builder> m_xBuilder;
+        std::unique_ptr<OPropertyBrowserView> m_xPropView;
 
         OUString                     m_sPageSelection;
         OUString                     m_sLastValidPageSelection;
@@ -110,9 +96,9 @@ namespace pcr
         typedef css::uno::Reference< css::inspection::XPropertyHandler >
                                                         PropertyHandlerRef;
         typedef std::vector< PropertyHandlerRef >     PropertyHandlerArray;
-        typedef std::unordered_map< OUString, PropertyHandlerRef, OUStringHash >
+        typedef std::unordered_map< OUString, PropertyHandlerRef >
                                                         PropertyHandlerRepository;
-        typedef std::unordered_multimap< OUString, PropertyHandlerRef, OUStringHash >
+        typedef std::unordered_multimap< OUString, PropertyHandlerRef >
                                                         PropertyHandlerMultiRepository;
         PropertyHandlerRepository                       m_aPropertyHandlers;
         PropertyHandlerMultiRepository                  m_aDependencyHandlers;
@@ -130,7 +116,7 @@ namespace pcr
         /// the property we're just committing
         OUString                                        m_sCommittingProperty;
 
-        typedef std::unordered_map< OUString, sal_uInt16, OUStringHash >     HashString2Int16;
+        typedef std::unordered_map< OUString, sal_uInt16 >     HashString2Int16;
         HashString2Int16                                m_aPageIds;
 
         bool        m_bContainerFocusListening;
@@ -170,7 +156,7 @@ namespace pcr
         // XLayoutConstrains
         virtual css::awt::Size SAL_CALL getMinimumSize(  ) override;
         virtual css::awt::Size SAL_CALL getPreferredSize(  ) override;
-        virtual css::awt::Size SAL_CALL calcAdjustedSize( const css::awt::Size& aNewSize ) override;
+        virtual css::awt::Size SAL_CALL calcAdjustedSize( const css::awt::Size& rNewSize ) override;
 
         // XPropertyChangeListener
         virtual void SAL_CALL propertyChange( const css::beans::PropertyChangeEvent& _rEvent ) override;
@@ -186,16 +172,6 @@ namespace pcr
     protected:
         virtual ~OPropertyBrowserController() override;
 
-    public:
-        // XServiceInfo - static versions
-        /// @throws css::uno::RuntimeException
-        static OUString getImplementationName_static(  );
-        /// @throws css::uno::RuntimeException
-        static css::uno::Sequence< OUString > getSupportedServiceNames_static(  );
-        static css::uno::Reference< css::uno::XInterface > SAL_CALL
-                        Create(const css::uno::Reference< css::uno::XComponentContext >&);
-
-    protected:
         // IPropertyLineListener
         virtual void    Clicked(    const OUString& _rName, bool _bPrimary ) override;
         virtual void    Commit(     const OUString& _rName, const css::uno::Any& _rVal ) override;
@@ -205,7 +181,7 @@ namespace pcr
         virtual void    valueChanged( const css::uno::Reference< css::inspection::XPropertyControl >& Control ) override;
 
         // IPropertyExistenceCheck
-        virtual bool SAL_CALL hasPropertyByName( const OUString& _rName ) override;
+        virtual bool hasPropertyByName( const OUString& _rName ) override;
 
         // XObjectInspectorUI
         virtual void SAL_CALL enablePropertyUI( const OUString& _rPropertyName, sal_Bool _bEnable ) override;
@@ -241,8 +217,8 @@ namespace pcr
         // stop the inspection
         void stopInspection( bool _bCommitModified );
 
-        bool haveView() const { return nullptr != m_pView; }
-        OPropertyEditor&    getPropertyBox() { return m_pView->getPropertyBox(); }
+        bool haveView() const { return bool(m_xPropView); }
+        OPropertyEditor&    getPropertyBox() { return m_xPropView->getPropertyBox(); }
 
         // does the inspection of the objects as indicated by our model
         void doInspection();
@@ -307,7 +283,7 @@ namespace pcr
         */
         bool impl_findObjectProperty_nothrow( const OUString& _rName, OrderedPropertyMap::const_iterator* _pProperty = nullptr );
 
-        bool Construct(vcl::Window* _pParentWin);
+        void Construct(const css::uno::Reference<css::awt::XWindow>& rContainerWindow, std::unique_ptr<weld::Builder> xBuilder);
 
         /** retrieves the property handler for a given property name
             @param  _rPropertyName
@@ -318,7 +294,7 @@ namespace pcr
             @return
                 the handler which is responsible for the given property
         */
-        PropertyHandlerRef
+        PropertyHandlerRef const &
             impl_getHandlerForProperty_throw( const OUString& _rPropertyName ) const;
 
         /** determines whether we have a handler for the given property

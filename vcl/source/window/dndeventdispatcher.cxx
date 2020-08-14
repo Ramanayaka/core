@@ -17,10 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "dndeventdispatcher.hxx"
-#include "dndlistenercontainer.hxx"
-#include <window.h>
-#include <svdata.hxx>
+#include <dndeventdispatcher.hxx>
+#include <dndlistenercontainer.hxx>
+#include <sal/log.hxx>
 
 #include <osl/mutex.hxx>
 #include <vcl/svapp.hxx>
@@ -93,7 +92,7 @@ void SAL_CALL DNDEventDispatcher::drop( const DropTargetDropEvent& dtde )
 
     vcl::Window* pChildWindow = findTopLevelWindow(location);
 
-    // handle the case that drop is in an other vcl window than the last dragOver
+    // handle the case that drop is in another vcl window than the last dragOver
     if( pChildWindow != m_pCurrentWindow.get() )
     {
         // fire dragExit on listeners of previous window
@@ -103,10 +102,8 @@ void SAL_CALL DNDEventDispatcher::drop( const DropTargetDropEvent& dtde )
             dtde.DropAction, location, dtde.SourceActions, m_aDataFlavorList );
     }
 
-    sal_Int32 nListeners = 0;
-
     // send drop event to the child window
-    nListeners = fireDropEvent( pChildWindow, dtde.Context, dtde.DropAction,
+    sal_Int32 nListeners = fireDropEvent( pChildWindow, dtde.Context, dtde.DropAction,
         location, dtde.SourceActions, dtde.Transferable );
 
     // reject drop if no listeners found
@@ -260,9 +257,6 @@ sal_Int32 DNDEventDispatcher::fireDragEnterEvent( vcl::Window *pWindow,
     {
         SolarMutexClearableGuard aSolarGuard;
 
-        // set an UI lock
-        pWindow->IncrementLockCount();
-
         // query DropTarget from window
         Reference< XDropTarget > xDropTarget = pWindow->GetDropTarget();
 
@@ -323,9 +317,6 @@ sal_Int32 DNDEventDispatcher::fireDragExitEvent( vcl::Window *pWindow )
 
         if( xDropTarget.is() )
             n = static_cast < DNDListenerContainer * > ( xDropTarget.get() )->fireDragExitEvent();
-
-        // release UI lock
-        pWindow->DecrementLockCount();
     }
 
     return n;
@@ -374,7 +365,7 @@ sal_Int32 DNDEventDispatcher::fireDropEvent( vcl::Window *pWindow,
         Reference< XDropTarget > xDropTarget = pWindow->GetDropTarget();
 
         // window may be destroyed in drop event handler
-        VclPtr<vcl::Window> xWindow = pWindow;
+        VclPtr<vcl::Window> xPreventDelete = pWindow;
 
         if( xDropTarget.is() )
         {
@@ -385,13 +376,6 @@ sal_Int32 DNDEventDispatcher::fireDropEvent( vcl::Window *pWindow,
             n = static_cast < DNDListenerContainer * > ( xDropTarget.get() )->fireDropEvent(
                 xContext, nDropAction, relLoc.X(), relLoc.Y(), nSourceActions, xTransferable );
         }
-
-        if ( !xWindow->IsDisposed() )
-        {
-            // release UI lock
-            pWindow->DecrementLockCount();
-        }
-
     }
 
     return n;
@@ -420,9 +404,6 @@ sal_Int32 DNDEventDispatcher::fireDragGestureEvent( vcl::Window *pWindow,
             n = static_cast < DNDListenerContainer * > ( xDragGestureRecognizer.get() )->fireDragGestureEvent(
                 nDragAction, relLoc.X(), relLoc.Y(), xSource, event );
         }
-
-        // release UI lock
-        pWindow->DecrementLockCount();
     }
 
     return n;

@@ -17,16 +17,16 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "contentreader.hxx"
+#include <contentreader.hxx>
 #include "dummytag.hxx"
 #include "simpletag.hxx"
 #include "autostyletag.hxx"
 
-#include "assert.h"
+#include <assert.h>
 
 /** constructor.
 */
-CContentReader::CContentReader( const std::string& DocumentName, LocaleSet_t const & DocumentLocale ):
+CContentReader::CContentReader( const Filepath_t& DocumentName, LocaleSet_t const & DocumentLocale ):
 CBaseReader( DocumentName )
 {
     try
@@ -87,7 +87,7 @@ ITag* CContentReader::chooseTagReader( const std::wstring& tag_name, const XmlTa
         // if style:style | style:name is exist,, fill the style field, otherwise do nothing;
         if  ( XmlAttributes.find(CONTENT_STYLE_STYLE_NAME) != XmlAttributes.end())
             return new CAutoStyleTag(XmlAttributes);
-       else
+        else
             return new CDummyTag;
     }
     else if ( ( tag_name == CONTENT_STYLE_PROPERTIES ) || ( tag_name == CONTENT_TEXT_STYLE_PROPERTIES ) )
@@ -111,7 +111,7 @@ ITag* CContentReader::chooseTagReader( const std::wstring& tag_name, const XmlTa
     assert( !m_TagBuilderStack.empty() );
     ITag* pTagBuilder = m_TagBuilderStack.top();
 
-    return ( pTagBuilder->getTagAttribute(CONTENT_TEXT_STYLENAME) );
+    return pTagBuilder->getTagAttribute(CONTENT_TEXT_STYLENAME);
 }
 
 /** add chunk into Chunk Buffer.
@@ -159,9 +159,9 @@ LocaleSet_t const & CContentReader::getLocale( const StyleName_t& Style )
 
 
 void CContentReader::start_element(
-    const std::wstring& /*raw_name*/,
-    const std::wstring& local_name,
-    const XmlTagAttributes_t& attributes)
+    const string_t& /*raw_name*/,
+    const string_t& local_name,
+    const xml_tag_attribute_container_t& attributes)
 {
     //get appropriate Xml Tag Builder using MetaInfoBuilderFactory;
     ITag* pTagBuilder = chooseTagReader( local_name,attributes );
@@ -175,7 +175,7 @@ void CContentReader::start_element(
 // end_element occurs when a tag is closed
 
 
-void CContentReader::end_element(const std::wstring& /*raw_name*/, const std::wstring& local_name)
+void CContentReader::end_element(const string_t& /*raw_name*/, const string_t& local_name)
 {
     assert( !m_TagBuilderStack.empty() );
     ITag* pTagBuilder = m_TagBuilderStack.top();
@@ -204,11 +204,11 @@ void CContentReader::end_element(const std::wstring& /*raw_name*/, const std::ws
 // characters occurs when receiving characters
 
 
-void CContentReader::characters( const std::wstring& character )
+void CContentReader::characters( const string_t& character )
 {
     if ( character.length() > 0 && !HasOnlySpaces( character ) )
     {
-        addChunk( getLocale( getCurrentContentStyle() ), ::std::wstring( character ) );
+        addChunk( getLocale( getCurrentContentStyle() ), character );
 
         ITag* pTagBuilder = m_TagBuilderStack.top();
         pTagBuilder->addCharacters( character );

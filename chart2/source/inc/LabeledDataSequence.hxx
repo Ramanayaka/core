@@ -20,14 +20,14 @@
 #define INCLUDED_CHART2_SOURCE_INC_LABELEDDATASEQUENCE_HXX
 
 #include "MutexContainer.hxx"
-#include <comphelper/uno3.hxx>
 #include <cppuhelper/implbase.hxx>
 
 #include <com/sun/star/chart2/data/XLabeledDataSequence2.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/util/XCloneable.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
-#include <com/sun/star/util/XModifyBroadcaster.hpp>
+
+namespace com::sun::star::chart2::data { class XDataSequence; }
+namespace com::sun::star::util { class XCloneable; }
+namespace com::sun::star::util { class XModifyListener; }
 
 namespace chart
 {

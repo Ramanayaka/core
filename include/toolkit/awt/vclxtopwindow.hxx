@@ -22,40 +22,33 @@
 
 #include <com/sun/star/awt/XSystemDependentWindowPeer.hpp>
 #include <com/sun/star/awt/XTopWindow2.hpp>
-#include <com/sun/star/awt/XMenuBar.hpp>
 #include <cppuhelper/weak.hxx>
 
-#include <cppuhelper/implbase1.hxx>
+#include <cppuhelper/implbase2.hxx>
 
 #include <toolkit/awt/vclxcontainer.hxx>
 
-typedef ::cppu::ImplHelper1 <   css::awt::XTopWindow2
+namespace com::sun::star::awt { class XMenuBar; }
+
+typedef ::cppu::ImplHelper2 <   css::awt::XTopWindow2, css::awt::XSystemDependentWindowPeer
                             >   VCLXTopWindow_XBase;
-typedef ::cppu::ImplHelper1 <   css::awt::XSystemDependentWindowPeer
-                            >   VCLXTopWindow_SBase;
 
-class TOOLKIT_DLLPUBLIC VCLXTopWindow_Base  :public VCLXTopWindow_XBase
-                                            ,public VCLXTopWindow_SBase
+
+class VCLXTopWindow: public VCLXTopWindow_XBase,
+                     public VCLXContainer
 {
-private:
-    const bool  m_bWHWND;
-
-protected:
-    css::uno::Reference< css::awt::XMenuBar> mxMenuBar;
-
-
-    virtual vcl::Window* GetWindowImpl() = 0;
-    virtual ::comphelper::OInterfaceContainerHelper2& GetTopWindowListenersImpl() = 0;
-
-    VCLXTopWindow_Base( const bool _bSupportSystemWindowPeer );
-
 public:
-    virtual ~VCLXTopWindow_Base();
+    VCLXTopWindow();
+    virtual ~VCLXTopWindow() override;
 
-    // XInterface equivalents
-    css::uno::Any SAL_CALL queryInterface( const css::uno::Type & rType ) override;
-    // XTypeProvider equivalents
-    css::uno::Sequence< css::uno::Type > SAL_CALL getTypes() override;
+    // css::uno::XInterface
+    css::uno::Any  SAL_CALL queryInterface( const css::uno::Type & rType ) override;
+    void SAL_CALL acquire() throw() override  { OWeakObject::acquire(); }
+    void SAL_CALL release() throw() override  { OWeakObject::release(); }
+
+    // css::lang::XTypeProvider
+    css::uno::Sequence< css::uno::Type >  SAL_CALL getTypes() override;
+    css::uno::Sequence< sal_Int8 >                     SAL_CALL getImplementationId() override;
 
     // css::awt::XSystemDependentWindowPeer
     css::uno::Any SAL_CALL getWindowHandle( const css::uno::Sequence< sal_Int8 >& ProcessId, sal_Int16 SystemType ) override;
@@ -74,31 +67,6 @@ public:
     virtual void SAL_CALL setIsMinimized( sal_Bool _isminimized ) override;
     virtual ::sal_Int32 SAL_CALL getDisplay() override;
     virtual void SAL_CALL setDisplay( ::sal_Int32 _display ) override;
-};
-
-
-//  class VCLXTopWindow
-
-
-class TOOLKIT_DLLPUBLIC VCLXTopWindow: public VCLXTopWindow_Base,
-                     public VCLXContainer
-{
-protected:
-    virtual vcl::Window* GetWindowImpl() override;
-    virtual ::comphelper::OInterfaceContainerHelper2& GetTopWindowListenersImpl() override;
-
-public:
-    VCLXTopWindow(bool bWHWND = false);
-    virtual ~VCLXTopWindow() override;
-
-    // css::uno::XInterface
-    css::uno::Any  SAL_CALL queryInterface( const css::uno::Type & rType ) override;
-    void                        SAL_CALL acquire() throw() override  { OWeakObject::acquire(); }
-    void                        SAL_CALL release() throw() override  { OWeakObject::release(); }
-
-    // css::lang::XTypeProvider
-    css::uno::Sequence< css::uno::Type >  SAL_CALL getTypes() override;
-    css::uno::Sequence< sal_Int8 >                     SAL_CALL getImplementationId() override;
 
     static void     ImplGetPropertyIds( std::vector< sal_uInt16 > &aIds );
     virtual void    GetPropertyIds( std::vector< sal_uInt16 > &aIds ) override { return ImplGetPropertyIds( aIds ); }

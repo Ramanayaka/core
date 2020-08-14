@@ -19,6 +19,8 @@
 
 #include "requeststringresolver.hxx"
 #include "iahndl.hxx"
+#include <com/sun/star/lang/WrappedTargetRuntimeException.hpp>
+#include <cppuhelper/exc_hlp.hxx>
 #include <cppuhelper/supportsservice.hxx>
 
 using namespace css;
@@ -37,7 +39,7 @@ UUIInteractionRequestStringResolver::~UUIInteractionRequestStringResolver()
 OUString SAL_CALL
 UUIInteractionRequestStringResolver::getImplementationName()
 {
-    return OUString("com.sun.star.comp.uui.UUIInteractionRequestStringResolver");
+    return "com.sun.star.comp.uui.UUIInteractionRequestStringResolver";
 }
 
 sal_Bool SAL_CALL
@@ -65,11 +67,13 @@ UUIInteractionRequestStringResolver::getStringFromInformationalRequest(
     }
     catch (uno::RuntimeException const & ex)
     {
-        throw uno::RuntimeException(ex.Message, *this);
+        css::uno::Any anyEx = cppu::getCaughtException();
+        throw css::lang::WrappedTargetRuntimeException( ex.Message,
+                *this, anyEx );
     }
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_uui_UUIInteractionRequestStringResolver_get_implementation(
     css::uno::XComponentContext *context,
     css::uno::Sequence<css::uno::Any> const &)

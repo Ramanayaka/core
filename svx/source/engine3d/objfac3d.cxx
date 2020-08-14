@@ -17,14 +17,13 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <svx/svdpage.hxx>
-#include "svx/globl3d.hxx"
+#include <svx/globl3d.hxx>
 #include <svx/cube3d.hxx>
 #include <svx/sphere3d.hxx>
-#include <svx/extrud3d.hxx>
+#include <extrud3d.hxx>
 #include <svx/lathe3d.hxx>
-#include <svx/polygn3d.hxx>
-#include "svx/objfac3d.hxx"
+#include <polygn3d.hxx>
+#include <svx/objfac3d.hxx>
 #include <svx/svdobj.hxx>
 #include <svx/scene3d.hxx>
 
@@ -52,24 +51,19 @@ IMPL_STATIC_LINK( E3dObjFactory, MakeObject, SdrObjCreatorParams, aParams, SdrOb
         switch ( aParams.nObjIdentifier )
         {
             case E3D_SCENE_ID:
-                return new E3dScene();
+                return new E3dScene(aParams.rSdrModel);
             case E3D_POLYGONOBJ_ID  :
-                return new E3dPolygonObj();
+                return new E3dPolygonObj(aParams.rSdrModel);
             case E3D_CUBEOBJ_ID :
-                return new E3dCubeObj();
+                return new E3dCubeObj(aParams.rSdrModel);
             case E3D_SPHEREOBJ_ID:
-                // Gets the dummy constructor, as this is only called when
-                // loading documents. The actual number of segments is however
-                // determined only after loading the members. This will result
-                // in that the first sphere will be immediately destroyed,
-                // although it was never used.
-                return new E3dSphereObj(E3dSphereObj::DUMMY);
+                return new E3dSphereObj(aParams.rSdrModel);
             case E3D_EXTRUDEOBJ_ID:
-                return new E3dExtrudeObj();
+                return new E3dExtrudeObj(aParams.rSdrModel);
             case E3D_LATHEOBJ_ID:
-                return new E3dLatheObj();
+                return new E3dLatheObj(aParams.rSdrModel);
             case E3D_COMPOUNDOBJ_ID:
-                return new E3dCompoundObject();
+                return new E3dCompoundObject(aParams.rSdrModel);
         }
     }
     return nullptr;

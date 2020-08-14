@@ -17,34 +17,27 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "MediaObjectBar.hxx"
+#include <MediaObjectBar.hxx>
 #include <avmedia/mediaitem.hxx>
 #include <sfx2/msg.hxx>
-#include <sfx2/app.hxx>
 #include <sfx2/sfxsids.hrc>
 #include <sfx2/request.hxx>
 #include <sfx2/objface.hxx>
 #include <svl/whiter.hxx>
-#include <svl/itempool.hxx>
 #include <svx/svdomedia.hxx>
 #include <svx/sdr/contact/viewcontactofsdrmediaobj.hxx>
 
-#include "app.hrc"
-#include "res_bmp.hrc"
-#include "glob.hrc"
-#include "strings.hrc"
-#include "DrawDocShell.hxx"
-#include "ViewShell.hxx"
-#include "Window.hxx"
-#include "drawview.hxx"
-#include "sdresid.hxx"
-#include "drawdoc.hxx"
+#include <strings.hrc>
+#include <DrawDocShell.hxx>
+#include <ViewShell.hxx>
+#include <sdresid.hxx>
+#include <drawdoc.hxx>
 #include <memory>
 
 using namespace sd;
 
-#define MediaObjectBar
-#include "sdslots.hxx"
+#define ShellClass_MediaObjectBar
+#include <sdslots.hxx>
 
 namespace sd {
 
@@ -57,10 +50,9 @@ void MediaObjectBar::InitInterface_Impl()
 
 MediaObjectBar::MediaObjectBar( ViewShell* pSdViewShell, ::sd::View* pSdView ) :
     SfxShell( pSdViewShell->GetViewShell() ),
-    mpView( pSdView ),
-    mpViewSh( pSdViewShell )
+    mpView( pSdView )
 {
-    DrawDocShell* pDocShell = mpViewSh->GetDocSh();
+    DrawDocShell* pDocShell = pSdViewShell->GetDocSh();
 
     SetPool( &pDocShell->GetPool() );
     SetUndoManager( pDocShell->GetUndoManager() );
@@ -89,7 +81,7 @@ void MediaObjectBar::GetState( SfxItemSet& rSet )
             {
                 SdrObject* pObj =pMarkList->GetMark( 0 )->GetMarkedSdrObj();
 
-                if( pObj && dynamic_cast< SdrMediaObj *>( pObj ) !=  nullptr )
+                if( dynamic_cast< SdrMediaObj *>( pObj ) )
                 {
                     ::avmedia::MediaItem aItem( SID_AVMEDIA_TOOLBOX );
 
@@ -107,35 +99,40 @@ void MediaObjectBar::GetState( SfxItemSet& rSet )
     }
 }
 
-void MediaObjectBar::Execute( SfxRequest& rReq )
+void MediaObjectBar::Execute( SfxRequest const & rReq )
 {
-    if( SID_AVMEDIA_TOOLBOX == rReq.GetSlot() )
+    if( SID_AVMEDIA_TOOLBOX != rReq.GetSlot() )
+        return;
+
+    const SfxItemSet*   pArgs = rReq.GetArgs();
+    const SfxPoolItem*  pItem;
+
+    if( !pArgs || ( SfxItemState::SET != pArgs->GetItemState( SID_AVMEDIA_TOOLBOX, false, &pItem ) ) )
+        pItem = nullptr;
+
+    if( !pItem )
+        return;
+
+    std::unique_ptr<SdrMarkList> pMarkList(new SdrMarkList( mpView->GetMarkedObjectList() ));
+
+    if( 1 != pMarkList->GetMarkCount() )
+        return;
+
+    SdrObject* pObj = pMarkList->GetMark( 0 )->GetMarkedSdrObj();
+
+    if( !dynamic_cast< SdrMediaObj *>( pObj ) )
+        return;
+
+    static_cast< sdr::contact::ViewContactOfSdrMediaObj& >( pObj->GetViewContact() ).executeMediaItem(
+        static_cast< const ::avmedia::MediaItem& >( *pItem ) );
+
+
+    //if only changing state then don't set modified flag (e.g. playing a video)
+    if( !(static_cast< const ::avmedia::MediaItem& >( *pItem ).getMaskSet() & AVMediaSetMask::STATE))
     {
-        const SfxItemSet*   pArgs = rReq.GetArgs();
-        const SfxPoolItem*  pItem;
-
-        if( !pArgs || ( SfxItemState::SET != pArgs->GetItemState( SID_AVMEDIA_TOOLBOX, false, &pItem ) ) )
-            pItem = nullptr;
-
-        if( pItem )
-        {
-            std::unique_ptr<SdrMarkList> pMarkList(new SdrMarkList( mpView->GetMarkedObjectList() ));
-
-            if( 1 == pMarkList->GetMarkCount() )
-            {
-                SdrObject* pObj = pMarkList->GetMark( 0 )->GetMarkedSdrObj();
-
-                if( pObj && dynamic_cast< SdrMediaObj *>( pObj ) !=  nullptr )
-                {
-                    static_cast< sdr::contact::ViewContactOfSdrMediaObj& >( pObj->GetViewContact() ).executeMediaItem(
-                        static_cast< const ::avmedia::MediaItem& >( *pItem ) );
-
-                    //fdo #32598: after changing playback opts, set document's modified flag
-                    SdDrawDocument& rDoc = mpView->GetDoc();
-                    rDoc.SetChanged();
-                }
-            }
-        }
+        //fdo #32598: after changing playback opts, set document's modified flag
+        SdDrawDocument& rDoc = mpView->GetDoc();
+        rDoc.SetChanged();
     }
 }
 

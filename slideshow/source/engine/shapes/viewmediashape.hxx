@@ -22,32 +22,33 @@
 
 #include <basegfx/range/b2drectangle.hxx>
 #include <com/sun/star/awt/Point.hpp>
+#include <com/sun/star/drawing/XShape.hpp>
 
 #include <memory>
 #include <vcl/vclptr.hxx>
 
-#include "viewlayer.hxx"
+#include <viewlayer.hxx>
 
 class SystemChildWindow;
 namespace vcl { class Window; }
 
-namespace com { namespace sun { namespace star { namespace drawing {
-    class XShape;
+namespace com::sun::star {
+    namespace drawing {
+        class XShape;
+    }
+    namespace media {
+        class XPlayer;
+        class XPlayerWindow;
+    }
+    namespace uno {
+        class XComponentContext;
+    }
+    namespace beans{
+        class XPropertySet;
+    }
 }
-namespace media {
-    class XPlayer;
-    class XPlayerWindow;
-}
-namespace uno {
-    class XComponentContext;
-}
-namespace beans{
-    class XPropertySet;
-} } } }
 
-namespace slideshow
-{
-    namespace internal
+namespace slideshow::internal
     {
         /** This class is the viewable representation of a draw
             document's media object, associated to a specific View
@@ -148,7 +149,6 @@ namespace slideshow
                                              const OUString& rMimeType );
             ViewLayerSharedPtr                    mpViewLayer;
             VclPtr< SystemChildWindow >           mpMediaWindow;
-            VclPtr< vcl::Window >                 mpEventHandlerParent;
             mutable css::awt::Point               maWindowOffset;
             mutable ::basegfx::B2DRectangle       maBounds;
 
@@ -161,7 +161,6 @@ namespace slideshow
 
         typedef ::std::shared_ptr< ViewMediaShape > ViewMediaShapeSharedPtr;
 
-    }
 }
 
 #endif // INCLUDED_SLIDESHOW_SOURCE_ENGINE_SHAPES_VIEWMEDIASHAPE_HXX

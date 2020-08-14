@@ -11,10 +11,9 @@
 #ifndef TOXTABSTOPTOKENHANDLER_HXX_
 #define TOXTABSTOPTOKENHANDLER_HXX_
 
-#include "swdllapi.h"
-#include "rtl/ustring.hxx"
+#include <rtl/ustring.hxx>
 
-#include "editeng/tstpitem.hxx"
+#include <editeng/tstpitem.hxx>
 
 struct SwFormToken;
 class SwPageDesc;
@@ -50,7 +49,7 @@ public:
 };
 
 /** The default implementation of ToxTabStopTokenHandler */
-class DefaultToxTabStopTokenHandler : public ToxTabStopTokenHandler
+class DefaultToxTabStopTokenHandler final : public ToxTabStopTokenHandler
 {
 public:
 

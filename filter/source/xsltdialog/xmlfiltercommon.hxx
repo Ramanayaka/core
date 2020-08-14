@@ -19,10 +19,6 @@
 #ifndef INCLUDED_FILTER_SOURCE_XSLTDIALOG_XMLFILTERCOMMON_HXX
 #define INCLUDED_FILTER_SOURCE_XSLTDIALOG_XMLFILTERCOMMON_HXX
 
-#include <com/sun/star/lang/XComponent.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
-#include <com/sun/star/container/XHierarchicalName.hpp>
-#include <com/sun/star/container/XNameContainer.hpp>
 #include <com/sun/star/io/XInputStream.hpp>
 #include <com/sun/star/io/XOutputStream.hpp>
 
@@ -33,7 +29,7 @@ extern OUString string_encode( const OUString & rText );
 extern OUString string_decode( const OUString & rText );
 
 bool copyStreams( const css::uno::Reference< css::io::XInputStream >& xIS, const css::uno::Reference< css::io::XOutputStream >& xOS );
-bool createDirectory( OUString& rURL );
+bool createDirectory( OUString const & rURL );
 
 
 class filter_info_impl
@@ -42,7 +38,6 @@ public:
     OUString   maFilterName;
     OUString   maType;
     OUString   maDocumentService;
-    OUString   maFilterService;
     OUString   maInterfaceName;
     OUString   maComment;
     OUString   maExtension;
@@ -75,13 +70,14 @@ struct application_info_impl
     OUString   maXMLImporter;
     OUString   maXMLExporter;
 
-    application_info_impl(const sal_Char * pDocumentService, const OUString& rUINameRes, const sal_Char * mpXMLImporter, const sal_Char * mpXMLExporter);
+    application_info_impl(const char * pDocumentService, const OUString& rUINameRes, const char * mpXMLImporter, const char * mpXMLExporter);
 };
 
 
-extern std::vector< application_info_impl* >& getApplicationInfos();
+extern std::vector< application_info_impl > const & getApplicationInfos();
 extern OUString getApplicationUIName( const OUString& rServiceName );
 extern const application_info_impl* getApplicationInfo( const OUString& rServiceName );
+OUString XsltResId(const char* pId);
 
 #endif
 

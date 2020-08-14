@@ -17,17 +17,13 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <toolkit/awt/vclxregion.hxx>
+#include <awt/vclxregion.hxx>
 #include <toolkit/helper/macros.hxx>
 #include <toolkit/helper/vclunohelper.hxx>
 #include <toolkit/helper/convert.hxx>
-#include <cppuhelper/typeprovider.hxx>
 #include <cppuhelper/queryinterface.hxx>
-#include <rtl/uuid.h>
-#include <vcl/svapp.hxx>
 
 
-//  class VCLXRegion
 
 VCLXRegion::VCLXRegion()
 {
@@ -37,24 +33,8 @@ VCLXRegion::~VCLXRegion()
 {
 }
 
-// css::uno::XInterface
-css::uno::Any VCLXRegion::queryInterface( const css::uno::Type & rType )
-{
-    css::uno::Any aRet = ::cppu::queryInterface( rType,
-                                        (static_cast< css::awt::XRegion* >(this)),
-                                        (static_cast< css::lang::XUnoTunnel* >(this)),
-                                        (static_cast< css::lang::XTypeProvider* >(this)) );
-    return (aRet.hasValue() ? aRet : OWeakObject::queryInterface( rType ));
-}
-
 // css::lang::XUnoTunnel
-IMPL_XUNOTUNNEL( VCLXRegion )
-
-// css::lang::XTypeProvider
-IMPL_XTYPEPROVIDER_START( VCLXRegion )
-    cppu::UnoType<css::awt::XRegion>::get()
-IMPL_XTYPEPROVIDER_END
-
+UNO3_GETIMPLEMENTATION_IMPL( VCLXRegion );
 
 css::awt::Rectangle VCLXRegion::getBounds()
 {
@@ -148,9 +128,9 @@ css::uno::Sequence< css::awt::Rectangle > VCLXRegion::getRectangles()
     css::uno::Sequence< css::awt::Rectangle > aRects(aRectangles.size());
     sal_uInt32 a(0);
 
-    for(RectangleVector::const_iterator aRectIter(aRectangles.begin()); aRectIter != aRectangles.end(); ++aRectIter)
+    for(const auto& rRect : aRectangles)
     {
-        aRects.getArray()[a++] = AWTRectangle(*aRectIter);
+        aRects.getArray()[a++] = AWTRectangle(rRect);
     }
 
     //Rectangle aRect;

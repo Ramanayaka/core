@@ -24,7 +24,6 @@
 
 class ScTabViewShell;
 class SdrOle2Obj;
-class SdrGrafObj;
 class SdrModel;
 
 class ScClient : public SfxInPlaceClient
@@ -37,7 +36,7 @@ private:
     virtual void    ViewChanged() override;
 
 public:
-                    ScClient( ScTabViewShell* pViewShell, vcl::Window* pDraw, SdrModel* pSdrModel, SdrOle2Obj* pObj );
+                    ScClient( ScTabViewShell* pViewShell, vcl::Window* pDraw, SdrModel* pSdrModel, const SdrOle2Obj* pObj );
     virtual         ~ScClient() override;
 
     SdrOle2Obj*     GetDrawObj();

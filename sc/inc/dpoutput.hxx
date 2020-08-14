@@ -20,25 +20,24 @@
 #ifndef INCLUDED_SC_INC_DPOUTPUT_HXX
 #define INCLUDED_SC_INC_DPOUTPUT_HXX
 
-#include <com/sun/star/sheet/XDimensionsSupplier.hpp>
-#include <com/sun/star/sheet/DataResult.hpp>
-#include <com/sun/star/sheet/MemberResult.hpp>
 #include <com/sun/star/sheet/DataPilotOutputRangeType.hpp>
 #include <com/sun/star/sheet/DataPilotFieldOrientation.hpp>
+#include <com/sun/star/uno/Sequence.hxx>
 
-#include "global.hxx"
 #include "address.hxx"
 
-#include "dpfilteredcache.hxx"
 #include "dptypes.hxx"
 
+#include <memory>
 #include <vector>
 
-namespace com { namespace sun { namespace star { namespace sheet {
+namespace com::sun::star::sheet {
     struct DataPilotFieldFilter;
     struct DataPilotTablePositionData;
-}}}}
-
+    struct DataResult;
+    struct MemberResult;
+    class XDimensionsSupplier;
+}
 namespace tools { class Rectangle; }
 class ScDocument;
 struct ScDPOutLevelData;
@@ -56,8 +55,10 @@ private:
     OUString                aDataDescription;
 
     // Number format related parameters
-    sal_uInt32*             pColNumFmt;
-    sal_uInt32*             pRowNumFmt;
+    std::unique_ptr<sal_uInt32[]>
+                            pColNumFmt;
+    std::unique_ptr<sal_uInt32[]>
+                            pRowNumFmt;
     long                    nColFmtCount;
     long                    nRowFmtCount;
     sal_uInt32              nSingleNumFmt;
@@ -76,7 +77,6 @@ private:
     SCROW                   nTabEndRow;
     bool                    bDoFilter:1;
     bool                    bResultsError:1;
-    bool                    mbHasDataLayout:1;
     bool                    bSizesValid:1;
     bool                    bSizeOverflow:1;
     bool                    mbHeaderLayout:1;  // true : grid, false : standard
@@ -106,7 +106,7 @@ public:
 
     void            Output();           //! Refresh?
     ScRange GetOutputRange( sal_Int32 nRegionType = css::sheet::DataPilotOutputRangeType::WHOLE );
-    long            GetHeaderRows();
+    long            GetHeaderRows() const;
     bool            HasError();         // range overflow or exception from source
 
     void            GetPositionData(const ScAddress& rPos, css::sheet::DataPilotTablePositionData& rPosData);

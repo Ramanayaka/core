@@ -20,11 +20,10 @@
 #ifndef INCLUDED_FRAMEWORK_INC_UIELEMENT_EDITTOOLBARCONTROLLER_HXX
 #define INCLUDED_FRAMEWORK_INC_UIELEMENT_EDITTOOLBARCONTROLLER_HXX
 
-#include <com/sun/star/beans/NamedValue.hpp>
 #include <com/sun/star/frame/ControlCommand.hpp>
 
 #include <uielement/complextoolbarcontroller.hxx>
-#include <vcl/edit.hxx>
+#include <vcl/event.hxx>
 
 class ToolBox;
 
@@ -33,7 +32,7 @@ namespace framework
 
 class EditControl;
 
-class EditToolbarController : public ComplexToolbarController
+class EditToolbarController final : public ComplexToolbarController
 
 {
     public:
@@ -52,13 +51,12 @@ class EditToolbarController : public ComplexToolbarController
         void Modify();
         void GetFocus();
         void LoseFocus();
-        bool PreNotify( NotifyEvent& rNEvt );
+        void Activate();
 
-    protected:
+    private:
         virtual void executeControlCommand( const css::frame::ControlCommand& rControlCommand ) override;
         virtual css::uno::Sequence< css::beans::PropertyValue> getExecuteArgs(sal_Int16 KeyModifier) const override;
 
-    private:
         VclPtr<EditControl>    m_pEditControl;
 };
 

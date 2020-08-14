@@ -17,10 +17,12 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "buffer.hxx"
-#include "parser.hxx"
+#include <buffer.hxx>
+#include <parser.hxx>
 
-const static sal_uInt32 UP_LIMIT=0xFFFFFF00;
+#include <basic/sberrors.hxx>
+
+const sal_uInt32 UP_LIMIT=0xFFFFFF00;
 
 // The SbiBuffer will be expanded in increments of at least 16 Bytes.
 // This is necessary, because many classes emanate from a buffer length
@@ -109,10 +111,10 @@ void SbiBuffer::Patch( sal_uInt32 off, sal_uInt32 val )
         sal_uInt16 val1 = static_cast<sal_uInt16>( val & 0xFFFF );
         sal_uInt16 val2 = static_cast<sal_uInt16>( val >> 16 );
         sal_uInt8* p = reinterpret_cast<sal_uInt8*>(pBuf.get()) + off;
-        *p++ = (char) ( val1 & 0xFF );
-        *p++ = (char) ( val1 >> 8 );
-        *p++ = (char) ( val2 & 0xFF );
-        *p   = (char) ( val2 >> 8 );
+        *p++ = static_cast<char>( val1 & 0xFF );
+        *p++ = static_cast<char>( val1 >> 8 );
+        *p++ = static_cast<char>( val2 & 0xFF );
+        *p   = static_cast<char>( val2 >> 8 );
     }
 }
 
@@ -122,36 +124,36 @@ void SbiBuffer::Patch( sal_uInt32 off, sal_uInt32 val )
 
 void SbiBuffer::Chain( sal_uInt32 off )
 {
-    if( off && pBuf )
-    {
-        sal_uInt8 *ip;
-        sal_uInt32 i = off;
-        sal_uInt32 val1 = (nOff & 0xFFFF);
-        sal_uInt32 val2 = (nOff >> 16);
-        do
-        {
-            ip = reinterpret_cast<sal_uInt8*>(pBuf.get()) + i;
-            sal_uInt8* pTmp = ip;
-                     i =  *pTmp++; i |= *pTmp++ << 8; i |= *pTmp++ << 16; i |= *pTmp++ << 24;
+    if( !(off && pBuf) )
+        return;
 
-            if( i >= nOff )
-            {
-                pParser->Error( ERRCODE_BASIC_INTERNAL_ERROR, "BACKCHAIN" );
-                break;
-            }
-            *ip++ = (char) ( val1 & 0xFF );
-            *ip++ = (char) ( val1 >> 8 );
-            *ip++ = (char) ( val2 & 0xFF );
-            *ip   = (char) ( val2 >> 8 );
-        } while( i );
-    }
+    sal_uInt8 *ip;
+    sal_uInt32 i = off;
+    sal_uInt32 val1 = (nOff & 0xFFFF);
+    sal_uInt32 val2 = (nOff >> 16);
+    do
+    {
+        ip = reinterpret_cast<sal_uInt8*>(pBuf.get()) + i;
+        sal_uInt8* pTmp = ip;
+        i =  *pTmp++; i |= *pTmp++ << 8; i |= *pTmp++ << 16; i |= *pTmp++ << 24;
+
+        if( i >= nOff )
+        {
+            pParser->Error( ERRCODE_BASIC_INTERNAL_ERROR, "BACKCHAIN" );
+            break;
+        }
+        *ip++ = static_cast<char>( val1 & 0xFF );
+        *ip++ = static_cast<char>( val1 >> 8 );
+        *ip++ = static_cast<char>( val2 & 0xFF );
+        *ip   = static_cast<char>( val2 >> 8 );
+    } while( i );
 }
 
 void SbiBuffer::operator +=( sal_Int8 n )
 {
     if( Check( 1 ) )
     {
-        *pCur++ = (char) n;
+        *pCur++ = static_cast<char>(n);
         nOff += 1;
     }
 }
@@ -160,7 +162,7 @@ bool SbiBuffer::operator +=( sal_uInt8 n )
 {
     if( Check( 1 ) )
     {
-        *pCur++ = (char) n;
+        *pCur++ = static_cast<char>(n);
         nOff += 1;
         return true;
     }
@@ -174,8 +176,8 @@ void SbiBuffer::operator +=( sal_Int16 n )
 {
     if( Check( 2 ) )
     {
-        *pCur++ = (char) ( n & 0xFF );
-        *pCur++ = (char) ( n >> 8 );
+        *pCur++ = static_cast<char>( n & 0xFF );
+        *pCur++ = static_cast<char>( n >> 8 );
         nOff += 2;
     }
 }
@@ -184,8 +186,8 @@ bool SbiBuffer::operator +=( sal_uInt16 n )
 {
     if( Check( 2 ) )
     {
-        *pCur++ = (char) ( n & 0xFF );
-        *pCur++ = (char) ( n >> 8 );
+        *pCur++ = static_cast<char>( n & 0xFF );
+        *pCur++ = static_cast<char>( n >> 8 );
         nOff += 2;
         return true;
     }
@@ -212,7 +214,7 @@ bool SbiBuffer::operator +=( sal_uInt32 n )
 
 void SbiBuffer::operator +=( sal_Int32 n )
 {
-    operator +=( (sal_uInt32) n );
+    operator +=( static_cast<sal_uInt32>(n) );
 }
 
 

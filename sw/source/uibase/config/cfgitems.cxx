@@ -17,56 +17,40 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <basic/sbxvar.hxx>
-
-#include <svx/svxids.hrc>
-#include <editeng/svxenum.hxx>
-
-#include "viewopt.hxx"
-#include "swtypes.hxx"
-#include "cmdid.h"
-#include "prtopt.hxx"
-#include "cfgitems.hxx"
-#include "crstate.hxx"
+#include <viewopt.hxx>
+#include <cmdid.h>
+#include <cfgitems.hxx>
+#include <crstate.hxx>
 
 
 SwDocDisplayItem::SwDocDisplayItem() :
         SfxPoolItem(FN_PARAM_DOCDISP)
 {
-    bParagraphEnd       =
-    bTab                =
-    bSpace              =
-    bNonbreakingSpace   =
-    bSoftHyphen         =
-    bFieldHiddenText      =
-    bCharHiddenText     =
-    bManualBreak        =
-    bShowHiddenPara     = false;
-
+    m_bParagraphEnd       =
+    m_bTab                =
+    m_bSpace              =
+    m_bNonbreakingSpace   =
+    m_bSoftHyphen         =
+    m_bCharHiddenText     =
+    m_bBookmarks          =
+    m_bManualBreak        = true;
 };
 
 // Item for the Settings dialog, page document view
-SwDocDisplayItem::SwDocDisplayItem( const SwDocDisplayItem& rDocDisplayItem ):
-            SfxPoolItem(rDocDisplayItem)
-{
-    *this = rDocDisplayItem;
-};
-
 SwDocDisplayItem::SwDocDisplayItem(const SwViewOption& rVOpt ) :
             SfxPoolItem( FN_PARAM_DOCDISP )
 {
-    bParagraphEnd       = rVOpt.IsParagraph(true);
-    bTab                = rVOpt.IsTab(true);
-    bSpace              = rVOpt.IsBlank(true);
-    bNonbreakingSpace   = rVOpt.IsHardBlank();
-    bSoftHyphen         = rVOpt.IsSoftHyph();
-    bCharHiddenText     = rVOpt.IsShowHiddenChar(true);
-    bFieldHiddenText      = rVOpt.IsShowHiddenField();
-    bManualBreak        = rVOpt.IsLineBreak(true);
-    bShowHiddenPara     = rVOpt.IsShowHiddenPara();
+    m_bParagraphEnd       = rVOpt.IsParagraph(true);
+    m_bTab                = rVOpt.IsTab(true);
+    m_bSpace              = rVOpt.IsBlank(true);
+    m_bNonbreakingSpace   = rVOpt.IsHardBlank();
+    m_bSoftHyphen         = rVOpt.IsSoftHyph();
+    m_bCharHiddenText     = rVOpt.IsShowHiddenChar(true);
+    m_bBookmarks          = rVOpt.IsShowBookmarks(true);
+    m_bManualBreak        = rVOpt.IsLineBreak(true);
 }
 
-SfxPoolItem* SwDocDisplayItem::Clone( SfxItemPool*  ) const
+SwDocDisplayItem* SwDocDisplayItem::Clone( SfxItemPool*  ) const
 {
     return new SwDocDisplayItem( *this );
 }
@@ -77,80 +61,63 @@ bool SwDocDisplayItem::operator==( const SfxPoolItem& rAttr ) const
 
     const SwDocDisplayItem& rItem = static_cast<const SwDocDisplayItem&>(rAttr);
 
-    return (  bParagraphEnd         == rItem.bParagraphEnd       &&
-              bTab                  == rItem.bTab                &&
-              bSpace                == rItem.bSpace              &&
-              bNonbreakingSpace     == rItem.bNonbreakingSpace   &&
-              bSoftHyphen           == rItem.bSoftHyphen         &&
-              bCharHiddenText       == rItem.bCharHiddenText         &&
-              bFieldHiddenText        == rItem.bFieldHiddenText         &&
-              bManualBreak          == rItem.bManualBreak        &&
-              bShowHiddenPara       == rItem.bShowHiddenPara );
-}
-
-SwDocDisplayItem& SwDocDisplayItem::operator=( const SwDocDisplayItem& rDocDisplayItem)
-{
-    bParagraphEnd       = rDocDisplayItem.bParagraphEnd         ;
-    bTab                = rDocDisplayItem.bTab                  ;
-    bSpace              = rDocDisplayItem.bSpace                ;
-    bNonbreakingSpace   = rDocDisplayItem.bNonbreakingSpace     ;
-    bSoftHyphen         = rDocDisplayItem.bSoftHyphen           ;
-    bCharHiddenText     = rDocDisplayItem.bCharHiddenText           ;
-    bFieldHiddenText      = rDocDisplayItem.bFieldHiddenText           ;
-    bManualBreak        = rDocDisplayItem.bManualBreak          ;
-    bShowHiddenPara     = rDocDisplayItem.bShowHiddenPara       ;
-    return *this;
+    return (  m_bParagraphEnd         == rItem.m_bParagraphEnd       &&
+              m_bTab                  == rItem.m_bTab                &&
+              m_bSpace                == rItem.m_bSpace              &&
+              m_bNonbreakingSpace     == rItem.m_bNonbreakingSpace   &&
+              m_bSoftHyphen           == rItem.m_bSoftHyphen         &&
+              m_bCharHiddenText       == rItem.m_bCharHiddenText         &&
+              m_bBookmarks            == rItem.m_bBookmarks          &&
+              m_bManualBreak          == rItem.m_bManualBreak );
 }
 
 void SwDocDisplayItem::FillViewOptions( SwViewOption& rVOpt) const
 {
-    rVOpt.SetParagraph  (bParagraphEnd      );
-    rVOpt.SetTab        (bTab               );
-    rVOpt.SetBlank      (bSpace             );
-    rVOpt.SetHardBlank  (bNonbreakingSpace  );
-    rVOpt.SetSoftHyph   (bSoftHyphen        );
-    rVOpt.SetShowHiddenChar(bCharHiddenText );
-    rVOpt.SetShowHiddenField(bFieldHiddenText        );
-    rVOpt.SetLineBreak  (bManualBreak       );
-    rVOpt.SetShowHiddenPara(bShowHiddenPara );
+    rVOpt.SetParagraph  (m_bParagraphEnd      );
+    rVOpt.SetTab        (m_bTab               );
+    rVOpt.SetBlank      (m_bSpace             );
+    rVOpt.SetHardBlank  (m_bNonbreakingSpace  );
+    rVOpt.SetSoftHyph   (m_bSoftHyphen        );
+    rVOpt.SetShowHiddenChar(m_bCharHiddenText );
+    rVOpt.SetShowBookmarks(m_bBookmarks       );
+    rVOpt.SetLineBreak  (m_bManualBreak       );
 }
 
 SwElemItem::SwElemItem() :
     SfxPoolItem(FN_PARAM_ELEM)
 {
-    bVertRuler     =
-    bVertRulerRight=
-    bCrosshair     =
-    bSmoothScroll  =
-    bTable              =
-    bGraphic            =
-    bDrawing            =
-    bFieldName          =
-    bNotes              = false;
-}
-
-SwElemItem::SwElemItem( const SwElemItem& rElemItem ):
-            SfxPoolItem(rElemItem)
-{
-    *this = rElemItem;
+    m_bVertRuler     =
+    m_bVertRulerRight=
+    m_bCrosshair     =
+    m_bSmoothScroll  =
+    m_bTable              =
+    m_bGraphic            =
+    m_bDrawing            =
+    m_bNotes              = false;
+    m_bShowInlineTooltips = true;
+    m_bShowOutlineContentVisibilityButton =
+    m_bFieldHiddenText =
+    m_bShowHiddenPara  = false;
 }
 
 SwElemItem::SwElemItem(const SwViewOption& rVOpt) :
             SfxPoolItem( FN_PARAM_ELEM )
 {
-    bVertRuler      = rVOpt.IsViewVRuler(true);
-    bVertRulerRight = rVOpt.IsVRulerRight();
-    bCrosshair      = rVOpt.IsCrossHair();
-    bSmoothScroll   = rVOpt.IsSmoothScroll();
-    bTable              = rVOpt.IsTable();
-    bGraphic            = rVOpt.IsGraphic();
-    bDrawing            = rVOpt.IsDraw() && rVOpt.IsControl();
-    bFieldName          = rVOpt.IsFieldName();
-    bNotes              = rVOpt.IsPostIts();
-
+    m_bVertRuler      = rVOpt.IsViewVRuler(true);
+    m_bVertRulerRight = rVOpt.IsVRulerRight();
+    m_bCrosshair      = rVOpt.IsCrossHair();
+    m_bSmoothScroll   = rVOpt.IsSmoothScroll();
+    m_bTable              = rVOpt.IsTable();
+    m_bGraphic            = rVOpt.IsGraphic();
+    m_bDrawing            = rVOpt.IsDraw() && rVOpt.IsControl();
+    m_bNotes              = rVOpt.IsPostIts();
+    m_bShowInlineTooltips = rVOpt.IsShowInlineTooltips();
+    m_bShowOutlineContentVisibilityButton = rVOpt.IsShowOutlineContentVisibilityButton();
+    m_bFieldHiddenText = rVOpt.IsShowHiddenField();
+    m_bShowHiddenPara  = rVOpt.IsShowHiddenPara();
 }
 
-SfxPoolItem* SwElemItem::Clone( SfxItemPool* ) const
+SwElemItem* SwElemItem::Clone( SfxItemPool* ) const
 {
     return new SwElemItem( *this );
 }
@@ -161,50 +128,35 @@ bool SwElemItem::operator==( const SfxPoolItem& rAttr ) const
 
     const SwElemItem& rItem = static_cast<const SwElemItem&>(rAttr);
 
-    return (    bVertRuler      == rItem.bVertRuler     &&
-                bVertRulerRight == rItem.bVertRulerRight&&
-                bCrosshair      == rItem.bCrosshair     &&
-                bSmoothScroll   == rItem.bSmoothScroll  &&
-                bTable                == rItem.bTable              &&
-                bGraphic              == rItem.bGraphic            &&
-                bDrawing              == rItem.bDrawing            &&
-                bFieldName            == rItem.bFieldName          &&
-                bNotes                == rItem.bNotes             );
-}
-
-SwElemItem& SwElemItem::operator=( const SwElemItem& rElemItem)
-{
-    bVertRuler      = rElemItem.  bVertRuler        ;
-    bVertRulerRight = rElemItem.  bVertRulerRight   ;
-    bCrosshair      = rElemItem.  bCrosshair        ;
-    bSmoothScroll   = rElemItem.  bSmoothScroll     ;
-    bTable              = rElemItem.bTable                ;
-    bGraphic            = rElemItem.bGraphic              ;
-    bDrawing            = rElemItem.bDrawing              ;
-    bFieldName          = rElemItem.bFieldName            ;
-    bNotes              = rElemItem.bNotes                ;
-    return *this;
+    return (    m_bVertRuler      == rItem.m_bVertRuler     &&
+                m_bVertRulerRight == rItem.m_bVertRulerRight&&
+                m_bCrosshair      == rItem.m_bCrosshair     &&
+                m_bSmoothScroll   == rItem.m_bSmoothScroll  &&
+                m_bTable                == rItem.m_bTable              &&
+                m_bGraphic              == rItem.m_bGraphic            &&
+                m_bDrawing              == rItem.m_bDrawing            &&
+                m_bNotes                == rItem.m_bNotes              &&
+                m_bShowInlineTooltips   == rItem.m_bShowInlineTooltips &&
+                m_bShowOutlineContentVisibilityButton == rItem.m_bShowOutlineContentVisibilityButton &&
+                m_bFieldHiddenText == rItem.m_bFieldHiddenText &&
+                m_bShowHiddenPara  == rItem.m_bShowHiddenPara);
 }
 
 void SwElemItem::FillViewOptions( SwViewOption& rVOpt) const
 {
-    rVOpt.SetViewVRuler(bVertRuler    );
-    rVOpt.SetVRulerRight(bVertRulerRight );
-    rVOpt.SetCrossHair(bCrosshair     );
-    rVOpt.SetSmoothScroll(bSmoothScroll);
-    rVOpt.SetTable      (bTable             );
-    rVOpt.SetGraphic    (bGraphic           );
-    rVOpt.SetDraw       (bDrawing           );
-    rVOpt.SetControl    (bDrawing           );
-    rVOpt.SetFieldName    (bFieldName         );
-    rVOpt.SetPostIts    (bNotes             );
-}
-
-// CopyCTOR
-SwAddPrinterItem::SwAddPrinterItem( const SwAddPrinterItem& rAddPrinterItem ):
-            SfxPoolItem(rAddPrinterItem),
-            SwPrintData( rAddPrinterItem )
-{
+    rVOpt.SetViewVRuler(m_bVertRuler    );
+    rVOpt.SetVRulerRight(m_bVertRulerRight );
+    rVOpt.SetCrossHair(m_bCrosshair     );
+    rVOpt.SetSmoothScroll(m_bSmoothScroll);
+    rVOpt.SetTable      (m_bTable             );
+    rVOpt.SetGraphic    (m_bGraphic           );
+    rVOpt.SetDraw       (m_bDrawing           );
+    rVOpt.SetControl    (m_bDrawing           );
+    rVOpt.SetPostIts    (m_bNotes             );
+    rVOpt.SetShowInlineTooltips( m_bShowInlineTooltips );
+    rVOpt.SetShowOutlineContentVisibilityButton(m_bShowOutlineContentVisibilityButton);
+    rVOpt.SetShowHiddenField(m_bFieldHiddenText );
+    rVOpt.SetShowHiddenPara(m_bShowHiddenPara );
 }
 
 // CTOR for empty Item
@@ -220,7 +172,7 @@ SwAddPrinterItem::SwAddPrinterItem( const SwPrintData& rPrtData ) :
     SwPrintData::operator=(rPrtData);
 }
 
-SfxPoolItem* SwAddPrinterItem::Clone( SfxItemPool* ) const
+SwAddPrinterItem* SwAddPrinterItem::Clone( SfxItemPool* ) const
 {
     return new SwAddPrinterItem( *this );
 }
@@ -237,68 +189,39 @@ bool SwAddPrinterItem::operator==( const SfxPoolItem& rAttr ) const
 // Item for Settings dialog, ShadowCursorPage
 SwShadowCursorItem::SwShadowCursorItem()
     : SfxPoolItem( FN_PARAM_SHADOWCURSOR ),
-    eMode( FILL_TAB )
-    ,bOn( false )
-{
-}
-
-SwShadowCursorItem::SwShadowCursorItem( const SwShadowCursorItem& rCpy )
-    : SfxPoolItem( rCpy.Which() ),
-    eMode( rCpy.GetMode() )
-    ,bOn( rCpy.IsOn() )
-
+    m_eMode( SwFillMode::Tab )
+    ,m_bOn( false )
 {
 }
 
 SwShadowCursorItem::SwShadowCursorItem( const SwViewOption& rVOpt )
     : SfxPoolItem( FN_PARAM_SHADOWCURSOR ),
-    eMode( rVOpt.GetShdwCursorFillMode() )
-    ,bOn( rVOpt.IsShadowCursor() )
+    m_eMode( rVOpt.GetShdwCursorFillMode() )
+    ,m_bOn( rVOpt.IsShadowCursor() )
 
 {
 }
 
-SfxPoolItem* SwShadowCursorItem::Clone( SfxItemPool* ) const
+SwShadowCursorItem* SwShadowCursorItem::Clone( SfxItemPool* ) const
 {
     return new SwShadowCursorItem( *this );
 }
 
 bool SwShadowCursorItem::operator==( const SfxPoolItem& rCmp ) const
 {
-    return  IsOn() == static_cast<const SwShadowCursorItem&>(rCmp).IsOn() &&
-            GetMode() == static_cast<const SwShadowCursorItem&>(rCmp).GetMode();
-}
-
-SwShadowCursorItem& SwShadowCursorItem::operator=( const SwShadowCursorItem& rCpy )
-{
-    SetOn( rCpy.IsOn() );
-    SetMode( rCpy.GetMode() );
-    return *this;
+    return SfxPoolItem::operator==(rCmp) &&
+        IsOn() == static_cast<const SwShadowCursorItem&>(rCmp).IsOn() &&
+        GetMode() == static_cast<const SwShadowCursorItem&>(rCmp).GetMode();
 }
 
 void SwShadowCursorItem::FillViewOptions( SwViewOption& rVOpt ) const
 {
-    rVOpt.SetShadowCursor( bOn );
-    rVOpt.SetShdwCursorFillMode( eMode );
+    rVOpt.SetShadowCursor( m_bOn );
+    rVOpt.SetShdwCursorFillMode( m_eMode );
 }
 
 #ifdef DBG_UTIL
-SwTestItem::SwTestItem( const SwTestItem& rTestItem ):
-            SfxPoolItem(rTestItem)
-{
-    bTest1=rTestItem.bTest1;
-    bTest2=rTestItem.bTest2;
-    bTest3=rTestItem.bTest3;
-    bTest4=rTestItem.bTest4;
-    bTest5=rTestItem.bTest5;
-    bTest6=rTestItem.bTest6;
-    bTest7=rTestItem.bTest7;
-    bTest8=rTestItem.bTest8;
-    bTest9=rTestItem.bTest9;
-    bTest10=rTestItem.bTest10;
-};
-
-SfxPoolItem* SwTestItem::Clone( SfxItemPool* ) const
+SwTestItem* SwTestItem::Clone( SfxItemPool* ) const
 {
     return new SwTestItem( *this );
 }
@@ -309,16 +232,16 @@ bool SwTestItem::operator==( const SfxPoolItem& rAttr ) const
 
     const SwTestItem& rItem = static_cast<const SwTestItem&>( rAttr);
 
-    return ( bTest1==rItem.bTest1&&
-             bTest2==rItem.bTest2&&
-             bTest3==rItem.bTest3&&
-             bTest4==rItem.bTest4&&
-             bTest5==rItem.bTest5&&
-             bTest6==rItem.bTest6&&
-             bTest7==rItem.bTest7&&
-             bTest8==rItem.bTest8&&
-             bTest9==rItem.bTest9&&
-             bTest10==rItem.bTest10);
+    return ( m_bTest1==rItem.m_bTest1&&
+             m_bTest2==rItem.m_bTest2&&
+             m_bTest3==rItem.m_bTest3&&
+             m_bTest4==rItem.m_bTest4&&
+             m_bTest5==rItem.m_bTest5&&
+             m_bTest6==rItem.m_bTest6&&
+             m_bTest7==rItem.m_bTest7&&
+             m_bTest8==rItem.m_bTest8&&
+             m_bTest9==rItem.m_bTest9&&
+             m_bTest10==rItem.m_bTest10);
 }
 
 #endif

@@ -32,11 +32,11 @@ using namespace css::uno;
 using namespace css::xml::dom;
 using namespace css::xml::dom::events;
 
-namespace DOM { namespace events {
+namespace DOM::events {
 
     void CEventDispatcher::addListener(xmlNodePtr pNode, const OUString& aType, const Reference<XEventListener>& aListener, bool bCapture)
     {
-        TypeListenerMap *const pTMap = (bCapture)
+        TypeListenerMap *const pTMap = bCapture
             ? (& m_CaptureListeners) : (& m_TargetListeners);
 
         // get the multimap for the specified type
@@ -44,38 +44,37 @@ namespace DOM { namespace events {
         auto tIter = pTMap->find(aType);
         if (tIter == pTMap->end()) {
             // the map has to be created
-            auto const pair = pTMap->insert(TypeListenerMap::value_type(aType, ListenerMap()));
+            auto const pair = pTMap->emplace(aType, ListenerMap());
             pMap = & pair.first->second;
         } else {
             pMap = & tIter->second;
         }
         assert(pMap != nullptr);
-        pMap->insert(ListenerMap::value_type(pNode, aListener));
+        pMap->emplace(pNode, aListener);
     }
 
     void CEventDispatcher::removeListener(xmlNodePtr pNode, const OUString& aType, const Reference<XEventListener>& aListener, bool bCapture)
     {
-        TypeListenerMap *const pTMap = (bCapture)
+        TypeListenerMap *const pTMap = bCapture
             ? (& m_CaptureListeners) : (& m_TargetListeners);
 
         // get the multimap for the specified type
         auto tIter = pTMap->find(aType);
-        if (tIter != pTMap->end()) {
-            ListenerMap & rMap = tIter->second;
-            // find listeners of specified type for specified node
-            ListenerMap::iterator iter = rMap.find(pNode);
-            while (iter != rMap.end() && iter->first == pNode)
+        if (tIter == pTMap->end())
+            return;
+
+        ListenerMap & rMap = tIter->second;
+        // find listeners of specified type for specified node
+        ListenerMap::iterator iter = rMap.find(pNode);
+        while (iter != rMap.end() && iter->first == pNode)
+        {
+            // erase all references to specified listener
+            if (iter->second.is() && iter->second == aListener)
             {
-                // erase all references to specified listener
-                if ((iter->second).is() && iter->second == aListener)
-                {
-                    ListenerMap::iterator tmp_iter = iter;
-                    ++iter;
-                    rMap.erase(tmp_iter);
-                }
-                else
-                    ++iter;
+                iter = rMap.erase(iter);
             }
+            else
+                ++iter;
         }
     }
 
@@ -92,21 +91,32 @@ namespace DOM { namespace events {
         TypeListenerMap::const_iterator tIter = rTMap.find(aType);
         if (tIter != rTMap.end()) {
             ListenerMap const& rMap = tIter->second;
-            auto iter = rMap.lower_bound(pNode);
-            auto const ibound = rMap.upper_bound(pNode);
-            for( ; iter != ibound; ++iter )
+            auto iterRange = rMap.equal_range(pNode);
+            for( auto iter = iterRange.first; iter != iterRange.second; ++iter )
             {
-                if((iter->second).is())
+                if(iter->second.is())
                     (iter->second)->handleEvent(xEvent);
             }
         }
     }
 
-    bool CEventDispatcher::dispatchEvent(
+    void CEventDispatcher::dispatchEvent(
             DOM::CDocument & rDocument, ::osl::Mutex & rMutex,
             xmlNodePtr const pNode, Reference<XNode> const& xNode,
             Reference< XEvent > const& i_xEvent) const
     {
+        TypeListenerMap captureListeners;
+        TypeListenerMap targetListeners;
+        {
+            ::osl::MutexGuard g(rMutex);
+
+            captureListeners = m_CaptureListeners;
+            targetListeners = m_TargetListeners;
+        }
+
+        if (captureListeners.empty() && targetListeners.empty())
+            return;
+
         CEvent *pEvent = nullptr; // pointer to internal event representation
 
         OUString const aType = i_xEvent->getType();
@@ -180,8 +190,6 @@ namespace DOM { namespace events {
         typedef std::vector< ::std::pair<Reference<XEventTarget>, xmlNodePtr> >
             NodeVector_t;
         NodeVector_t captureVector;
-        TypeListenerMap captureListeners;
-        TypeListenerMap targetListeners;
         {
             ::osl::MutexGuard g(rMutex);
 
@@ -190,11 +198,9 @@ namespace DOM { namespace events {
             {
                 Reference< XEventTarget > const xRef(
                         rDocument.GetCNode(cur).get());
-                captureVector.push_back(::std::make_pair(xRef, cur));
+                captureVector.emplace_back(xRef, cur);
                 cur = cur->parent;
             }
-            captureListeners = m_CaptureListeners;
-            targetListeners = m_TargetListeners;
         }
 
         // the capture vector now holds the node path from target to root
@@ -205,42 +211,41 @@ namespace DOM { namespace events {
         // start at the root
         NodeVector_t::const_reverse_iterator rinode =
             const_cast<NodeVector_t const&>(captureVector).rbegin();
-        if (rinode != const_cast<NodeVector_t const&>(captureVector).rend())
+        if (rinode == const_cast<NodeVector_t const&>(captureVector).rend())
+            return;
+
+        // capturing phase:
+        pEvent->m_phase = PhaseType_CAPTURING_PHASE;
+        while (rinode !=
+                const_cast<NodeVector_t const&>(captureVector).rend())
         {
-            // capturing phase:
-            pEvent->m_phase = PhaseType_CAPTURING_PHASE;
-            while (rinode !=
-                    const_cast<NodeVector_t const&>(captureVector).rend())
+            pEvent->m_currentTarget = rinode->first;
+            callListeners(captureListeners, rinode->second, aType, xEvent);
+            if  (pEvent->m_canceled) return;
+            ++rinode;
+        }
+
+        NodeVector_t::const_iterator inode = captureVector.begin();
+
+        // target phase
+        pEvent->m_phase = PhaseType_AT_TARGET;
+        pEvent->m_currentTarget = inode->first;
+        callListeners(targetListeners, inode->second, aType, xEvent);
+        if  (pEvent->m_canceled) return;
+        // bubbeling phase
+        ++inode;
+        if (i_xEvent->getBubbles()) {
+            pEvent->m_phase = PhaseType_BUBBLING_PHASE;
+            while (inode != captureVector.end())
             {
-                pEvent->m_currentTarget = rinode->first;
-                callListeners(captureListeners, rinode->second, aType, xEvent);
-                if  (pEvent->m_canceled) return true;
-                ++rinode;
-            }
-
-            NodeVector_t::const_iterator inode = captureVector.begin();
-
-            // target phase
-            pEvent->m_phase = PhaseType_AT_TARGET;
-            pEvent->m_currentTarget = inode->first;
-            callListeners(targetListeners, inode->second, aType, xEvent);
-            if  (pEvent->m_canceled) return true;
-            // bubbeling phase
-            ++inode;
-            if (i_xEvent->getBubbles()) {
-                pEvent->m_phase = PhaseType_BUBBLING_PHASE;
-                while (inode != captureVector.end())
-                {
-                    pEvent->m_currentTarget = inode->first;
-                    callListeners(targetListeners,
-                            inode->second, aType, xEvent);
-                    if  (pEvent->m_canceled) return true;
-                    ++inode;
-                }
+                pEvent->m_currentTarget = inode->first;
+                callListeners(targetListeners,
+                        inode->second, aType, xEvent);
+                if  (pEvent->m_canceled) return;
+                ++inode;
             }
         }
-        return true;
     }
-}}
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

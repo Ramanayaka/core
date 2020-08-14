@@ -192,9 +192,9 @@
 //  drawing objects
 #define SC_UNONAME_IMAGEMAP         "ImageMap"
 #define SC_UNONAME_ANCHOR           "Anchor"
+#define SC_UNONAME_RESIZE_WITH_CELL "ResizeWithCell"
 #define SC_UNONAME_HORIPOS          "HoriOrientPosition"
 #define SC_UNONAME_VERTPOS          "VertOrientPosition"
-//     #i66550 HLINK_FOR_SHAPES
 #define SC_UNONAME_HYPERLINK        "Hyperlink"
 #define SC_UNONAME_MOVEPROTECT      "MoveProtect"
 
@@ -209,6 +209,8 @@
 #define SC_UNONAME_VALIXML          "ValidationXML"
 #define SC_UNONAME_FORMLOC          "FormulaLocal"
 #define SC_UNONAME_FORMRT           "FormulaResultType"
+#define SC_UNONAME_FORMRT2          "FormulaResultType2"
+#define SC_UNONAME_CELLCONTENTTYPE  "CellContentType"
 
 #define SC_UNONAME_USERDEF          "UserDefinedAttributes"
 #define SC_UNONAME_TEXTUSER         "TextUserDefinedAttributes"
@@ -404,6 +406,7 @@
 #define SC_UNO_PAGE_GRAPHICFILT     "BackGraphicFilter"
 #define SC_UNO_PAGE_GRAPHICLOC      "BackGraphicLocation"
 #define SC_UNO_PAGE_GRAPHICURL      "BackGraphicURL"
+#define SC_UNO_PAGE_GRAPHIC         "BackGraphic"
 #define SC_UNO_PAGE_LEFTBORDER      SC_UNONAME_LEFTBORDER
 #define SC_UNO_PAGE_RIGHTBORDER     SC_UNONAME_RIGHTBORDER
 #define SC_UNO_PAGE_BOTTBORDER      SC_UNONAME_BOTTBORDER
@@ -449,6 +452,7 @@
 #define SC_UNO_PAGE_HDRBACKTRAN     "HeaderBackTransparent"
 #define SC_UNO_PAGE_HDRGRFFILT      "HeaderBackGraphicFilter"
 #define SC_UNO_PAGE_HDRGRFLOC       "HeaderBackGraphicLocation"
+#define SC_UNO_PAGE_HDRGRF          "HeaderBackGraphic"
 #define SC_UNO_PAGE_HDRGRFURL       "HeaderBackGraphicURL"
 #define SC_UNO_PAGE_HDRLEFTBOR      "HeaderLeftBorder"
 #define SC_UNO_PAGE_HDRRIGHTBOR     "HeaderRightBorder"
@@ -471,6 +475,7 @@
 #define SC_UNO_PAGE_FTRBACKTRAN     "FooterBackTransparent"
 #define SC_UNO_PAGE_FTRGRFFILT      "FooterBackGraphicFilter"
 #define SC_UNO_PAGE_FTRGRFLOC       "FooterBackGraphicLocation"
+#define SC_UNO_PAGE_FTRGRF          "FooterBackGraphic"
 #define SC_UNO_PAGE_FTRGRFURL       "FooterBackGraphicURL"
 #define SC_UNO_PAGE_FTRLEFTBOR      "FooterLeftBorder"
 #define SC_UNO_PAGE_FTRRIGHTBOR     "FooterRightBorder"
@@ -555,7 +560,9 @@
 #define SC_UNO_AUTOCALC             "AutoCalculate"
 #define SC_UNO_PRINTERNAME          "PrinterName"
 #define SC_UNO_PRINTERSETUP         "PrinterSetup"
+#define SC_UNO_PRINTERPAPER         "PrinterPaperFromSetup"
 #define SC_UNO_APPLYDOCINF          "ApplyUserData"
+#define SC_UNO_SAVE_THUMBNAIL       "SaveThumbnail"
 #define SC_UNO_CHARCOMP             "CharacterCompressionType"
 #define SC_UNO_ASIANKERN            "IsKernAsianPunctuation"
 #define SC_UNO_VISAREA              "VisibleArea"
@@ -614,7 +621,6 @@
 
 // data pilot descriptor
 #define SC_UNO_DP_IGNORE_EMPTYROWS     "IgnoreEmptyRows"
-#define SC_UNO_DP_REPEATEMPTY          "RepeatIfEmpty"
 #define SC_UNO_DP_DRILLDOWN            "DrillDownOnDoubleClick"
 #define SC_UNO_DP_SHOWFILTER           "ShowFilterButton"
 #define SC_UNO_DP_IMPORTDESC           "ImportDescriptor"
@@ -639,6 +645,8 @@
 #define SC_UNONAME_RENDERDEV        "RenderDevice"
 #define SC_UNONAME_SOURCERANGE      "SourceRange"
 #define SC_UNONAME_INC_NP_AREA      "PageIncludesNonprintableArea"
+#define SC_UNONAME_CALCPAGESIZE     "CalcPageContentSize"
+#define SC_UNONAME_CALCPAGEPOS      "CalcPagePos"
 
 // CellValueBinding
 #define SC_UNONAME_BOUNDCELL        "BoundCell"
@@ -668,7 +676,6 @@
 #define SC_UNONAME_ROLE                 "Role"
 #define SC_UNONAME_HIDDENVALUES         "HiddenValues"
 #define SC_UNONAME_INCLUDEHIDDENCELLS   "IncludeHiddenCells"
-#define SC_UNONAME_HIDDENVALUES     "HiddenValues"
 #define SC_UNONAME_USE_INTERNAL_DATA_PROVIDER "UseInternalDataProvider"
 #define SC_UNONAME_HAS_STRING_LABEL "HasStringLabel"
 #define SC_UNONAME_TIME_BASED       "TimeBased"
@@ -684,7 +691,11 @@
 // Named ranges
 #define SC_UNO_MODIFY_BROADCAST     "ModifyAndBroadcast"
 
-#define SC_UNO_EMBED_FONTS     "EmbedFonts"
+#define SC_UNO_EMBED_FONTS               "EmbedFonts"
+#define SC_UNO_EMBED_ONLY_USED_FONTS     "EmbedOnlyUsedFonts"
+#define SC_UNO_EMBED_FONT_SCRIPT_LATIN   "EmbedLatinScriptFonts"
+#define SC_UNO_EMBED_FONT_SCRIPT_ASIAN   "EmbedAsianScriptFonts"
+#define SC_UNO_EMBED_FONT_SCRIPT_COMPLEX "EmbedComplexScriptFonts"
 
 #define SC_UNO_ODS_LOCK_SOLAR_MUTEX "ODSLockSolarMutex"
 #define SC_UNO_ODS_IMPORT_STYLES    "ODSImportStyles"

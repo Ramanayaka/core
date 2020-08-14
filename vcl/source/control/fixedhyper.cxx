@@ -17,9 +17,12 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <vcl/fixedhyper.hxx>
+#include <vcl/event.hxx>
+#include <vcl/toolkit/fixedhyper.hxx>
+#include <vcl/settings.hxx>
 #include <vcl/svapp.hxx>
-#include <vcl/layout.hxx>
+#include <vcl/weld.hxx>
+#include <vcl/ptrstyle.hxx>
 #include <comphelper/anytostring.hxx>
 #include <comphelper/processfactory.hxx>
 #include <cppuhelper/exc_hlp.hxx>
@@ -33,6 +36,7 @@ using namespace css;
 FixedHyperlink::FixedHyperlink(vcl::Window* pParent, WinBits nWinStyle)
     : FixedText(pParent, nWinStyle)
     , m_nTextLen(0)
+    , m_aOldPointer(PointerStyle::Arrow)
 {
     Initialize();
 }
@@ -101,9 +105,15 @@ void FixedHyperlink::RequestHelp( const HelpEvent& rHEvt )
 
 void FixedHyperlink::GetFocus()
 {
-    SetTextColor( Color( COL_LIGHTRED ) );
-    Invalidate(tools::Rectangle(Point(), GetSizePixel()));
-    ShowFocus( tools::Rectangle( Point( 1, 1 ), Size( m_nTextLen + 4, GetSizePixel().Height() - 2 ) ) );
+    Size aSize = GetSizePixel();
+    tools::Rectangle aFocusRect(Point(1, 1), Size(m_nTextLen + 4, aSize.Height() - 2));
+    if (GetStyle() & WB_RIGHT)
+        aFocusRect.Move(aSize.Width() - aFocusRect.getWidth(), 0);
+    else if (GetStyle() & WB_CENTER)
+        aFocusRect.Move((aSize.Width() - aFocusRect.getWidth()) / 2, 0);
+
+    Invalidate(aFocusRect);
+    ShowFocus(aFocusRect);
 }
 
 void FixedHyperlink::LoseFocus()
@@ -149,7 +159,7 @@ bool FixedHyperlink::set_property(const OString &rKey, const OUString &rValue)
     return true;
 }
 
-IMPL_STATIC_LINK(FixedHyperlink, HandleClick, FixedHyperlink&, rHyperlink, void)
+IMPL_LINK(FixedHyperlink, HandleClick, FixedHyperlink&, rHyperlink, void)
 {
     if ( rHyperlink.m_sURL.isEmpty() ) // Nothing to do, when the URL is empty
         return;
@@ -165,10 +175,10 @@ IMPL_STATIC_LINK(FixedHyperlink, HandleClick, FixedHyperlink&, rHyperlink, void)
     {
         uno::Any exc(cppu::getCaughtException());
         OUString msg(comphelper::anyToString(exc));
-        const SolarMutexGuard guard;
-        ScopedVclPtrInstance< MessageDialog > aErrorBox(nullptr, msg);
-        aErrorBox->SetText( rHyperlink.GetText() );
-        aErrorBox->Execute();
+        SolarMutexGuard g;
+        std::unique_ptr<weld::MessageDialog> xErrorBox(Application::CreateMessageDialog(GetFrameWeld(), VclMessageType::Error, VclButtonsType::Ok, msg));
+        xErrorBox->set_title(rHyperlink.GetText());
+        xErrorBox->run();
     }
 }
 

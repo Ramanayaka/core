@@ -17,18 +17,15 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_SAL_TEXTENC_GETTEXTENCODINGDATA_HXX
-#define INCLUDED_SAL_TEXTENC_GETTEXTENCODINGDATA_HXX
+#pragma once
 
-#include "sal/config.h"
+#include <sal/config.h>
 
-#include "rtl/textenc.h"
+#include <rtl/textenc.h>
 
 #include "tenchelp.hxx"
 
 ImplTextEncodingData const *
 Impl_getTextEncodingData(rtl_TextEncoding nEncoding);
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

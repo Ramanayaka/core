@@ -22,7 +22,7 @@
 
 #include <xmloff/xmltoken.hxx>
 
-template<typename EnumT> struct SvXMLEnumMapEntry;
+template <typename EnumT> struct SvXMLEnumMapEntry;
 
 namespace xmloff
 {
@@ -46,11 +46,10 @@ extern const SvXMLEnumMapEntry<sal_Int16> aAnimations_EnumMap_Command[];
 struct ImplAttributeNameConversion
 {
     token::XMLTokenEnum meXMLToken;
-    const sal_Char* mpAPIName;
+    const char* mpAPIName;
 };
 
 extern const struct ImplAttributeNameConversion* getAnimationAttributeNamesConversionList();
-
 }
 
 #endif // INCLUDED_XMLOFF_INC_ANIMATIONS_HXX

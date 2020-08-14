@@ -50,7 +50,7 @@ void IncludesCollection::add_to_collection(const string& dirPath) {
         dirContent.insert(pent->d_name);
     }
     closedir(pdir);
-#endif // defined( WNT )
+#endif // defined( _WIN32 )
     allIncludes.insert(EntriesPair(dirPath, dirContent));
 }
 
@@ -61,7 +61,7 @@ bool IncludesCollection::exists(string filePath) {
         [](char c) {
             return rtl::toAsciiLowerCase(static_cast<unsigned char>(c));
         });
-#endif // defined( WNT )
+#endif // defined( _WIN32 )
     PathFilePair dirFile = split_path(filePath);
     string dirPath = dirFile.first;
     string fileName = dirFile.second;
@@ -72,11 +72,7 @@ bool IncludesCollection::exists(string filePath) {
     }
     DirContent dirContent = (*mapIter).second;
     DirContent::iterator dirIter = dirContent.find(fileName);
-    if (dirIter == dirContent.end()) {
-        return false;
-    } else {
-        return true;
-    };
+    return dirIter != dirContent.end();
 }
 
 extern "C" {

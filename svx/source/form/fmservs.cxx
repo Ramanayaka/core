@@ -20,7 +20,9 @@
 #include <com/sun/star/container/XSet.hpp>
 #include <cppuhelper/factory.hxx>
 #include <comphelper/processfactory.hxx>
-#include "fmservs.hxx"
+#include <com/sun/star/lang/XSingleServiceFactory.hpp>
+#include <com/sun/star/lang/XMultiServiceFactory.hpp>
+#include <fmservs.hxx>
 
 using namespace com::sun::star;
 
@@ -36,7 +38,7 @@ namespace svxform
 {
     void ImplSmartRegisterUnoServices()
     {
-        uno::Reference< lang::XMultiServiceFactory >  xServiceFactory(::comphelper::getProcessServiceFactory(), uno::UNO_QUERY);
+        uno::Reference< lang::XMultiServiceFactory >  xServiceFactory = ::comphelper::getProcessServiceFactory();
         uno::Reference< container::XSet >  xSet(xServiceFactory, uno::UNO_QUERY);
         if (!xSet.is())
             return;

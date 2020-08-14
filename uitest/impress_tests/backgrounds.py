@@ -18,13 +18,15 @@ class ImpressBackgrounds(UITestCase):
         if btn == 'btnnone':
             self.assertEqual(document.DrawPages.getByIndex(0).Background, None)
         elif btn == 'btncolor':
-            self.assertEqual(document.DrawPages.getByIndex(0).Background.FillColor, 7512015)
-            self.assertEqual(document.DrawPages.getByIndex(0).Background.FillColor, 7512015)
+            self.assertEqual(
+              hex(document.DrawPages.getByIndex(0).Background.FillColor), '0x729fcf')
+            self.assertEqual(
+              hex(document.DrawPages.getByIndex(0).Background.FillColor), '0x729fcf')
         elif btn == 'btngradient':
             self.assertEqual(
               document.DrawPages.getByIndex(0).Background.FillGradient.Style, LINEAR)
             self.assertEqual(
-              document.DrawPages.getByIndex(0).Background.FillGradient.StartColor, 9101876)
+              hex(document.DrawPages.getByIndex(0).Background.FillGradient.StartColor), '0xdde8cb')
             self.assertEqual(
               document.DrawPages.getByIndex(0).Background.FillGradient.Angle, 300)
             self.assertEqual(
@@ -37,8 +39,8 @@ class ImpressBackgrounds(UITestCase):
               document.DrawPages.getByIndex(0).Background.FillGradient.StartIntensity, 100)
             self.assertEqual(
               document.DrawPages.getByIndex(0).Background.FillGradient.EndIntensity, 100)
-            #self.assertEqual(
-              #document.DrawPages.getByIndex(0).Background.FillGradientName, 'Tango Green')
+            self.assertEqual(
+              document.DrawPages.getByIndex(0).Background.FillGradientName, 'Pastel Bouquet')
         elif btn == 'btnhatch':
             self.assertEqual(
               document.DrawPages.getByIndex(0).Background.FillHatch.Style, SINGLE )
@@ -73,7 +75,7 @@ class ImpressBackgrounds(UITestCase):
               document.DrawPages.getByIndex(0).Background.FillBitmapSizeX, 0)
             self.assertEqual(
               document.DrawPages.getByIndex(0).Background.FillBitmapSizeY, 0)
-            self.assertEqual(document.DrawPages.getByIndex(0).Background.FillBitmapName, 'Sky')
+            self.assertEqual(document.DrawPages.getByIndex(0).Background.FillBitmapName, 'Painted White')
         elif btn == 'btnpattern':
             self.assertEqual(
               document.DrawPages.getByIndex(0).Background.FillBitmapMode, REPEAT)
@@ -123,11 +125,6 @@ class ImpressBackgrounds(UITestCase):
             xOkBtn = xPageSetupDlg.getChild("ok")
             xOkBtn.executeAction("CLICK", tuple())
 
-            xConfirmDlg = self.xUITest.getTopFocusWindow()
-
-            xNoBtn = xConfirmDlg.getChild("no")
-            xNoBtn.executeAction("CLICK", tuple())
-
             self.checkDefaultBackground(button)
 
             self.ui_test.execute_dialog_through_command(".uno:PageSetup")
@@ -141,11 +138,6 @@ class ImpressBackgrounds(UITestCase):
 
             xOkBtn = xPageSetupDlg.getChild("ok")
             xOkBtn.executeAction("CLICK", tuple())
-
-            xConfirmDlg = self.xUITest.getTopFocusWindow()
-
-            xNoBtn = xConfirmDlg.getChild("no")
-            xNoBtn.executeAction("CLICK", tuple())
 
             self.checkDefaultBackground('btnnone')
 

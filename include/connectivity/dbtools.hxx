@@ -21,19 +21,15 @@
 #define INCLUDED_CONNECTIVITY_DBTOOLS_HXX
 
 #include <connectivity/dbexception.hxx>
-#include <comphelper/types.hxx>
-#include <com/sun/star/sdbc/DataType.hpp>
 #include <comphelper/stl_types.hxx>
 #include <unotools/sharedunocomponent.hxx>
 #include <connectivity/dbtoolsdllapi.hxx>
 #include <connectivity/FValue.hxx>
-#include <tools/stream.hxx>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
 
 namespace sdb {
     class XSingleSelectQueryComposer;
-    class SQLContext;
 }
 namespace sdbcx {
     class XTablesSupplier;
@@ -55,8 +51,6 @@ namespace awt {
 }
 namespace lang {
     struct Locale;
-    class XMultiServiceFactory;
-    class WrappedTargetException;
 }
 namespace container {
     class XNameAccess;
@@ -72,8 +66,9 @@ namespace task {
     class XInteractionHandler;
 }
 
-} } }
+}
 
+class SvStream;
 
 namespace dbtools
 {
@@ -122,9 +117,19 @@ namespace dbtools
                 the XConnection interface, this one is returned.</li>
             <li>If the DataSourceName property of the row set is not empty, a connection for this
                 data source is retrieved.</li>
-            <li>If the URL property of the row set is not empty, an connection for this URL is
+            <li>If the URL property of the row set is not empty, a connection for this URL is
                 retrieved from the driver manager.
         </nl>
+
+        The calculated connection is set as ActiveConnection property on the rowset.
+
+        If the connection was newly created by the method, then
+        the ownership of the connection is delivered to a temporary object, which observes the
+        row set: As soon as a connection-relevant property of the row set changes, or as soon
+        as somebody else sets another ActiveConnection at the row set, the original
+        connection (the one which this function calculated) is disposed and discarded. At this
+        very moment, also the temporary observer object dies. This way, it is ensured that
+        there's no resource leak from an un-owned connection object.
 
         @param _rxRowSet
             the row set
@@ -132,22 +137,12 @@ namespace dbtools
         @param _rxFactory
             a service factory, which can be used to create data sources, interaction handler etc (the usual stuff)
 
-        @param _bSetAsActiveConnection
-            If <TRUE/>, the calculated connection is set as ActiveConnection property on the rowset.
-
-            If the connection was newly created by the method, and this parameter is <TRUE/>, then
-            the ownership of the connection is delivered to a temporary object, which observes the
-            row set: As soon as a connection-relevant property of the row set changes, or as soon
-            as somebody else sets another ActiveConnection at the row set, the original
-            connection (the one which this function calculated) is disposed and discarded. At this
-            very moment, also the temporary observer object dies. This way, it is ensured that
-            there's no resource leak from an un-owned connection object.
     */
     OOO_DLLPUBLIC_DBTOOLS
     css::uno::Reference< css::sdbc::XConnection> connectRowset(
         const css::uno::Reference< css::sdbc::XRowSet>& _rxRowSet,
         const css::uno::Reference< css::uno::XComponentContext>& _rxContext,
-        bool _bSetAsActiveConnection
+        const css::uno::Reference< css::awt::XWindow>& _rxParent
     );
 
     /** ensures that a row set has a valid ActiveConnection, if possible
@@ -162,13 +157,8 @@ namespace dbtools
                 <ul><li>If the connection was not newly created, the returned ->SharedConnection
                         instance will not have the ownership, since in this case it's assumed
                         that there already is an instance which has the ownership.</li>
-                    <li>If the connection was newly created, and ->_bUseAutoConnectionDisposer
-                        is <TRUE/>, then the returned SharedConnection instance will <em>not</em>
-                        be the owner of the connection. Instead, the ownership will be delivered
-                        to a temporary object as described for connectRowset.</li>
-                    <li>If the connection was newly created, and ->_bUseAutoConnectionDisposer
-                        is <FALSE/>, then the returned SharedConnection instance will have the
-                        ownership of the XConnection.</li>
+                    <li>If the connection was newly created, then the returned SharedConnection
+                        instance will have the ownership of the XConnection.</li>
                 </ul>
             </li>
         </ul>
@@ -176,7 +166,7 @@ namespace dbtools
     OOO_DLLPUBLIC_DBTOOLS SharedConnection    ensureRowSetConnection(
         const css::uno::Reference< css::sdbc::XRowSet>& _rxRowSet,
         const css::uno::Reference< css::uno::XComponentContext>& _rxContext,
-        bool _bUseAutoConnectionDisposer
+        const css::uno::Reference< css::awt::XWindow>& _rxParent
     );
 
     /** returns the connection the RowSet is currently working with (which is the ActiveConnection property)
@@ -188,7 +178,8 @@ namespace dbtools
             const OUString& _rDataSourceName,
             const OUString& _rUser,
             const OUString& _rPwd,
-            const css::uno::Reference< css::uno::XComponentContext>& _rxContext);
+            const css::uno::Reference< css::uno::XComponentContext>& _rxContext,
+            const css::uno::Reference< css::awt::XWindow>& _rxParent);
 
 
     /** determines whether the given component is part of a document which is an embedded database
@@ -324,7 +315,7 @@ namespace dbtools
     */
     OOO_DLLPUBLIC_DBTOOLS bool getBooleanDataSourceSetting(
             const css::uno::Reference< css::sdbc::XConnection >& _rxConnection,
-            const sal_Char* _pAsciiSettingName
+            const char* _pAsciiSettingName
         );
 
     /** check if a specific property is enabled in the info sequence
@@ -354,7 +345,7 @@ namespace dbtools
     OOO_DLLPUBLIC_DBTOOLS
     bool    getDataSourceSetting(
         const css::uno::Reference< css::uno::XInterface >& _rxDataSource,
-        const sal_Char* _pAsciiSettingsName,
+        const char* _pAsciiSettingsName,
         css::uno::Any& /* [out] */ _rSettingsValue
     );
     OOO_DLLPUBLIC_DBTOOLS
@@ -388,7 +379,7 @@ namespace dbtools
     OOO_DLLPUBLIC_DBTOOLS void qualifiedNameComponents(const css::uno::Reference< css::sdbc::XDatabaseMetaData >& _rxConnMetaData,
         const OUString& _rQualifiedName, OUString& _rCatalog, OUString& _rSchema, OUString& _rName,EComposeRule _eComposeRule);
 
-    /** calculate a NumberFormatsSupplier for use with an given connection
+    /** calculate a NumberFormatsSupplier for use with a given connection
         @param      _rxConn         the connection for which the formatter is requested
         @param      _bAllowDefault  if the connection (and related components, such as its parent) cannot supply
                                     a formatter, we can ask the DatabaseEnvironment for a default one. This parameter
@@ -402,7 +393,7 @@ namespace dbtools
         const css::uno::Reference< css::uno::XComponentContext>& _rxContext = css::uno::Reference< css::uno::XComponentContext>()
     );
 
-    /** create an css::sdb::XSingleSelectQueryComposer which represents
+    /** create a css::sdb::XSingleSelectQueryComposer which represents
         the current settings (Command/CommandType/Filter/Order) of the given rowset.
 
         As such an instance can be obtained from a css::sdb::Connection
@@ -412,7 +403,8 @@ namespace dbtools
     */
     OOO_DLLPUBLIC_DBTOOLS css::uno::Reference< css::sdb::XSingleSelectQueryComposer > getCurrentSettingsComposer(
         const css::uno::Reference< css::beans::XPropertySet>& _rxRowSetProps,
-        const css::uno::Reference< css::uno::XComponentContext>& _rxContext
+        const css::uno::Reference< css::uno::XComponentContext>& _rxContext,
+        const css::uno::Reference< css::awt::XWindow>& _rxParent
     );
 
     /** transfer and translate properties between two FormComponents
@@ -481,8 +473,6 @@ namespace dbtools
         const css::uno::Reference< css::sdbc::XDatabaseMetaData>& _xMetaData,
         const css::uno::Reference< css::beans::XPropertySet>& _xTable,
         EComposeRule _eComposeRule,
-        bool _bSuppressCatalogName,
-        bool _bSuppressSchemaName,
         bool _bQuote);
 
 
@@ -676,18 +666,13 @@ namespace dbtools
             The descriptor of the new table.
         @param  _xConnection
             The connection.
-        @param  _pHelper
-            Allow to add special SQL constructs.
-        @param  _sCreatePattern
 
         @return
             The CREATE TABLE statement.
     */
     OOO_DLLPUBLIC_DBTOOLS
     OUString createSqlCreateTableStatement(  const css::uno::Reference< css::beans::XPropertySet >& descriptor
-                                                    ,const css::uno::Reference< css::sdbc::XConnection>& _xConnection
-                                                    ,ISQLStatementHelper* _pHelper = nullptr
-                                                    ,const OUString& _sCreatePattern = OUString());
+                                                    ,const css::uno::Reference< css::sdbc::XConnection>& _xConnection);
 
     /** creates a SDBC column with the help of getColumns.
         @param  _xTable
@@ -712,9 +697,9 @@ namespace dbtools
                                 const OUString& _rName,
                                 bool _bCase,
                                 bool _bQueryForInfo,
-                                bool _bIsAutoIncrement = false,
-                                bool _bIsCurrency = false,
-                                sal_Int32 _nDataType = css::sdbc::DataType::OTHER);
+                                bool _bIsAutoIncrement,
+                                bool _bIsCurrency,
+                                sal_Int32 _nDataType);
 
     /** tries to locate the corresponding DataDefinitionSupplier for the given url and connection
         @param  _rsUrl
@@ -785,6 +770,38 @@ namespace dbtools
             const bool  _bValue,
             const sal_Int32 _nBooleanComparisonMode,
             OUStringBuffer& _out_rSQLPredicate
+        );
+
+    /** is this field an aggregate?
+
+        @param _xComposer
+            a query composer that knows the field by name
+        @param _xField
+            the field
+    */
+    OOO_DLLPUBLIC_DBTOOLS bool isAggregateColumn(
+            const css::uno::Reference< css::sdb::XSingleSelectQueryComposer > &_xComposer,
+            const css::uno::Reference< css::beans::XPropertySet > &_xField
+        );
+
+    /** is this column an aggregate?
+
+        @param _xColumns collection of columns
+            look for column sName in there
+        @param _sName
+            name of the column
+    */
+    OOO_DLLPUBLIC_DBTOOLS bool isAggregateColumn(
+            const css::uno::Reference< css::container::XNameAccess > &_xColumns,
+            const OUString &_sName
+        );
+
+    /** is this column an aggregate?
+
+        @param _xColumn
+    */
+    OOO_DLLPUBLIC_DBTOOLS bool isAggregateColumn(
+            const css::uno::Reference< css::beans::XPropertySet > &_xColumn
         );
 
 }   // namespace dbtools

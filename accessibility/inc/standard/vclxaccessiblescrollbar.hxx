@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_ACCESSIBILITY_INC_STANDARD_VCLXACCESSIBLESCROLLBAR_HXX
-#define INCLUDED_ACCESSIBILITY_INC_STANDARD_VCLXACCESSIBLESCROLLBAR_HXX
+#pragma once
 
 #include <toolkit/awt/vclxaccessiblecomponent.hxx>
 
@@ -28,24 +27,22 @@
 #include <cppuhelper/implbase2.hxx>
 
 
-//  class VCLXAccessibleScrollBar
 
 
 typedef ::cppu::ImplHelper2<
     css::accessibility::XAccessibleAction,
     css::accessibility::XAccessibleValue > VCLXAccessibleScrollBar_BASE;
 
-class VCLXAccessibleScrollBar : public VCLXAccessibleComponent,
+class VCLXAccessibleScrollBar final : public VCLXAccessibleComponent,
                                 public VCLXAccessibleScrollBar_BASE
 {
-protected:
-    virtual ~VCLXAccessibleScrollBar() override;
+    virtual ~VCLXAccessibleScrollBar() override = default;
 
     virtual void ProcessWindowEvent( const VclWindowEvent& rVclWindowEvent ) override;
     virtual void FillAccessibleStateSet( utl::AccessibleStateSetHelper& rStateSet ) override;
 
 public:
-    VCLXAccessibleScrollBar( VCLXWindow* pVCLXindow );
+    using VCLXAccessibleComponent::VCLXAccessibleComponent;
 
     // XInterface
     DECLARE_XINTERFACE()
@@ -70,10 +67,9 @@ public:
     virtual css::uno::Any SAL_CALL getMinimumValue(  ) override;
 
     // XAccessibleContext
-    ::rtl::OUString SAL_CALL getAccessibleName(  ) override;
+    OUString SAL_CALL getAccessibleName(  ) override;
 
 };
 
-#endif // INCLUDED_ACCESSIBILITY_INC_STANDARD_VCLXACCESSIBLESCROLLBAR_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

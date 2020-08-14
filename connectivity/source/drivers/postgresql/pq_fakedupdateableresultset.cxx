@@ -39,13 +39,10 @@
 #include <cppuhelper/typeprovider.hxx>
 #include <cppuhelper/queryinterface.hxx>
 
-using osl::MutexGuard;
-
 
 using com::sun::star::uno::Sequence;
 using com::sun::star::uno::Any;
 using com::sun::star::uno::Type;
-using com::sun::star::uno::RuntimeException;
 
 using com::sun::star::sdbc::SQLException;
 using com::sun::star::sdbc::XResultSetUpdate;
@@ -82,20 +79,12 @@ css::uno::Any  FakedUpdateableResultSet::queryInterface(
 
 css::uno::Sequence< css::uno::Type > FakedUpdateableResultSet::getTypes()
 {
-    static cppu::OTypeCollection *pCollection;
-    if( ! pCollection )
-    {
-        MutexGuard guard( osl::Mutex::getGlobalMutex() );
-        if( !pCollection )
-        {
-            static cppu::OTypeCollection collection(
-                cppu::UnoType<XResultSetUpdate>::get(),
-                cppu::UnoType<XRowUpdate>::get(),
-                ResultSet::getTypes());
-            pCollection = &collection;
-        }
-    }
-    return pCollection->getTypes();
+    static cppu::OTypeCollection s_collection(
+        cppu::UnoType<XResultSetUpdate>::get(),
+        cppu::UnoType<XRowUpdate>::get(),
+        ResultSet::getTypes());
+
+    return s_collection.getTypes();
 
 }
 

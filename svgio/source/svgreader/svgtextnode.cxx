@@ -23,19 +23,14 @@
 #include <svgtrefnode.hxx>
 #include <svgtextpathnode.hxx>
 #include <svgtspannode.hxx>
-#include <drawinglayer/primitive2d/transformprimitive2d.hxx>
-#include <drawinglayer/primitive2d/unifiedtransparenceprimitive2d.hxx>
 
-namespace svgio
+namespace svgio::svgreader
 {
-    namespace svgreader
-    {
         SvgTextNode::SvgTextNode(
             SvgDocument& rDocument,
             SvgNode* pParent)
         :   SvgNode(SVGTokenText, rDocument, pParent),
             maSvgStyleAttributes(*this),
-            mpaTransform(nullptr),
             maSvgTextPositions()
         {
         }
@@ -88,23 +83,23 @@ namespace svgio
         void SvgTextNode::addTextPrimitives(
             const SvgNode& rCandidate,
             drawinglayer::primitive2d::Primitive2DContainer& rTarget,
-            drawinglayer::primitive2d::Primitive2DContainer& rSource)
+            drawinglayer::primitive2d::Primitive2DContainer const & rSource)
         {
-            if(!rSource.empty())
-            {
-                const SvgStyleAttributes* pAttributes = rCandidate.getSvgStyleAttributes();
+            if(rSource.empty())
+                return;
 
-                if(pAttributes)
-                {
-                    // add text with taking all Fill/Stroke attributes into account
-                    pAttributes->add_text(rTarget, rSource);
-                }
-                else
-                {
-                    // should not happen, every subnode from SvgTextNode will at least
-                    // return the attributes from SvgTextNode. Nonetheless, add text
-                    rTarget.append(rSource);
-                }
+            const SvgStyleAttributes* pAttributes = rCandidate.getSvgStyleAttributes();
+
+            if(pAttributes)
+            {
+                // add text with taking all Fill/Stroke attributes into account
+                pAttributes->add_text(rTarget, rSource);
+            }
+            else
+            {
+                // should not happen, every subnode from SvgTextNode will at least
+                // return the attributes from SvgTextNode. Nonetheless, add text
+                rTarget.append(rSource);
             }
         }
 
@@ -123,7 +118,7 @@ namespace svgio
                 {
                     // direct TextPath decompose
                     const SvgTextPathNode& rSvgTextPathNode = static_cast< const SvgTextPathNode& >(rCandidate);
-                    const SvgNodeVector& rChildren = rSvgTextPathNode.getChildren();
+                    const auto& rChildren = rSvgTextPathNode.getChildren();
                     const sal_uInt32 nCount(rChildren.size());
 
                     if(nCount && rSvgTextPathNode.isValid())
@@ -159,7 +154,7 @@ namespace svgio
                 {
                     // Tspan may have children, call recursively
                     const SvgTspanNode& rSvgTspanNode = static_cast< const SvgTspanNode& >(rCandidate);
-                    const SvgNodeVector& rChildren = rSvgTspanNode.getChildren();
+                    const auto& rChildren = rSvgTspanNode.getChildren();
                     const sal_uInt32 nCount(rChildren.size());
 
                     if(nCount)
@@ -188,7 +183,7 @@ namespace svgio
 
                     if(pRefText)
                     {
-                        const SvgNodeVector& rChildren = pRefText->getChildren();
+                        const auto& rChildren = pRefText->getChildren();
                         const sal_uInt32 nCount(rChildren.size());
                         drawinglayer::primitive2d::Primitive2DContainer aNewTarget;
 
@@ -226,37 +221,37 @@ namespace svgio
             // SVGTokenTref and SVGTokenTextPath. These increase a given current text position
             const SvgStyleAttributes* pStyle = getSvgStyleAttributes();
 
-            if(pStyle && !getChildren().empty())
+            if(!(pStyle && !getChildren().empty()))
+                return;
+
+            const double fOpacity(pStyle->getOpacity().getNumber());
+
+            if(fOpacity <= 0.0)
+                return;
+
+            SvgTextPosition aSvgTextPosition(nullptr, *this, maSvgTextPositions);
+            drawinglayer::primitive2d::Primitive2DContainer aNewTarget;
+            const auto& rChildren = getChildren();
+            const sal_uInt32 nCount(rChildren.size());
+
+            for(sal_uInt32 a(0); a < nCount; a++)
             {
-                const double fOpacity(pStyle->getOpacity().getNumber());
+                const SvgNode& rCandidate = *rChildren[a];
 
-                if(fOpacity > 0.0)
-                {
-                    SvgTextPosition aSvgTextPosition(nullptr, *this, maSvgTextPositions);
-                    drawinglayer::primitive2d::Primitive2DContainer aNewTarget;
-                    const SvgNodeVector& rChildren = getChildren();
-                    const sal_uInt32 nCount(rChildren.size());
+                DecomposeChild(rCandidate, aNewTarget, aSvgTextPosition);
+            }
 
-                    for(sal_uInt32 a(0); a < nCount; a++)
-                    {
-                        const SvgNode& rCandidate = *rChildren[a];
+            if(!aNewTarget.empty())
+            {
+                drawinglayer::primitive2d::Primitive2DContainer aNewTarget2;
 
-                        DecomposeChild(rCandidate, aNewTarget, aSvgTextPosition);
-                    }
+                addTextPrimitives(*this, aNewTarget2, aNewTarget);
+                aNewTarget = aNewTarget2;
+            }
 
-                    if(!aNewTarget.empty())
-                    {
-                        drawinglayer::primitive2d::Primitive2DContainer aNewTarget2;
-
-                        addTextPrimitives(*this, aNewTarget2, aNewTarget);
-                        aNewTarget = aNewTarget2;
-                    }
-
-                    if(!aNewTarget.empty())
-                    {
-                        pStyle->add_postProcess(rTarget, aNewTarget, getTransform());
-                    }
-                }
+            if(!aNewTarget.empty())
+            {
+                pStyle->add_postProcess(rTarget, aNewTarget, getTransform());
             }
         }
 
@@ -264,7 +259,6 @@ namespace svgio
         {
             return getCurrentFontSizeInherited();
         }
-    } // end of namespace svgreader
-} // end of namespace svgio
+} // end of namespace svgio::svgreader
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

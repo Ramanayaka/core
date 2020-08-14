@@ -17,16 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "drawingml/scene3dcontext.hxx"
-#include <com/sun/star/io/XInputStream.hpp>
-#include <com/sun/star/graphic/XGraphicProvider.hpp>
-#include <cppuhelper/exc_hlp.hxx>
-#include <comphelper/anytostring.hxx>
-#include "drawingml/colorchoicecontext.hxx"
-#include "oox/drawingml/drawingmltypes.hxx"
-#include "drawingml/fillproperties.hxx"
-#include "oox/core/xmlfilterbase.hxx"
-#include "oox/helper/attributelist.hxx"
+#include <drawingml/scene3dcontext.hxx>
+#include <drawingml/colorchoicecontext.hxx>
+#include <oox/helper/attributelist.hxx>
 #include <oox/token/namespaces.hxx>
 #include <oox/token/tokens.hxx>
 
@@ -35,9 +28,9 @@ using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::xml::sax;
 
-namespace oox { namespace drawingml {
+namespace oox::drawingml {
 
-Scene3DPropertiesContext::Scene3DPropertiesContext( ContextHandler2Helper& rParent, Shape3DProperties& r3DProperties ) throw()
+Scene3DPropertiesContext::Scene3DPropertiesContext( ContextHandler2Helper const & rParent, Shape3DProperties& r3DProperties ) throw()
 : ContextHandler2( rParent )
 , mr3DProperties( r3DProperties )
 {
@@ -70,7 +63,7 @@ ContextHandlerRef Scene3DPropertiesContext::onCreateContext( sal_Int32 aElementT
     return nullptr;
 }
 
-Shape3DPropertiesContext::Shape3DPropertiesContext( ContextHandler2Helper& rParent, const AttributeList& rAttribs, Shape3DProperties& r3DProperties ) throw()
+Shape3DPropertiesContext::Shape3DPropertiesContext( ContextHandler2Helper const & rParent, const AttributeList& rAttribs, Shape3DProperties& r3DProperties ) throw()
 : ContextHandler2( rParent )
 , mr3DProperties( r3DProperties )
 {
@@ -115,7 +108,7 @@ ContextHandlerRef Shape3DPropertiesContext::onCreateContext( sal_Int32 aElementT
     return nullptr;
 }
 
-Scene3DRotationPropertiesContext::Scene3DRotationPropertiesContext( ContextHandler2Helper& rParent, RotationProperties& rRotationProperties ) throw()
+Scene3DRotationPropertiesContext::Scene3DRotationPropertiesContext( ContextHandler2Helper const & rParent, RotationProperties& rRotationProperties ) throw()
 : ContextHandler2( rParent )
 , mrRotationProperties( rRotationProperties )
 {
@@ -134,6 +127,6 @@ ContextHandlerRef Scene3DRotationPropertiesContext::onCreateContext( sal_Int32 a
     return nullptr;
 }
 
-} }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

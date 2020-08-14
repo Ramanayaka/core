@@ -8,184 +8,50 @@
  */
 
 #include <memory>
-#include "uitest/uiobject.hxx"
+#include <uiobject.hxx>
+#include <svtools/valueset.hxx>
+#include <vcl/layout.hxx>
 
-#include <svtools/treelistbox.hxx>
-#include <svtools/simptabl.hxx>
-
-TreeListUIObject::TreeListUIObject(const VclPtr<SvTreeListBox>& xTreeList):
-    WindowUIObject(xTreeList),
-    mxTreeList(xTreeList)
+ValueSetUIObject::ValueSetUIObject(const VclPtr<vcl::Window>& xSetWin, ValueSet* pSet)
+    : WindowUIObject(xSetWin)
+    , mpSet(pSet)
 {
 }
 
-namespace {
-
-bool isCheckBoxList(const VclPtr<SvTreeListBox>& xTreeList)
+void ValueSetUIObject::execute(const OUString& rAction, const StringMap& rParameters)
 {
-    return (xTreeList->GetTreeFlags() & SvTreeFlags::CHKBTN) == SvTreeFlags::CHKBTN;
-}
-
-}
-
-StringMap TreeListUIObject::get_state()
-{
-    StringMap aMap = WindowUIObject::get_state();
-
-    aMap["SelectionCount"] = OUString::number(mxTreeList->GetSelectionCount());
-    aMap["VisibleCount"] = OUString::number(mxTreeList->GetVisibleCount());
-    aMap["Children"] = OUString::number(mxTreeList->GetChildCount(nullptr));
-    aMap["LevelChildren"] = OUString::number(mxTreeList->GetLevelChildCount(nullptr));
-    aMap["CheckBoxList"] = OUString::boolean(isCheckBoxList(mxTreeList));
-    return aMap;
-}
-
-void TreeListUIObject::execute(const OUString& rAction,
-        const StringMap& rParameters)
-{
-    if (rAction.isEmpty())
+    if (rAction == "SELECT")
     {
+        if (rParameters.find("POS") != rParameters.end())
+        {
+            OUString aIndexStr = rParameters.find("POS")->second;
+
+            sal_Int32 nIndex = aIndexStr.toInt32();
+            mpSet->SelectItem(nIndex);
+            mpSet->Select();
+        }
     }
     else
         WindowUIObject::execute(rAction, rParameters);
 }
 
-std::unique_ptr<UIObject> TreeListUIObject::get_child(const OUString& rID)
+std::unique_ptr<UIObject> ValueSetUIObject::create(vcl::Window* pWindow)
 {
-    sal_Int32 nID = rID.toInt32();
-    if (nID >= 0)
-    {
-        SvTreeListEntry* pEntry = mxTreeList->GetEntry(nullptr, nID);
-        if (!pEntry)
-            return nullptr;
-
-        return std::unique_ptr<UIObject>(new TreeListEntryUIObject(mxTreeList, pEntry));
-    }
-
-    return nullptr;
+    VclDrawingArea* pSetWin = dynamic_cast<VclDrawingArea*>(pWindow);
+    assert(pSetWin);
+    return std::unique_ptr<UIObject>(
+        new ValueSetUIObject(pSetWin, static_cast<ValueSet*>(pSetWin->GetUserData())));
 }
 
-std::set<OUString> TreeListUIObject::get_children() const
+OUString ValueSetUIObject::get_name() const { return "ValueSetUIObject"; }
+
+StringMap ValueSetUIObject::get_state()
 {
-    std::set<OUString> aChildren;
-
-    size_t nChildren = mxTreeList->GetLevelChildCount(nullptr);
-    for (size_t i = 0; i < nChildren; ++i)
-    {
-        aChildren.insert(OUString::number(i));
-    }
-
-    return aChildren;
-}
-
-OUString TreeListUIObject::get_name() const
-{
-    return OUString("TreeListUIObject");
-}
-
-std::unique_ptr<UIObject> TreeListUIObject::create(vcl::Window* pWindow)
-{
-    SvTreeListBox* pTreeList = dynamic_cast<SvTreeListBox*>(pWindow);
-    assert(pTreeList);
-    return std::unique_ptr<UIObject>(new TreeListUIObject(pTreeList));
-}
-
-TreeListEntryUIObject::TreeListEntryUIObject(const VclPtr<SvTreeListBox>& xTreeList, SvTreeListEntry* pEntry):
-    mxTreeList(xTreeList),
-    mpEntry(pEntry)
-{
-}
-
-StringMap TreeListEntryUIObject::get_state()
-{
-    StringMap aMap;
-
-    aMap["Text"] = mxTreeList->GetEntryText(mpEntry);
-    aMap["Children"] = OUString::number(mxTreeList->GetLevelChildCount(mpEntry));
-    aMap["VisibleChildCount"] = OUString::number(mxTreeList->GetVisibleChildCount(mpEntry));
-
+    StringMap aMap = WindowUIObject::get_state();
+    aMap["SelectedItemId"] = OUString::number(mpSet->GetSelectedItemId());
+    aMap["SelectedItemPos"] = OUString::number(mpSet->GetSelectItemPos());
+    aMap["ItemsCount"] = OUString::number(mpSet->GetItemCount());
     return aMap;
-}
-
-void TreeListEntryUIObject::execute(const OUString& rAction, const StringMap& /*rParameters*/)
-{
-    if (rAction == "COLLAPSE")
-    {
-        mxTreeList->Collapse(mpEntry);
-    }
-    else if (rAction == "EXPAND")
-    {
-        mxTreeList->Expand(mpEntry);
-    }
-    else if (rAction == "CLICK")
-    {
-        if (!isCheckBoxList(mxTreeList))
-            return;
-        SvButtonState eState = mxTreeList->GetCheckButtonState(mpEntry);
-        eState = eState == SvButtonState::Checked ? SvButtonState::Unchecked : SvButtonState::Checked;
-        mxTreeList->SetCheckButtonState(mpEntry, eState);
-        mxTreeList->CheckButtonHdl();
-    }
-}
-
-std::unique_ptr<UIObject> TreeListEntryUIObject::get_child(const OUString& rID)
-{
-    sal_Int32 nID = rID.toInt32();
-    if (nID >= 0)
-    {
-        SvTreeListEntry* pEntry = mxTreeList->GetEntry(mpEntry, nID);
-        if (!pEntry)
-            return nullptr;
-
-        return std::unique_ptr<UIObject>(new TreeListEntryUIObject(mxTreeList, pEntry));
-    }
-
-    return nullptr;
-}
-
-std::set<OUString> TreeListEntryUIObject::get_children() const
-{
-    std::set<OUString> aChildren;
-
-    size_t nChildren = mxTreeList->GetLevelChildCount(mpEntry);
-    for (size_t i = 0; i < nChildren; ++i)
-    {
-        aChildren.insert(OUString::number(i));
-    }
-
-    return aChildren;
-}
-
-OUString TreeListEntryUIObject::get_type() const
-{
-    return OUString("TreeListEntry");
-}
-
-SimpleTableUIObject::SimpleTableUIObject(const VclPtr<SvSimpleTable>& xTable):
-    TreeListUIObject(xTable),
-    mxTable(xTable)
-{
-}
-
-StringMap SimpleTableUIObject::get_state()
-{
-    StringMap aMap = TreeListUIObject::get_state();
-
-    aMap["ColumnCount"] = OUString::number(mxTable->TabCount());
-
-    return aMap;
-}
-
-OUString SimpleTableUIObject::get_type() const
-{
-    return OUString("SimpleTable");
-}
-
-std::unique_ptr<UIObject> SimpleTableUIObject::createFromContainer(vcl::Window* pWindow)
-{
-    SvSimpleTableContainer* pTableContainer = dynamic_cast<SvSimpleTableContainer*>(pWindow);
-    assert(pTableContainer);
-    return std::unique_ptr<UIObject>(new SimpleTableUIObject(pTableContainer->GetTable()));
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

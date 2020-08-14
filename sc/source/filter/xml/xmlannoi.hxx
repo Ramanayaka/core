@@ -20,23 +20,24 @@
 #define INCLUDED_SC_SOURCE_FILTER_XML_XMLANNOI_HXX
 
 #include <xmloff/xmlictxt.hxx>
-#include <xmloff/xmlimp.hxx>
 #include <rtl/ustrbuf.hxx>
 #include <editeng/editdata.hxx>
-#include <com/sun/star/drawing/XShape.hpp>
-#include <com/sun/star/drawing/XShapes.hpp>
-#include "xmlimprt.hxx"
 #include "importcontext.hxx"
 
-class ScXMLTableRowCellContext;
+#include <vector>
+
+class ScXMLImport;
+enum class XmlStyleFamily;
+namespace com::sun::star::drawing { class XShape; }
+namespace com::sun::star::drawing { class XShapes; }
 
 struct ScXMLAnnotationStyleEntry
 {
-    sal_uInt16          mnFamily;
-    OUString       maName;
-    ESelection          maSelection;
+    XmlStyleFamily       mnFamily;
+    OUString             maName;
+    ESelection           maSelection;
 
-    ScXMLAnnotationStyleEntry( sal_uInt16 nFam, const OUString& rNam, const ESelection& rSel ) :
+    ScXMLAnnotationStyleEntry( XmlStyleFamily nFam, const OUString& rNam, const ESelection& rSel ) :
         mnFamily( nFam ),
         maName( rNam ),
         maSelection( rSel )
@@ -74,7 +75,7 @@ public:
 
     virtual ~ScXMLAnnotationContext() override;
 
-    virtual SvXMLImportContext *CreateChildContext( sal_uInt16 nPrefix,
+    virtual SvXMLImportContextRef CreateChildContext( sal_uInt16 nPrefix,
                                      const OUString& rLocalName,
                                      const css::uno::Reference< css::xml::sax::XAttributeList>& xAttrList ) override;
 
@@ -89,7 +90,7 @@ public:
         const css::uno::Reference< css::drawing::XShapes >& rxShapes,
         const OUString& rStyleName, const OUString& rTextStyle );
 
-    void AddContentStyle( sal_uInt16 nFamily, const OUString& rName, const ESelection& rSelection );
+    void AddContentStyle( XmlStyleFamily nFamily, const OUString& rName, const ESelection& rSelection );
 
 private:
     ScXMLAnnotationData& mrAnnotationData;
@@ -97,7 +98,7 @@ private:
     OUStringBuffer maAuthorBuffer;
     OUStringBuffer maCreateDateBuffer;
     OUStringBuffer maCreateDateStringBuffer;
-    SvXMLImportContext* pShapeContext;
+    std::unique_ptr<SvXMLImportContext> pShapeContext;
 };
 
 #endif

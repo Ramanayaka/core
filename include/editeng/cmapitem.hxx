@@ -23,8 +23,6 @@
 #include <editeng/svxenum.hxx>
 #include <editeng/editengdllapi.h>
 
-class SvXMLUnitConverter;
-
 // class SvxCaseMapItem --------------------------------------------------
 
 /*  [Description]
@@ -32,7 +30,7 @@ class SvXMLUnitConverter;
     This item describe the font type (uppercase, small caps ,...).
 */
 
-class EDITENG_DLLPUBLIC SvxCaseMapItem : public SfxEnumItem<SvxCaseMap>
+class EDITENG_DLLPUBLIC SvxCaseMapItem final : public SfxEnumItem<SvxCaseMap>
 {
 public:
     static SfxPoolItem* CreateDefault();
@@ -44,19 +42,11 @@ public:
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                     MapUnit eCoreMetric,
                                     MapUnit ePresMetric,
-                                    OUString &rText, const IntlWrapper * = nullptr ) const override;
+                                    OUString &rText, const IntlWrapper& ) const override;
 
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
-    virtual SfxPoolItem*    Create(SvStream &, sal_uInt16) const override;
-    virtual SvStream&       Store(SvStream &, sal_uInt16 nItemVersion) const override;
-    virtual OUString        GetValueTextByPos( sal_uInt16 nPos ) const override;
+    virtual SvxCaseMapItem* Clone( SfxItemPool *pPool = nullptr ) const override;
+    static OUString         GetValueTextByPos( sal_uInt16 nPos );
     virtual sal_uInt16      GetValueCount() const override;
-
-    SvxCaseMapItem& operator=(const SvxCaseMapItem& rMap)
-        {
-            SetValue( rMap.GetValue() );
-            return *this;
-        }
 
     // enum cast
     SvxCaseMap              GetCaseMap() const { return GetValue(); }

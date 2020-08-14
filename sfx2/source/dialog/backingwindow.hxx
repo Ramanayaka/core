@@ -24,26 +24,21 @@
 
 #include <vcl/builder.hxx>
 #include <vcl/button.hxx>
-#include <vcl/tabctrl.hxx>
 #include <vcl/layout.hxx>
 
 #include <vcl/menubtn.hxx>
 
-#include <sfx2/recentdocsview.hxx>
-#include <sfx2/templatedefaultview.hxx>
-#include <sfx2/templatelocalview.hxx>
-#include <sfx2/templateviewitem.hxx>
+#include <recentdocsview.hxx>
+#include <templatedefaultview.hxx>
 
 #include <svtools/acceleratorexecute.hxx>
-#include <unotools/moduleoptions.hxx>
 
-#include <com/sun/star/datatransfer/dnd/XDropTarget.hpp>
+#include <com/sun/star/datatransfer/dnd/XDropTargetListener.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/frame/XDispatchProvider.hpp>
 #include <com/sun/star/frame/XFrame.hpp>
 
 #include <memory>
-#include <set>
 
 class ToolBox;
 

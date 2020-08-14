@@ -22,8 +22,6 @@
 #include <svl/poolitem.hxx>
 #include <editeng/editengdllapi.h>
 
-class SvXMLUnitConverter;
-
 // class SvxProtectItem --------------------------------------------------
 
 
@@ -32,7 +30,7 @@ class SvXMLUnitConverter;
     This item describes, if content, size or position should be protected.
 */
 
-class EDITENG_DLLPUBLIC SvxProtectItem : public SfxPoolItem
+class EDITENG_DLLPUBLIC SvxProtectItem final : public SfxPoolItem
 {
     bool bCntnt :1;     // Content protected
     bool bSize  :1;     // Size protected
@@ -42,7 +40,7 @@ public:
     static SfxPoolItem* CreateDefault();
 
     explicit inline SvxProtectItem( const sal_uInt16 nId  );
-    inline SvxProtectItem &operator=( const SvxProtectItem &rCpy );
+    SvxProtectItem(SvxProtectItem const &) = default; // SfxPoolItem copy function dichotomy
 
     // "pure virtual Methods" from SfxPoolItem
     virtual bool             operator==( const SfxPoolItem& ) const override;
@@ -50,12 +48,10 @@ public:
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
-                                  OUString &rText, const IntlWrapper * = nullptr ) const override;
+                                  OUString &rText, const IntlWrapper& ) const override;
 
 
-    virtual SfxPoolItem*     Clone( SfxItemPool *pPool = nullptr ) const override;
-    virtual SfxPoolItem*     Create(SvStream &, sal_uInt16) const override;
-    virtual SvStream&        Store(SvStream &, sal_uInt16 nItemVersion ) const override;
+    virtual SvxProtectItem* Clone( SfxItemPool *pPool = nullptr ) const override;
 
     bool IsContentProtected() const { return bCntnt; }
     bool IsSizeProtected()  const { return bSize;  }
@@ -66,7 +62,7 @@ public:
 
     virtual bool            QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool            PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
-    void dumpAsXml(struct _xmlTextWriter* pWriter) const override;
+    void dumpAsXml(xmlTextWriterPtr pWriter) const override;
 };
 
 inline SvxProtectItem::SvxProtectItem( const sal_uInt16 nId )
@@ -74,15 +70,6 @@ inline SvxProtectItem::SvxProtectItem( const sal_uInt16 nId )
 {
     bCntnt = bSize = bPos = false;
 }
-
-inline SvxProtectItem &SvxProtectItem::operator=( const SvxProtectItem &rCpy )
-{
-    bCntnt = rCpy.IsContentProtected();
-    bSize  = rCpy.IsSizeProtected();
-    bPos   = rCpy.IsPosProtected();
-    return *this;
-}
-
 
 #endif
 

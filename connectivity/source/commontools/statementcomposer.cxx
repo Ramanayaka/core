@@ -25,7 +25,10 @@
 #include <com/sun/star/lang/NullPointerException.hpp>
 #include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/sdb/XQueriesSupplier.hpp>
+#include <com/sun/star/sdbc/SQLException.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
+#include <com/sun/star/sdb/XSingleSelectQueryComposer.hpp>
+#include <com/sun/star/sdbc/XConnection.hpp>
 
 #include <unotools/sharedunocomponent.hxx>
 #include <tools/diagnose_ex.h>
@@ -57,6 +60,7 @@ namespace dbtools
         Reference< XSingleSelectQueryComposer > xComposer;
         OUString                         sCommand;
         OUString                         sFilter;
+        OUString                         sHavingClause;
         OUString                         sOrder;
         sal_Int32                               nCommandType;
         bool                                bEscapeProcessing;
@@ -93,7 +97,7 @@ namespace dbtools
                 }
                 catch( const Exception& )
                 {
-                    DBG_UNHANDLED_EXCEPTION();
+                    DBG_UNHANDLED_EXCEPTION("connectivity.commontools");
                 }
             }
             _rData.xComposer.clear();
@@ -135,7 +139,7 @@ namespace dbtools
                     {
                         // ask the connection for the query
                         Reference< XQueriesSupplier > xSupplyQueries( _rData.xConnection, UNO_QUERY_THROW );
-                        Reference< XNameAccess >      xQueries( xSupplyQueries->getQueries(), UNO_QUERY_THROW );
+                        Reference< XNameAccess >      xQueries( xSupplyQueries->getQueries(), css::uno::UNO_SET_THROW );
 
                         if ( !xQueries->hasByName( _rData.sCommand ) )
                             break;
@@ -186,6 +190,8 @@ namespace dbtools
                             OUString sFilter;
                             OSL_VERIFY( xQuery->getPropertyValue("Filter") >>= sFilter );
                             xComposer->setFilter( sFilter );
+                            OSL_VERIFY( xQuery->getPropertyValue("HavingClause") >>= sFilter );
+                            xComposer->setHavingClause( sFilter );
                         }
 
                         // the composed statement
@@ -200,7 +206,7 @@ namespace dbtools
 
                 if ( !sStatement.isEmpty() )
                 {
-                    // create an composer
+                    // create a composer
                     Reference< XMultiServiceFactory > xFactory( _rData.xConnection, UNO_QUERY_THROW );
                     Reference< XSingleSelectQueryComposer > xComposer( xFactory->createInstance("com.sun.star.sdb.SingleSelectQueryComposer"),
                         UNO_QUERY_THROW );
@@ -209,6 +215,7 @@ namespace dbtools
                     // append sort/filter
                     xComposer->setOrder( _rData.sOrder );
                     xComposer->setFilter( _rData.sFilter );
+                    xComposer->setHavingClause( _rData.sHavingClause );
 
                     sStatement = xComposer->getQuery();
 
@@ -222,7 +229,7 @@ namespace dbtools
             }
             catch( const Exception& )
             {
-                DBG_UNHANDLED_EXCEPTION();
+                DBG_UNHANDLED_EXCEPTION("connectivity.commontools");
             }
 
             return _rData.xComposer.is();
@@ -259,6 +266,13 @@ namespace dbtools
     }
 
 
+    void StatementComposer::setHavingClause( const OUString& _rHavingClause )
+    {
+        m_pData->sHavingClause = _rHavingClause;
+        m_pData->bComposerDirty = true;
+    }
+
+
     void StatementComposer::setOrder( const OUString& _rOrder )
     {
         m_pData->sOrder = _rOrder;
@@ -266,7 +280,7 @@ namespace dbtools
     }
 
 
-    Reference< XSingleSelectQueryComposer > StatementComposer::getComposer()
+    Reference< XSingleSelectQueryComposer > const & StatementComposer::getComposer()
     {
         lcl_ensureUpToDateComposer_nothrow( *m_pData );
         return m_pData->xComposer;

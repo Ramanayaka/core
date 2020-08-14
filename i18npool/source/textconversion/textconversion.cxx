@@ -17,17 +17,16 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <assert.h>
 #include <cppuhelper/supportsservice.hxx>
 #include <textconversion.hxx>
 
 using namespace com::sun::star::uno;
 
-namespace com { namespace sun { namespace star { namespace i18n {
+namespace i18npool {
 
 #ifndef DISABLE_DYNLOADING
 
-extern "C" { static void SAL_CALL thisModule() {} }
+extern "C" { static void thisModule() {} }
 
 #endif
 
@@ -59,8 +58,8 @@ static void* nullFunc()
     return nullptr;
 }
 
-oslGenericFunction SAL_CALL
-TextConversionService::getFunctionBySymbol(const sal_Char* func)
+oslGenericFunction
+TextConversionService::getFunctionBySymbol(const char* func)
 {
     if (hModule)
         return osl_getFunctionSymbol(hModule, OUString::createFromAscii(func).pData);
@@ -89,6 +88,6 @@ TextConversionService::getSupportedServiceNames()
     return aRet;
 }
 
-} } } }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

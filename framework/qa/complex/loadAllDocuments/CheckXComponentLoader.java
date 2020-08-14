@@ -213,7 +213,7 @@ public class CheckXComponentLoader
 
             loadURL(m_xLoader, RESULT_VALID_DOC, sURL, "_blank", 0, lProps);
             // It's not needed to reset this using states!
-            // Its done internally ...
+            // It's done internally...
             if (!xIndicator.wasUsed())
             {
                 System.out.println("External progress was not used for loading.");
@@ -389,7 +389,7 @@ public class CheckXComponentLoader
         }
     }
 
-    /** TODo document me
+    /** TODO document me
      */
     @Test public void checkStreamLoading() throws Exception
     {

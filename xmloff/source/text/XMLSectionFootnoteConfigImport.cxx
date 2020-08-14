@@ -28,10 +28,9 @@
 #include <xmloff/xmltoken.hxx>
 #include <xmloff/xmluconv.hxx>
 #include <xmloff/xmlprmap.hxx>
-#include <xmloff/xmlnmspe.hxx>
-#include <xmloff/nmspmap.hxx>
+#include <xmloff/xmlnamespace.hxx>
+#include <xmloff/namespacemap.hxx>
 #include <xmloff/maptype.hxx>
-#include <xmloff/xmlnumi.hxx>
 #include <xmloff/txtprmap.hxx>
 
 #include <vector>

@@ -19,21 +19,16 @@
 
 #include <sdr/contact/viewcontactofsdrobjcustomshape.hxx>
 #include <svx/svdoashp.hxx>
-#include <svx/sdr/contact/displayinfo.hxx>
-#include <svx/sdr/primitive2d/sdrattributecreator.hxx>
-#include <svx/svditer.hxx>
+#include <svx/sdooitm.hxx>
+#include <sdr/primitive2d/sdrattributecreator.hxx>
 #include <sdr/primitive2d/sdrcustomshapeprimitive2d.hxx>
-#include <basegfx/polygon/b2dpolygontools.hxx>
-#include <basegfx/polygon/b2dpolygon.hxx>
 #include <basegfx/matrix/b2dhommatrixtools.hxx>
 #include <svx/obj3d.hxx>
-#include <drawinglayer/primitive2d/sdrdecompositiontools2d.hxx>
+#include <vcl/canvastools.hxx>
 
 
-namespace sdr
+namespace sdr::contact
 {
-    namespace contact
-    {
         ViewContactOfSdrObjCustomShape::ViewContactOfSdrObjCustomShape(SdrObjCustomShape& rCustomShape)
         :   ViewContactOfTextObj(rCustomShape)
         {
@@ -45,13 +40,11 @@ namespace sdr
 
         basegfx::B2DRange ViewContactOfSdrObjCustomShape::getCorrectedTextBoundRect() const
         {
-            tools::Rectangle aObjectBound(GetCustomShapeObj().GetGeoRect());
-            aObjectBound += GetCustomShapeObj().GetGridOffset();
+            const tools::Rectangle aObjectBound(GetCustomShapeObj().GetGeoRect());
             tools::Rectangle aTextBound(aObjectBound);
             GetCustomShapeObj().GetTextBounds(aTextBound);
-            aTextBound += GetCustomShapeObj().GetGridOffset();
-            basegfx::B2DRange aTextRange(aTextBound.Left(), aTextBound.Top(), aTextBound.Right(), aTextBound.Bottom());
-            const basegfx::B2DRange aObjectRange(aObjectBound.Left(), aObjectBound.Top(), aObjectBound.Right(), aObjectBound.Bottom());
+            basegfx::B2DRange aTextRange = vcl::unotools::b2DRectangleFromRectangle(aTextBound);
+            const basegfx::B2DRange aObjectRange = vcl::unotools::b2DRectangleFromRectangle(aObjectBound);
 
             // no need to correct if no extra text range
             if(aTextRange != aObjectRange)
@@ -94,6 +87,16 @@ namespace sdr
                         aTextRange.getMinX() + aTranslation.getX(), aTextRange.getMinY() + aTranslation.getY(),
                         aTextRange.getMaxX() + aTranslation.getX(), aTextRange.getMaxY() + aTranslation.getY());
                 }
+
+                // NbcMirror() of SdrTextObj (from which SdrObjCustomShape is derived), adds a
+                // 180deg rotation around the shape center to GeoStat.nRotationAngle. So remove here the
+                // 180° rotation, which was added by GetTextBounds().
+                if(GetCustomShapeObj().IsMirroredY())
+                {
+                    basegfx::B2DHomMatrix aRotMatrix(basegfx::utils::createRotateAroundPoint(
+                        aObjectRange.getCenterX(), aObjectRange.getCenterY(), F_PI));
+                    aTextRange.transform(aRotMatrix);
+                }
             }
 
             return aTextRange;
@@ -106,8 +109,8 @@ namespace sdr
 
             // #i98072# Get shadow and text; eventually suppress the text if it's
             // a TextPath FontworkGallery object
-            const drawinglayer::attribute::SdrShadowTextAttribute aAttribute(
-                drawinglayer::primitive2d::createNewSdrShadowTextAttribute(
+            const drawinglayer::attribute::SdrEffectsTextAttribute aAttribute(
+                drawinglayer::primitive2d::createNewSdrEffectsTextAttribute(
                     rItemSet,
                     GetCustomShapeObj().getText(0),
                     GetCustomShapeObj().IsTextPath()));
@@ -118,29 +121,26 @@ namespace sdr
             const SdrObject* pSdrObjRepresentation = GetCustomShapeObj().GetSdrObjectFromCustomShape();
             bool b3DShape(false);
 
-            Point aGridOff = GetCustomShapeObj().GetGridOffset();
-
             if(pSdrObjRepresentation)
             {
-                // Hack for calc, transform position of object according
-                // to current zoom so as objects relative position to grid
-                // appears stable
-                const_cast< SdrObject* >( pSdrObjRepresentation )->SetGridOffset( aGridOff );
-                SdrObjListIter aIterator(*pSdrObjRepresentation);
-
-                while(aIterator.IsMore())
-                {
-                    SdrObject& rCandidate = *aIterator.Next();
-                    // apply offset to each part
-                    rCandidate.SetGridOffset( aGridOff );
-                    if(!b3DShape && dynamic_cast< E3dObject* >(&rCandidate))
-                    {
-                        b3DShape = true;
-                    }
-
-                    const drawinglayer::primitive2d::Primitive2DContainer xNew(rCandidate.GetViewContact().getViewIndependentPrimitive2DContainer());
-                    xGroup.insert(xGroup.end(), xNew.begin(), xNew.end());
-                }
+                // tdf#118498 The processing of SdrObjListIter for SdrIterMode::DeepNoGroups
+                // did change for 3D-Objects, it now correctly enters and iterates the
+                // SdrObjects in the E3dScene (same as for SdrObjGroup). This is more correct
+                // as the old version which just checked for dynamic_cast<const SdrObjGroup*>
+                // and *only* entered these, ignoring E3dScene as grouping-object.
+                // But how to fix that? Taking back the SdrObjListIter change would be easy, but
+                // not correct. After checking ViewContactOfE3dScene and ViewContactOfGroup
+                // I see that both traverse their children by themselves (on VC-Level,
+                // see createViewIndependentPrimitive2DSequence implementations and usage of
+                // GetObjectCount()). Thus in principle iterating here (esp. 'deep') seems to
+                // be wrong anyways, it might have even created wrong and double geometries
+                // (only with complex CustomShapes with multiple representation SdrObects and
+                // only visible when transparency involved, but runtime-expensive).
+                // Thus: Just do not iterate, will check behaviour deeply.
+                b3DShape = (nullptr != dynamic_cast< const E3dObject* >(pSdrObjRepresentation));
+                const drawinglayer::primitive2d::Primitive2DContainer& xNew(
+                    pSdrObjRepresentation->GetViewContact().getViewIndependentPrimitive2DContainer());
+                xGroup.insert(xGroup.end(), xNew.begin(), xNew.end());
             }
 
             if(bHasText || !xGroup.empty())
@@ -149,24 +149,28 @@ namespace sdr
                 basegfx::B2DHomMatrix aTextBoxMatrix;
                 bool bWordWrap(false);
 
+                // take unrotated snap rect as default, then get the
+                // unrotated text box. Rotation needs to be done centered
+                const tools::Rectangle aObjectBound(GetCustomShapeObj().GetGeoRect());
+                const basegfx::B2DRange aObjectRange = vcl::unotools::b2DRectangleFromRectangle(aObjectBound);
+
                 if(bHasText)
                 {
-                    // take unrotated snap rect as default, then get the
-                    // unrotated text box. Rotation needs to be done centered
-                    tools::Rectangle aObjectBound(GetCustomShapeObj().GetGeoRect());
-                    // hack for calc grid sync
-                    aObjectBound += GetCustomShapeObj().GetGridOffset();
-                    const basegfx::B2DRange aObjectRange(aObjectBound.Left(), aObjectBound.Top(), aObjectBound.Right(), aObjectBound.Bottom());
-
                     // #i101684# get the text range unrotated and absolute to the object range
                     const basegfx::B2DRange aTextRange(getCorrectedTextBoundRect());
 
+                    // Get the text range before unrotated and independent from object range
+                    const tools::Rectangle aIndTextRect(Point(aTextRange.getMinX(), aTextRange.getMinY()), GetCustomShapeObj().GetTextSize());
+                    const basegfx::B2DRange aIndTextRange = vcl::unotools::b2DRectangleFromRectangle(aIndTextRect);
+
                     // Rotation before scaling
-                    if(!basegfx::fTools::equalZero(GetCustomShapeObj().GetExtraTextRotation(true)))
+                    if(!basegfx::fTools::equalZero(GetCustomShapeObj().GetExtraTextRotation(true)) ||
+                       !basegfx::fTools::equalZero(GetCustomShapeObj().GetCameraRotation()))
                     {
                         basegfx::B2DVector aTranslation(0.5, 0.5);
                         aTextBoxMatrix.translate( -aTranslation.getX(), -aTranslation.getY() );
-                        aTextBoxMatrix.rotate((360.0 - GetCustomShapeObj().GetExtraTextRotation(true)) * F_PI180);
+                        aTextBoxMatrix.rotate(basegfx::deg2rad(
+                            360.0 - GetCustomShapeObj().GetExtraTextRotation(true) - GetCustomShapeObj().GetCameraRotation()));
                         aTextBoxMatrix.translate( aTranslation.getX(), aTranslation.getY() );
                     }
                     // give text object a size
@@ -174,6 +178,7 @@ namespace sdr
 
                     // check if we have a rotation/shear at all to take care of
                     const double fExtraTextRotation(GetCustomShapeObj().GetExtraTextRotation());
+                    const double fTextCameraZRotation(GetCustomShapeObj().GetCameraRotation());
                     const GeoStat& rGeoStat(GetCustomShapeObj().GetGeoStat());
 
                     if(rGeoStat.nShearAngle || rGeoStat.nRotationAngle || !basegfx::fTools::equalZero(fExtraTextRotation))
@@ -186,13 +191,13 @@ namespace sdr
                                 aTextRange.getMinY() - aObjectRange.getMinimum().getY());
                         }
 
-                        if(!basegfx::fTools::equalZero(fExtraTextRotation))
+                        if(!basegfx::fTools::equalZero(fExtraTextRotation) || !basegfx::fTools::equalZero(fTextCameraZRotation))
                         {
                             basegfx::B2DVector aTranslation(
                                 ( aTextRange.getWidth() / 2 ) + ( aTextRange.getMinX() - aObjectRange.getMinimum().getX() ),
                                 ( aTextRange.getHeight() / 2 ) + ( aTextRange.getMinY() - aObjectRange.getMinimum().getY() ) );
                             aTextBoxMatrix.translate( -aTranslation.getX(), -aTranslation.getY() );
-                            aTextBoxMatrix.rotate((360.0 - fExtraTextRotation) * F_PI180);
+                            aTextBoxMatrix.rotate(basegfx::deg2rad(360.0 - fExtraTextRotation + fTextCameraZRotation));
                             aTextBoxMatrix.translate( aTranslation.getX(), aTranslation.getY() );
                         }
 
@@ -209,14 +214,27 @@ namespace sdr
                         // give text it's target position
                         aTextBoxMatrix.translate(aObjectRange.getMinimum().getX(), aObjectRange.getMinimum().getY());
                     }
+                    // If text overflows from textbox we should use text info instead of textbox to relocation.
+                    else if((aTextRange.getWidth() < aIndTextRange.getWidth() ||
+                            aTextRange.getHeight() < aIndTextRange.getHeight()) &&
+                            !basegfx::fTools::equalZero(fTextCameraZRotation))
+                    {
+                        aTextBoxMatrix.translate(aIndTextRange.getCenterX(), aIndTextRange.getCenterY());
+                    }
                     else
                     {
                         aTextBoxMatrix.translate(aTextRange.getMinX(), aTextRange.getMinY());
                     }
 
                     // check if SdrTextWordWrapItem is set
-                    bWordWrap = (static_cast<const SdrOnOffItem&>(GetCustomShapeObj().GetMergedItem(SDRATTR_TEXT_WORDWRAP))).GetValue();
+                    bWordWrap = GetCustomShapeObj().GetMergedItem(SDRATTR_TEXT_WORDWRAP).GetValue();
                 }
+
+                // fill object matrix
+                const basegfx::B2DHomMatrix aObjectMatrix(basegfx::utils::createScaleShearXRotateTranslateB2DHomMatrix(
+                    aObjectRange.getWidth(), aObjectRange.getHeight(),
+                    /*fShearX=*/0, /*fRotate=*/0,
+                    aObjectRange.getMinX(), aObjectRange.getMinY()));
 
                 // create primitive
                 const drawinglayer::primitive2d::Primitive2DReference xReference(
@@ -225,13 +243,14 @@ namespace sdr
                         xGroup,
                         aTextBoxMatrix,
                         bWordWrap,
-                        b3DShape));
+                        b3DShape,
+                        aObjectMatrix));
                 xRetval = drawinglayer::primitive2d::Primitive2DContainer { xReference };
             }
 
             return xRetval;
         }
-    } // end of namespace contact
-} // end of namespace sdr
+
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

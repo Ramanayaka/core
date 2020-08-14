@@ -237,17 +237,6 @@ End
 #endif
 
 #if defined UNX && ! defined MACOSX
-#ifdef ENABLE_SYSTRAY_GTK
-File gid_Brand_File_Share_Xdg_QStart
-    TXT_FILE_BODY;
-    Dir = gid_Brand_Dir_Share_Xdg;
-    Styles = (PACKED,SCPZIP_REPLACE);
-    Name = "qstart.desktop";
-End
-#endif
-#endif
-
-#if defined UNX && ! defined MACOSX
 File gid_Brand_File_Share_Xdg_Writer
     TXT_FILE_BODY;
     Dir = gid_Brand_Dir_Share_Xdg;
@@ -450,6 +439,15 @@ ProfileItem gid_Brand_Profileitem_Soffice_CrashDirectory
     Value = "${$BRAND_BASE_DIR/" LIBO_ETC_FOLDER "/" PROFILENAME(bootstrap) ":UserInstallation}/crash";
 End
 
+ProfileItem gid_Brand_Profileitem_Soffice_CrashDump
+    ProfileID = gid_Brand_Profile_Soffice_Ini;
+    ModuleID = gid_Module_Root_Brand;
+    Section = "Bootstrap";
+    Key = "CrashDumpEnable";
+    Value = "${CRASHDUMPENABLE}";
+End
+
+
 ProfileItem gid_Brand_Profileitem_Soffice_SecureUserConfig
     ProfileID = gid_Brand_Profile_Soffice_Ini;
     ModuleID = gid_Module_Root_Brand;
@@ -565,6 +563,15 @@ ProfileItem gid_Brand_Profileitem_Version_Updateurl
   #endif
 End
 
+ProfileItem gid_Brand_Profileitem_Version_UpdateChannel
+    ProfileID = gid_Brand_Profile_Version_Ini;
+    ModuleID = gid_Module_Root_Brand;
+    Section = "Version";
+    Order = 19;
+    Key = "UpdateChannel";
+    Value = "<updatechannel>";
+End
+
 ProfileItem gid_Brand_Profileitem_Version_Updateid
     ProfileID = gid_Brand_Profile_Version_Ini;
     ModuleID = gid_Module_Root_Brand;
@@ -636,6 +643,14 @@ ProfileItem gid_Brand_Profileitem_Fundamental_Brand_Share_Subdir
     Section = "Bootstrap";
     Key = "BRAND_SHARE_SUBDIR";
     Value = LIBO_SHARE_FOLDER;
+End
+
+ProfileItem gid_Brand_Profileitem_Fundamental_Brand_Resource_Subdir
+    ModuleID = gid_Module_Root_Brand;
+    ProfileID = gid_Brand_Profile_Fundamental_Ini;
+    Section = "Bootstrap";
+    Key = "BRAND_SHARE_RESOURCE_SUBDIR";
+    Value = LIBO_SHARE_RESOURCE_FOLDER;
 End
 
 ProfileItem gid_Brand_Profileitem_Fundamental_Brand_Bin_Subdir
@@ -739,7 +754,7 @@ ProfileItem gid_Brand_Profileitem_Fundamental_Ure_More_Java_Types
     ProfileID = gid_Brand_Profile_Fundamental_Ini;
     Section = "Bootstrap";
     Key = "URE_MORE_JAVA_TYPES";
-    Value = "${BRAND_BASE_DIR}/" LIBO_SHARE_JAVA_FOLDER "/unoil.jar ${BRAND_BASE_DIR}/" LIBO_SHARE_JAVA_FOLDER "/ScriptFramework.jar ${${$ORIGIN/" PROFILENAME(louno) ":PKG_UserUnoFile}:UNO_JAVA_CLASSPATH} ${${$ORIGIN/" PROFILENAME(louno) ":PKG_SharedUnoFile}:UNO_JAVA_CLASSPATH} ${${$ORIGIN/" PROFILENAME(louno) ":PKG_BundledUnoFile}:UNO_JAVA_CLASSPATH}";
+    Value = "${BRAND_BASE_DIR}/" LIBO_SHARE_JAVA_FOLDER "/ridl.jar ${BRAND_BASE_DIR}/" LIBO_SHARE_JAVA_FOLDER "/ScriptFramework.jar ${${$ORIGIN/" PROFILENAME(louno) ":PKG_UserUnoFile}:UNO_JAVA_CLASSPATH} ${${$ORIGIN/" PROFILENAME(louno) ":PKG_SharedUnoFile}:UNO_JAVA_CLASSPATH} ${${$ORIGIN/" PROFILENAME(louno) ":PKG_BundledUnoFile}:UNO_JAVA_CLASSPATH}";
 End
 
 ProfileItem gid_Brand_Profileitem_Fundamental_Ure_Java_Jfw_Shared_Data

@@ -50,9 +50,7 @@ namespace sfx2
 
     //= DocumentStorageModifyListener
 
-    typedef cppu::WeakImplHelper<css::util::XModifyListener> DocumentStorageModifyListener_Base;
-
-    class SFX2_DLLPUBLIC DocumentStorageModifyListener : public DocumentStorageModifyListener_Base
+    class SFX2_DLLPUBLIC DocumentStorageModifyListener final : public cppu::WeakImplHelper<css::util::XModifyListener>
     {
         IModifiableDocument*    m_pDocument;
         comphelper::SolarMutex& m_rMutex;
@@ -68,10 +66,9 @@ namespace sfx2
         // XEventListener
         virtual void SAL_CALL disposing( const css::lang::EventObject& Source ) override;
 
-    protected:
+    private:
         virtual ~DocumentStorageModifyListener() override;
 
-    private:
         DocumentStorageModifyListener( const DocumentStorageModifyListener& ) = delete;
         DocumentStorageModifyListener& operator=( const DocumentStorageModifyListener& ) = delete;
     };

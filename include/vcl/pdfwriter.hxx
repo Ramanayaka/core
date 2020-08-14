@@ -19,6 +19,7 @@
 #ifndef INCLUDED_VCL_PDFWRITER_HXX
 #define INCLUDED_VCL_PDFWRITER_HXX
 
+#include <config_options.h>
 #include <sal/types.h>
 
 #include <tools/gen.hxx>
@@ -26,25 +27,21 @@
 #include <rtl/strbuf.hxx>
 
 #include <vcl/dllapi.h>
-#include <vcl/vclenum.hxx>
 #include <vcl/font.hxx>
-#include <vcl/graphictools.hxx>
-#include <vcl/outdevstate.hxx>
 #include <vcl/outdev.hxx>
+#include <vcl/graph.hxx>
 
-#include <com/sun/star/io/XOutputStream.hpp>
-#include <com/sun/star/beans/XMaterialHolder.hpp>
-#include <com/sun/star/security/XCertificate.hpp>
 #include <com/sun/star/lang/Locale.hpp>
+#include <com/sun/star/util/DateTime.hpp>
 
-#include <list>
 #include <memory>
 #include <vector>
 #include <set>
 
-namespace vcl { class Font; }
-class Point;
-class OutputDevice;
+namespace com::sun::star::beans { class XMaterialHolder; }
+namespace com::sun::star::io { class XOutputStream; }
+namespace com::sun::star::security { class XCertificate; }
+
 class GDIMetaFile;
 class MapMode;
 class LineInfo;
@@ -54,7 +51,6 @@ namespace tools {
 }
 class Bitmap;
 class BitmapEx;
-class Image;
 class Gradient;
 class Hatch;
 class Wallpaper;
@@ -69,6 +65,7 @@ struct PDFNote
 {
     OUString          Title;          // optional title for the popup containing the note
     OUString          Contents;       // contents of the note
+    css::util::DateTime maModificationDate;
 };
 
 class VCL_DLLPUBLIC PDFOutputStream
@@ -80,7 +77,11 @@ class VCL_DLLPUBLIC PDFOutputStream
 
 class VCL_DLLPUBLIC PDFWriter
 {
-    std::unique_ptr<PDFWriterImpl> xImplementation;
+    ScopedVclPtr<PDFWriterImpl> xImplementation;
+
+    PDFWriter(const PDFWriter&) = delete;
+    PDFWriter& operator=(const PDFWriter&) = delete;
+
 public:
     // extended line info
     enum CapType { capButt, capRound, capSquare };
@@ -105,7 +106,7 @@ public:
     enum class Orientation { Portrait, Inherit };
 
     // in case the below enum is added PDF_1_6 PDF_1_7, please add them just after PDF_1_5
-    enum class PDFVersion { PDF_1_2, PDF_1_3, PDF_1_4, PDF_1_5, PDF_A_1 };//i59651, PDF/A-1b & -1a, only -1b implemented for now
+    enum class PDFVersion { PDF_1_2, PDF_1_3, PDF_1_4, PDF_1_5, PDF_1_6, PDF_A_1, PDF_A_2, PDF_A_3 };//i59651, PDF/A-1b & -1a, only -1b implemented for now
     // for the meaning of DestAreaType please look at PDF Reference Manual
     // version 1.4 section 8.2.1, page 475
     enum class DestAreaType { XYZ, FitRectangle };
@@ -192,13 +193,6 @@ public:
         Signature
     };
 
-    enum WidgetState
-    {
-        // PushButton, RadioButton, CheckBox; Down means selected for
-        // RadioButton and CheckBox
-        Up, Down
-    };
-
     enum ErrorCode
     {
         // transparent object occurred and was draw opaque because
@@ -221,7 +215,7 @@ public:
         Error_Signature_Failed,
     };
 
-    struct VCL_DLLPUBLIC AnyWidget
+    struct UNLESS_MERGELIBS(VCL_DLLPUBLIC) AnyWidget
     {
         WidgetType          Type;       // primitive RTTI
     public:
@@ -270,7 +264,7 @@ public:
 
         WidgetType getType() const { return Type; }
 
-        virtual AnyWidget* Clone() const = 0;
+        virtual std::shared_ptr<AnyWidget> Clone() const = 0;
 
     protected:
         // note that this equals the default compiler-generated copy-ctor, but we want to have it
@@ -295,7 +289,7 @@ public:
         AnyWidget& operator=( const AnyWidget& );  // never implemented
     };
 
-    struct PushButtonWidget : public AnyWidget
+    struct PushButtonWidget final : public AnyWidget
     {
         /* If Dest is set to a valid link destination,
            Then pressing the button will act as a goto
@@ -329,13 +323,13 @@ public:
                   Dest( -1 ), Submit( false ), SubmitGet( false )
         {}
 
-        virtual AnyWidget* Clone() const override
+        virtual std::shared_ptr<AnyWidget> Clone() const override
         {
-            return new PushButtonWidget( *this );
+            return std::make_shared<PushButtonWidget>( *this );
         }
     };
 
-    struct CheckBoxWidget : public AnyWidget
+    struct CheckBoxWidget final : public AnyWidget
     {
         bool                Checked;
 
@@ -344,13 +338,13 @@ public:
                   Checked( false )
         {}
 
-        virtual AnyWidget* Clone() const override
+        virtual std::shared_ptr<AnyWidget> Clone() const override
         {
-            return new CheckBoxWidget( *this );
+            return std::make_shared<CheckBoxWidget>( *this );
         }
     };
 
-    struct RadioButtonWidget : public AnyWidget
+    struct RadioButtonWidget final : public AnyWidget
     {
         bool                Selected;
         sal_Int32           RadioGroup;
@@ -362,9 +356,9 @@ public:
                   RadioGroup( 0 )
         {}
 
-        virtual AnyWidget* Clone() const override
+        virtual std::shared_ptr<AnyWidget> Clone() const override
         {
-            return new RadioButtonWidget( *this );
+            return std::make_shared<RadioButtonWidget>( *this );
         }
         // radio buttons having the same RadioGroup id comprise one
         // logical radio button group, that is at most one of the RadioButtons
@@ -376,7 +370,7 @@ public:
         // in the group
     };
 
-    struct EditWidget : public AnyWidget
+    struct EditWidget final : public AnyWidget
     {
         bool                MultiLine;  // whether multiple lines are allowed
         bool                Password;   // visible echo off
@@ -391,13 +385,13 @@ public:
                   MaxLen( 0 )
         {}
 
-        virtual AnyWidget* Clone() const override
+        virtual std::shared_ptr<AnyWidget> Clone() const override
         {
-            return new EditWidget( *this );
+            return std::make_shared<EditWidget>( *this );
         }
     };
 
-    struct ListBoxWidget : public AnyWidget
+    struct ListBoxWidget final : public AnyWidget
     {
         bool                            DropDown;
         bool                            MultiSelect;
@@ -413,14 +407,14 @@ public:
                   MultiSelect( false )
         {}
 
-        virtual AnyWidget* Clone() const override
+        virtual std::shared_ptr<AnyWidget> Clone() const override
         {
-            return new ListBoxWidget( *this );
+            return std::make_shared<ListBoxWidget>( *this );
         }
     };
 
     // note: PDF only supports dropdown comboboxes
-    struct ComboBoxWidget : public AnyWidget
+    struct ComboBoxWidget final : public AnyWidget
     {
         std::vector<OUString>      Entries;
         // set the current value in AnyWidget::Text
@@ -429,21 +423,21 @@ public:
                 : AnyWidget( vcl::PDFWriter::ComboBox )
         {}
 
-        virtual AnyWidget* Clone() const override
+        virtual std::shared_ptr<AnyWidget> Clone() const override
         {
-            return new ComboBoxWidget( *this );
+            return std::make_shared<ComboBoxWidget>( *this );
         }
     };
 
-    struct SignatureWidget: public AnyWidget
+    struct SignatureWidget final : public AnyWidget
     {
         SignatureWidget()
                 : AnyWidget( vcl::PDFWriter::Signature )
         {}
 
-        virtual AnyWidget* Clone() const override
+        virtual std::shared_ptr<AnyWidget> Clone() const override
         {
-            return new SignatureWidget( *this );
+            return std::make_shared<SignatureWidget>( *this );
         }
     };
 
@@ -543,29 +537,6 @@ The following structure describes the permissions used in PDF security
         DrawColor, DrawGreyscale
     };
 
-    /// Holds all information to be able to fill a PDF signature template.
-    struct VCL_DLLPUBLIC PDFSignContext
-    {
-        /// DER-encoded certificate buffer.
-        sal_Int8* m_pDerEncoded;
-        /// Length of m_pDerEncoded.
-        sal_Int32 m_nDerEncoded;
-        /// Bytes before the signature itself.
-        void* m_pByteRange1;
-        /// Length of m_pByteRange1.
-        sal_Int32 m_nByteRange1;
-        /// Bytes after the signature itself.
-        void* m_pByteRange2;
-        /// Length of m_pByteRange2.
-        sal_Int32 m_nByteRange2;
-        OUString m_aSignTSA;
-        OUString m_aSignPassword;
-        /// The signature (in PKCS#7 format) is written into this buffer.
-        OStringBuffer& m_rCMSHexBuffer;
-
-        PDFSignContext(OStringBuffer& rCMSHexBuffer);
-    };
-
     struct PDFWriterContext
     {
         /* must be a valid file: URL usable by osl */
@@ -584,6 +555,10 @@ The following structure describes the permissions used in PDF security
 
         /* decides the PDF language level to be produced */
         PDFVersion                      Version;
+
+        /* PDF/UA compliance */
+        bool UniversalAccessibilityCompliance;
+
         /* valid for PDF >= 1.4
            causes the MarkInfo entry in the document catalog to be set
         */
@@ -641,7 +616,8 @@ The following structure describes the permissions used in PDF security
                 DefaultLinkAction( PDFWriter::URIAction ),
                 ConvertOOoTargetToPDFTarget( false ),
                 ForcePDFAction( false ),
-                Version( PDFWriter::PDFVersion::PDF_1_4 ),
+                Version( PDFWriter::PDFVersion::PDF_1_6 ),
+                UniversalAccessibilityCompliance( false ),
                 Tagged( false ),
                 SubmitFormat( PDFWriter::FDF ),
                 AllowDuplicateFieldNames( false ),
@@ -664,7 +640,6 @@ The following structure describes the permissions used in PDF security
                 DPIx( 0 ),
                 DPIy( 0 ),
                 ColorMode( PDFWriter::DrawColor ),
-                SignCertificate( nullptr ),
                 UseReferenceXObject( false )
         {}
     };
@@ -722,12 +697,12 @@ The following structure describes the permissions used in PDF security
      * this should enable the producer to give feedback about
      * any anomalies that might have occurred
      */
-    std::set< ErrorCode > GetErrors();
+    std::set< ErrorCode > const & GetErrors() const;
 
+    // uses 128bit encryption
     static css::uno::Reference< css::beans::XMaterialHolder >
            InitEncryption( const OUString& i_rOwnerPassword,
-                           const OUString& i_rUserPassword,
-                           bool b128Bit
+                           const OUString& i_rUserPassword
                          );
 
     /* functions for graphics state */
@@ -745,10 +720,10 @@ The following structure describes the permissions used in PDF security
     void               SetDigitLanguage( LanguageType eLang );
 
     void               SetLineColor( const Color& rColor );
-    void               SetLineColor() { SetLineColor( Color( COL_TRANSPARENT ) ); }
+    void               SetLineColor() { SetLineColor( COL_TRANSPARENT ); }
 
     void               SetFillColor( const Color& rColor );
-    void               SetFillColor() { SetFillColor( Color( COL_TRANSPARENT ) ); }
+    void               SetFillColor() { SetFillColor( COL_TRANSPARENT ); }
 
     void               SetFont( const vcl::Font& rNewFont );
     void               SetTextColor( const Color& rColor );
@@ -783,7 +758,7 @@ The following structure describes the permissions used in PDF security
 
     void                DrawPixel( const Point& rPt, const Color& rColor );
     void                DrawPixel( const Point& rPt )
-    { DrawPixel( rPt, Color( COL_TRANSPARENT ) ); }
+    { DrawPixel( rPt, COL_TRANSPARENT ); }
 
     void                DrawLine( const Point& rStartPt, const Point& rEndPt );
     void                DrawLine( const Point& rStartPt, const Point& rEndPt,
@@ -966,7 +941,7 @@ The following structure describes the permissions used in PDF security
     */
     void           SetLinkDest( sal_Int32 nLinkId, sal_Int32 nDestId );
     /** Set the URL for a link
-        will change a dest type link to an URL type link if necessary
+        will change a dest type link to a URL type link if necessary
         @param nLinkId
         the link to be changed
 
@@ -1096,21 +1071,16 @@ The following structure describes the permissions used in PDF security
     /** set the current structure element
 
     For different purposes it may be useful to paint a structure element's
-    content discontinously. In that case an already existing structure element
+    content discontinuously. In that case an already existing structure element
     can be appended to by using SetCurrentStructureElement. The
-    refenrenced structure element becomes the current structure element with
+    referenced structure element becomes the current structure element with
     all consequences: all following structure elements are appended as children
     of the current element.
 
     @param nElement
     the id of the new current structure element
-
-    @returns
-    True if the current structure element could be set successfully
-    False if the current structure element could not be changed
-    (e.g. if the passed element id is invalid)
      */
-    bool SetCurrentStructureElement( sal_Int32 nElement );
+    void SetCurrentStructureElement( sal_Int32 nElement );
 
     /** set a structure attribute on the current structural element
 
@@ -1124,12 +1094,8 @@ The following structure describes the permissions used in PDF security
 
     @param eVal
     the value to set the attribute to
-
-    @returns
-    True if the value was valid and the change has been performed,
-    False if the attribute or value was invalid; attribute remains unchanged
      */
-    bool SetStructureAttribute( enum StructAttribute eAttr, enum StructAttributeValue eVal );
+    void SetStructureAttribute( enum StructAttribute eAttr, enum StructAttributeValue eVal );
     /** set a structure attribute on the current structural element
 
     SetStructureAttributeNumerical sets an attribute of the current structural element
@@ -1142,12 +1108,8 @@ The following structure describes the permissions used in PDF security
 
     @param nValue
     the value to set the attribute to
-
-    @returns
-    True if the value was valid and the change has been performed,
-    False if the attribute or value was invalid; attribute remains unchanged
      */
-    bool SetStructureAttributeNumerical( enum StructAttribute eAttr, sal_Int32 nValue );
+    void SetStructureAttributeNumerical( enum StructAttribute eAttr, sal_Int32 nValue );
     /** set the bounding box of a structural element
 
     SetStructureBoundingBox sets the BBox attribute to a new value. Since the BBox
@@ -1230,9 +1192,6 @@ The following structure describes the permissions used in PDF security
 
     */
     void AddStream( const OUString& rMimeType, PDFOutputStream* pStream );
-
-    /// Fill a PDF signature template.
-    static bool Sign(PDFSignContext& rContext);
 
     /// Write rString as a PDF hex string into rBuffer.
     static void AppendUnicodeTextString(const OUString& rString, OStringBuffer& rBuffer);

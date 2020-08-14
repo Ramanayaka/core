@@ -14,7 +14,6 @@
 #include <cppunit/plugin/TestPlugIn.h>
 
 #include <sfx2/ctrlitem.hxx>
-#include <sfx2/bindings.hxx>
 
 namespace {
 
@@ -31,7 +30,7 @@ public:
 private:
 };
 
-static bool bDeleted = false;
+bool bDeleted = false;
 
 class FooController : public SfxControllerItem {
 public:

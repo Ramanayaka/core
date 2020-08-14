@@ -17,22 +17,13 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <comphelper/string.hxx>
-#include <hintids.hxx>
-
 #include <doc.hxx>
 #include <osl/thread.h>
 #include <vcl/help.hxx>
-#include <svl/stritem.hxx>
-#include <unotools/securityoptions.hxx>
 #include <tools/urlobj.hxx>
-#include <txtrfmrk.hxx>
 #include <fmtrfmrk.hxx>
-#include <editeng/flditem.hxx>
 #include <svl/urihelper.hxx>
-#include <svx/svdotext.hxx>
-#include <editeng/outliner.hxx>
-#include <svl/itemiter.hxx>
+#include <sfx2/sfxhelp.hxx>
 #include <svx/svdview.hxx>
 #include <svx/svdpagv.hxx>
 #include <swmodule.hxx>
@@ -42,50 +33,46 @@
 #include <docsh.hxx>
 #include <edtwin.hxx>
 #include <dpage.hxx>
-#include <shellres.hxx>
 #include <docufld.hxx>
-#include <dbfld.hxx>
 #include <reffld.hxx>
 #include <cellatr.hxx>
 #include <shdwcrsr.hxx>
-#include <fmtcol.hxx>
-#include <charfmt.hxx>
+#include <fmtinfmt.hxx>
 #include <fmtftn.hxx>
 #include <redline.hxx>
 #include <tox.hxx>
-#include <txttxmrk.hxx>
+#include <txatbase.hxx>
 #include <uitool.hxx>
 #include <viewopt.hxx>
-#include <docvw.hrc>
-#include <utlui.hrc>
-
-#include <PostItMgr.hxx>
-#include <fmtfld.hxx>
+#include <strings.hrc>
 
 #include <IDocumentMarkAccess.hxx>
+#include <txtfrm.hxx>
 #include <ndtxt.hxx>
+#include <FrameControlsManager.hxx>
 
 static OUString lcl_GetRedlineHelp( const SwRangeRedline& rRedl, bool bBalloon )
 {
-    sal_uInt16 nResId = 0;
+    const char* pResId = nullptr;
     switch( rRedl.GetType() )
     {
-    case nsRedlineType_t::REDLINE_INSERT:   nResId = STR_REDLINE_INSERT; break;
-    case nsRedlineType_t::REDLINE_DELETE:   nResId = STR_REDLINE_DELETE; break;
-    case nsRedlineType_t::REDLINE_FORMAT:   nResId = STR_REDLINE_FORMAT; break;
-    case nsRedlineType_t::REDLINE_TABLE:        nResId = STR_REDLINE_TABLE; break;
-    case nsRedlineType_t::REDLINE_FMTCOLL:  nResId = STR_REDLINE_FMTCOLL; break;
-    case nsRedlineType_t::REDLINE_PARAGRAPH_FORMAT: nResId = STR_REDLINE_PARAGRAPH_FORMAT; break;
-    case nsRedlineType_t::REDLINE_TABLE_ROW_INSERT: nResId = STR_REDLINE_TABLE_ROW_INSERT; break;
-    case nsRedlineType_t::REDLINE_TABLE_ROW_DELETE: nResId = STR_REDLINE_TABLE_ROW_DELETE; break;
-    case nsRedlineType_t::REDLINE_TABLE_CELL_INSERT: nResId = STR_REDLINE_TABLE_CELL_INSERT; break;
-    case nsRedlineType_t::REDLINE_TABLE_CELL_DELETE: nResId = STR_REDLINE_TABLE_CELL_DELETE; break;
+    case RedlineType::Insert:   pResId = STR_REDLINE_INSERT; break;
+    case RedlineType::Delete:   pResId = STR_REDLINE_DELETE; break;
+    case RedlineType::Format:   pResId = STR_REDLINE_FORMAT; break;
+    case RedlineType::Table:    pResId = STR_REDLINE_TABLE; break;
+    case RedlineType::FmtColl:  pResId = STR_REDLINE_FMTCOLL; break;
+    case RedlineType::ParagraphFormat: pResId = STR_REDLINE_PARAGRAPH_FORMAT; break;
+    case RedlineType::TableRowInsert: pResId = STR_REDLINE_TABLE_ROW_INSERT; break;
+    case RedlineType::TableRowDelete: pResId = STR_REDLINE_TABLE_ROW_DELETE; break;
+    case RedlineType::TableCellInsert: pResId = STR_REDLINE_TABLE_CELL_INSERT; break;
+    case RedlineType::TableCellDelete: pResId = STR_REDLINE_TABLE_CELL_DELETE; break;
+    default: break;
     }
 
     OUStringBuffer sBuf;
-    if( nResId )
+    if (pResId)
     {
-        sBuf.append(SwResId(nResId));
+        sBuf.append(SwResId(pResId));
         sBuf.append(": ");
         sBuf.append(rRedl.GetAuthorString());
         sBuf.append(" - ");
@@ -114,21 +101,18 @@ void SwEditWin::RequestHelp(const HelpEvent &rEvt)
     if(bQuickBalloon && !rSh.GetViewOptions()->IsShowContentTips())
         return;
     bool bContinue = true;
-    SET_CURR_SHELL(&rSh);
+    CurrShell aCurr(&rSh);
     OUString sText;
     Point aPos( PixelToLogic( ScreenToOutputPixel( rEvt.GetMousePosPixel() ) ));
     bool bBalloon = bool(rEvt.GetMode() & HelpEventMode::BALLOON);
 
     SdrView *pSdrView = rSh.GetDrawView();
 
-    if( bQuickBalloon )
+    if( bQuickBalloon && pSdrView )
     {
-        if( pSdrView )
-        {
-            SdrPageView* pPV = pSdrView->GetSdrPageView();
-            SwDPage* pPage = pPV ? static_cast<SwDPage*>(pPV->GetPage()) : nullptr;
-            bContinue = pPage && pPage->RequestHelp(this, pSdrView, rEvt);
-        }
+        SdrPageView* pPV = pSdrView->GetSdrPageView();
+        SwDPage* pPage = pPV ? static_cast<SwDPage*>(pPV->GetPage()) : nullptr;
+        bContinue = pPage && pPage->RequestHelp(this, pSdrView, rEvt);
     }
 
     if( bContinue && bQuickBalloon)
@@ -153,8 +137,7 @@ void SwEditWin::RequestHelp(const HelpEvent &rEvt)
             switch( aContentAtPos.eContentAtPos )
             {
             case IsAttrAtPos::TableBoxFml:
-                sText = "= ";
-                sText += static_cast<const SwTableBoxFormula*>(aContentAtPos.aFnd.pAttr)->GetFormula();
+                sText = "= " + static_cast<const SwTableBoxFormula*>(aContentAtPos.aFnd.pAttr)->GetFormula();
                 break;
 #ifdef DBG_UTIL
             case IsAttrAtPos::TableBoxValue:
@@ -162,8 +145,8 @@ void SwEditWin::RequestHelp(const HelpEvent &rEvt)
                 sText = OStringToOUString(OString::number(
                             static_cast<const SwTableBoxValue*>(aContentAtPos.aFnd.pAttr)->GetValue()),
                             osl_getThreadTextEncoding());
+                break;
             }
-            break;
             case IsAttrAtPos::CurrAttrs:
                 sText = aContentAtPos.sStr;
                 break;
@@ -171,7 +154,7 @@ void SwEditWin::RequestHelp(const HelpEvent &rEvt)
 
             case IsAttrAtPos::InetAttr:
             {
-                sText = static_cast<const SfxStringItem*>(aContentAtPos.aFnd.pAttr)->GetValue();
+                sText = static_cast<const SwFormatINetFormat*>(aContentAtPos.aFnd.pAttr)->GetValue();
                 sText = URIHelper::removePassword( sText,
                                         INetURLObject::EncodeMechanism::WasEncoded,
                                            INetURLObject::DecodeMechanism::Unambiguous);
@@ -187,7 +170,7 @@ void SwEditWin::RequestHelp(const HelpEvent &rEvt)
                         sSuffix == "text" ||
                         sSuffix == "graphic" ||
                         sSuffix == "ole" )
-                    sText = sText.copy( 0, nFound - 1);
+                        sText = sText.copy( 0, nFound - 1);
                 }
                 // #i104300#
                 // special handling if target is a cross-reference bookmark
@@ -197,17 +180,17 @@ void SwEditWin::RequestHelp(const HelpEvent &rEvt)
                     IDocumentMarkAccess::const_iterator_t ppBkmk =
                                     pMarkAccess->findBookmark( sTmpSearchStr );
                     if ( ppBkmk != pMarkAccess->getBookmarksEnd() &&
-                         IDocumentMarkAccess::GetType( *(ppBkmk->get()) )
+                         IDocumentMarkAccess::GetType(**ppBkmk)
                             == IDocumentMarkAccess::MarkType::CROSSREF_HEADING_BOOKMARK )
                     {
-                        SwTextNode* pTextNode = ppBkmk->get()->GetMarkStart().nNode.GetNode().GetTextNode();
+                        SwTextNode* pTextNode = (*ppBkmk)->GetMarkStart().nNode.GetNode().GetTextNode();
                         if ( pTextNode )
                         {
-                            sText = pTextNode->GetExpandText( 0, pTextNode->Len(), true, true );
+                            sText = sw::GetExpandTextMerged(rSh.GetLayout(), *pTextNode, true, false, ExpandMode(0));
 
                             if( !sText.isEmpty() )
                             {
-                                OUStringBuffer sTmp(sText.replaceAll(OUStringLiteral1(0xad), ""));
+                                OUStringBuffer sTmp(sText.replaceAll(u"\u00ad", ""));
                                 for (sal_Int32 i = 0; i < sTmp.getLength(); ++i)
                                 {
                                     if (sTmp[i] < 0x20)
@@ -224,14 +207,7 @@ void SwEditWin::RequestHelp(const HelpEvent &rEvt)
                 bool bExecHyperlinks = m_rView.GetDocShell()->IsReadOnly();
                 if ( !bExecHyperlinks )
                 {
-                    SvtSecurityOptions aSecOpts;
-                    bExecHyperlinks = !aSecOpts.IsOptionSet( SvtSecurityOptions::EOption::CtrlClickHyperlink );
-
-                    sText = ": " + sText;
-                    if ( !bExecHyperlinks )
-                        sText = SwViewShell::GetShellRes()->aLinkCtrlClick + sText;
-                    else
-                        sText = SwViewShell::GetShellRes()->aLinkClick + sText;
+                    sText = SfxHelp::GetURLHelpText(sText);
                 }
                 break;
             }
@@ -243,15 +219,14 @@ void SwEditWin::RequestHelp(const HelpEvent &rEvt)
                 aModStr = aModStr.replaceFirst(aCode.GetName(), "");
                 aModStr = aModStr.replaceAll("+", "");
                 sText = SwResId(STR_SMARTTAG_CLICK).replaceAll("%s", aModStr);
+                break;
             }
-            break;
 
             case IsAttrAtPos::Ftn:
                 if( aContentAtPos.pFndTextAttr && aContentAtPos.aFnd.pAttr )
                 {
                     const SwFormatFootnote* pFootnote = static_cast<const SwFormatFootnote*>(aContentAtPos.aFnd.pAttr);
-                    OUString sTmp;
-                    pFootnote->GetFootnoteText( sTmp );
+                    OUString sTmp(pFootnote->GetFootnoteText(*rSh.GetLayout()));
                     sText = SwResId( pFootnote->IsEndNote()
                                     ? STR_ENDNOTE : STR_FTNNOTE ) + sTmp;
                     bBalloon = true;
@@ -261,8 +236,13 @@ void SwEditWin::RequestHelp(const HelpEvent &rEvt)
                 break;
 
             case IsAttrAtPos::Redline:
-                sText = lcl_GetRedlineHelp(*aContentAtPos.aFnd.pRedl, bBalloon);
+            {
+                const bool bShowTrackChanges = IDocumentRedlineAccess::IsShowChanges( m_rView.GetDocShell()->GetDoc()->getIDocumentRedlineAccess().GetRedlineFlags() );
+                const bool bShowInlineTooltips = rSh.GetViewOptions()->IsShowInlineTooltips();
+                if ( bShowTrackChanges && bShowInlineTooltips )
+                     sText = lcl_GetRedlineHelp(*aContentAtPos.aFnd.pRedl, bBalloon);
                 break;
+            }
 
             case IsAttrAtPos::ToxMark:
                 sText = aContentAtPos.sStr;
@@ -277,11 +257,11 @@ void SwEditWin::RequestHelp(const HelpEvent &rEvt)
                     }
                 }
                 break;
+
             case IsAttrAtPos::RefMark:
                 if(aContentAtPos.aFnd.pAttr)
                 {
-                    sText = SwResId(STR_CONTENT_TYPE_SINGLE_REFERENCE);
-                    sText += ": ";
+                    sText = SwResId(STR_CONTENT_TYPE_SINGLE_REFERENCE) + ": ";
                     sText += static_cast<const SwFormatRefMark*>(aContentAtPos.aFnd.pAttr)->GetRefName();
                 }
             break;
@@ -300,7 +280,7 @@ void SwEditWin::RequestHelp(const HelpEvent &rEvt)
                         {
                             sal_uInt16 nOldSubType = pField->GetSubType();
                             const_cast<SwField*>(pField)->SetSubType(nsSwExtendedSubType::SUB_CMD);
-                            sText = pField->ExpandField(true);
+                            sText = pField->ExpandField(true, rSh.GetLayout());
                             const_cast<SwField*>(pField)->SetSubType(nOldSubType);
                         }
                         break;
@@ -311,7 +291,8 @@ void SwEditWin::RequestHelp(const HelpEvent &rEvt)
                             }
                         case SwFieldIds::Input:  // BubbleHelp, because the suggestion could be quite long
                             bBalloon = true;
-                            SAL_FALLTHROUGH;
+                            [[fallthrough]];
+                        case SwFieldIds::Dropdown:
                         case SwFieldIds::JumpEdit:
                             sText = pField->GetPar2();
                             break;
@@ -343,7 +324,7 @@ void SwEditWin::RequestHelp(const HelpEvent &rEvt)
                                 if ( pRefField->IsRefToHeadingCrossRefBookmark() ||
                                      pRefField->IsRefToNumItemCrossRefBookmark() )
                                 {
-                                    sText = pRefField->GetExpandedTextOfReferencedTextNode();
+                                    sText = pRefField->GetExpandedTextOfReferencedTextNode(*rSh.GetLayout());
                                     if ( sText.getLength() > 80  )
                                     {
                                         sText = sText.copy(0, 80) + "...";
@@ -354,17 +335,23 @@ void SwEditWin::RequestHelp(const HelpEvent &rEvt)
                                     sText = static_cast<const SwGetRefField*>(pField)->GetSetRefName();
                                 }
                             }
+                            break;
                         }
-                        break;
+
                         default: break;
                         }
                     }
 
                     if( sText.isEmpty() )
                     {
-                        aContentAtPos.eContentAtPos = IsAttrAtPos::Redline;
-                        if( rSh.GetContentAtPos( aPos, aContentAtPos, false, &aFieldRect ) )
-                            sText = lcl_GetRedlineHelp(*aContentAtPos.aFnd.pRedl, bBalloon);
+                        const bool bShowTrackChanges = IDocumentRedlineAccess::IsShowChanges( m_rView.GetDocShell()->GetDoc()->getIDocumentRedlineAccess().GetRedlineFlags() );
+                        const bool bShowInlineTooltips = rSh.GetViewOptions()->IsShowInlineTooltips();
+                        if ( bShowTrackChanges && bShowInlineTooltips )
+                        {
+                            aContentAtPos.eContentAtPos = IsAttrAtPos::Redline;
+                            if( rSh.GetContentAtPos( aPos, aContentAtPos, false, &aFieldRect ) )
+                                sText = lcl_GetRedlineHelp(*aContentAtPos.aFnd.pRedl, bBalloon);
+                        }
                     }
                 }
             }
@@ -372,11 +359,11 @@ void SwEditWin::RequestHelp(const HelpEvent &rEvt)
             {
                 tools::Rectangle aRect( aFieldRect.SVRect() );
                 Point aPt( OutputToScreenPixel( LogicToPixel( aRect.TopLeft() )));
-                aRect.Left()   = aPt.X();
-                aRect.Top()    = aPt.Y();
+                aRect.SetLeft( aPt.X() );
+                aRect.SetTop( aPt.Y() );
                 aPt = OutputToScreenPixel( LogicToPixel( aRect.BottomRight() ));
-                aRect.Right()  = aPt.X();
-                aRect.Bottom() = aPt.Y();
+                aRect.SetRight( aPt.X() );
+                aRect.SetBottom( aPt.Y() );
 
                 if( bBalloon )
                     Help::ShowBalloon( this, rEvt.GetMousePosPixel(), aRect, sText );
@@ -390,47 +377,7 @@ void SwEditWin::RequestHelp(const HelpEvent &rEvt)
 
             bContinue = false;
         }
-        if( bContinue )
-        {
-            SwTab nTabCols = rSh.WhichMouseTabCol(aPos);
-            sal_uInt16 nTabRes = 0;
-            switch(nTabCols)
-            {
-                case SwTab::COL_HORI:
-                case SwTab::COL_VERT:
-                    nTabRes = STR_TABLE_COL_ADJUST;
-                    break;
-                case SwTab::ROW_HORI:
-                case SwTab::ROW_VERT:
-                    nTabRes = STR_TABLE_ROW_ADJUST;
-                    break;
-                // #i32329# Enhanced table selection
-                case SwTab::SEL_HORI:
-                case SwTab::SEL_HORI_RTL:
-                case SwTab::SEL_VERT:
-                    nTabRes = STR_TABLE_SELECT_ALL;
-                    break;
-                case SwTab::ROWSEL_HORI:
-                case SwTab::ROWSEL_HORI_RTL:
-                case SwTab::ROWSEL_VERT:
-                    nTabRes = STR_TABLE_SELECT_ROW;
-                    break;
-                case SwTab::COLSEL_HORI:
-                case SwTab::COLSEL_VERT:
-                    nTabRes = STR_TABLE_SELECT_COL;
-                    break;
-                case SwTab::COL_NONE: break; // prevent compiler warning
-            }
-            if(nTabRes)
-            {
-                sText = SwResId(nTabRes);
-                Size aTextSize( GetTextWidth(sText), GetTextHeight());
-                tools::Rectangle aRect(rEvt.GetMousePosPixel(), aTextSize);
-                OUString sDisplayText(ClipLongToolTip(sText));
-                Help::ShowQuickHelp(this, aRect, sDisplayText);
-            }
-            bContinue = false;
-        }
+
     }
 
     if( bContinue )
@@ -459,9 +406,8 @@ void SwEditWin::Paint(vcl::RenderContext& rRenderContext, const tools::Rectangle
         // fully resides inside?
         if( rRect.IsInside( aRect ) )
         {
-            // dann aufheben
-            delete m_pShadCursor;
-            m_pShadCursor = nullptr;
+            // then cancel
+            m_pShadCursor.reset();
         }
         else if( rRect.IsOver( aRect ))
         {
@@ -484,6 +430,9 @@ void SwEditWin::Paint(vcl::RenderContext& rRenderContext, const tools::Rectangle
 
     if( bPaintShadowCursor )
         m_pShadCursor->Paint();
+
+    if (pWrtShell->GetViewOptions()->IsShowOutlineContentVisibilityButton())
+        GetFrameControlsManager().SetOutlineContentVisibilityButtons();
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

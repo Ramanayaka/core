@@ -21,10 +21,12 @@
 #define INCLUDED_VCL_INC_UNX_SALVD_H
 
 #include <X11/Xlib.h>
-#include <X11/Xutil.h>
 
+#include <unx/saldisp.hxx>
 #include <unx/saltype.h>
 #include <salvd.hxx>
+
+#include <memory>
 
 class SalDisplay;
 class X11SalGraphics;
@@ -32,7 +34,7 @@ class X11SalGraphics;
 class X11SalVirtualDevice : public SalVirtualDevice
 {
     SalDisplay      *pDisplay_;
-    X11SalGraphics  *pGraphics_;
+    std::unique_ptr<X11SalGraphics> pGraphics_;
 
     Pixmap          hDrawable_;
     SalX11Screen    m_nXScreen;
@@ -44,8 +46,8 @@ class X11SalVirtualDevice : public SalVirtualDevice
     bool        bExternPixmap_;
 
 public:
-    X11SalVirtualDevice(SalGraphics *pGraphics, long &nDX, long &nDY,
-            DeviceFormat eFormat, const SystemGraphicsData *pData, X11SalGraphics* pNewGraphics);
+    X11SalVirtualDevice(SalGraphics const *pGraphics, long &nDX, long &nDY,
+            DeviceFormat eFormat, const SystemGraphicsData *pData, std::unique_ptr<X11SalGraphics> pNewGraphics);
 
     virtual ~X11SalVirtualDevice() override;
 

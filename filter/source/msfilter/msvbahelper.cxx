@@ -20,7 +20,6 @@
 #include <config_features.h>
 
 #include <filter/msfilter/msvbahelper.hxx>
-#include <basic/sbx.hxx>
 #include <basic/sbstar.hxx>
 #include <basic/basmgr.hxx>
 #include <basic/sbmod.hxx>
@@ -31,14 +30,15 @@
 #include <com/sun/star/script/vba/XVBACompatibility.hpp>
 #include <com/sun/star/lang/XUnoTunnel.hpp>
 #include <com/sun/star/script/ModuleType.hpp>
+#include <com/sun/star/frame/XModel.hpp>
 #include <cppuhelper/supportsservice.hxx>
 #include <tools/urlobj.hxx>
 #include <osl/file.hxx>
+#include <sal/log.hxx>
 #include <unotools/pathoptions.hxx>
 #include <rtl/character.hxx>
 #include <sfx2/objsh.hxx>
 
-#include <com/sun/star/awt/KeyModifier.hpp>
 #include <svtools/acceleratorexecute.hxx>
 #include <com/sun/star/ui/XUIConfigurationManagerSupplier.hpp>
 #include <com/sun/star/ui/XUIConfigurationManager.hpp>
@@ -46,11 +46,10 @@
 
 using namespace ::com::sun::star;
 
-namespace ooo {
-namespace vba {
+namespace ooo::vba {
 
-const OUString sUrlPart0( "vnd.sun.star.script:" );
-const OUString sUrlPart1( "?language=Basic&location=document" );
+const OUStringLiteral sUrlPart0( "vnd.sun.star.script:" );
+const OUStringLiteral sUrlPart1( "?language=Basic&location=document" );
 
 OUString makeMacroURL( const OUString& sMacroName )
 {
@@ -67,7 +66,7 @@ OUString extractMacroName( const OUString& rMacroUrl )
     return OUString();
 }
 
-OUString trimMacroName( const OUString& rMacroName )
+static OUString trimMacroName( const OUString& rMacroName )
 {
     // the name may contain whitespaces and may be enclosed in apostrophs
     OUString aMacroName = rMacroName.trim();
@@ -77,7 +76,9 @@ OUString trimMacroName( const OUString& rMacroName )
     return aMacroName;
 }
 
-SfxObjectShell* findShellForUrl( const OUString& sMacroURLOrPath )
+#if HAVE_FEATURE_SCRIPTING
+
+static SfxObjectShell* findShellForUrl( const OUString& sMacroURLOrPath )
 {
     SfxObjectShell* pFoundShell=nullptr;
     SfxObjectShell* pShell = SfxObjectShell::GetFirst();
@@ -108,12 +109,10 @@ SfxObjectShell* findShellForUrl( const OUString& sMacroURLOrPath )
             OUString aName = xModel->getURL() ;
             if (aName.isEmpty())
                 {
-                    uno::Reference< frame::XFrame > xFrame( xModel->getCurrentController()->getFrame(), uno::UNO_QUERY_THROW );
+                    uno::Reference< frame::XFrame > xFrame( xModel->getCurrentController()->getFrame(), uno::UNO_SET_THROW );
                     uno::Reference< beans::XPropertySet > xProps( xFrame, uno::UNO_QUERY_THROW );
                     xProps->getPropertyValue("Title") >>= aName;
-                    sal_Int32 pos = 0;
-                    aName = aName.getToken(0,'-',pos);
-                    aName = aName.trim();
+                    aName = aName.getToken(0, '-').trim();
                     if( sMacroURLOrPath.lastIndexOf( aName ) >= 0 )
                     {
                         pFoundShell = pShell;
@@ -129,7 +128,7 @@ SfxObjectShell* findShellForUrl( const OUString& sMacroURLOrPath )
                 {
                     uno::Reference< document::XDocumentProperties > const
                         xDocProps(xDocPropSupp->getDocumentProperties(),
-                                    uno::UNO_QUERY_THROW);
+                                    uno::UNO_SET_THROW);
                     OUString sCurrName = xDocProps->getTemplateName();
                     if( sMacroURLOrPath.lastIndexOf( sCurrName ) >= 0 )
                     {
@@ -148,16 +147,16 @@ SfxObjectShell* findShellForUrl( const OUString& sMacroURLOrPath )
                     sal_Int32 lastSlashIndex = xModel->getURL().lastIndexOf( '/' );
                     if ( lastSlashIndex > -1 )
                     {
-                        bDocNameNoPathMatch = xModel->getURL().copy( lastSlashIndex + 1 ).equals( aURL );
+                        bDocNameNoPathMatch = xModel->getURL().copy( lastSlashIndex + 1 ) == aURL;
                         if ( !bDocNameNoPathMatch )
                         {
                             OUString aTmpName = "'" + xModel->getURL().copy( lastSlashIndex + 1 ) + "'";
-                            bDocNameNoPathMatch = aTmpName.equals( aURL );
+                            bDocNameNoPathMatch = aTmpName == aURL;
                         }
                     }
                 }
 
-                if ( aURL.equals( xModel->getURL() ) || bDocNameNoPathMatch )
+                if ( aURL == xModel->getURL() || bDocNameNoPathMatch )
                 {
                     pFoundShell = pShell;
                     break;
@@ -172,7 +171,7 @@ SfxObjectShell* findShellForUrl( const OUString& sMacroURLOrPath )
 // sMod can be empty ( but we really need the library to search in )
 // if sMod is empty and a macro is found then sMod is updated
 // if sMod is empty, only standard modules will be searched (no class, document, form modules)
-bool hasMacro( SfxObjectShell* pShell, const OUString& sLibrary, OUString& sMod, const OUString& sMacro )
+static bool hasMacro( SfxObjectShell const * pShell, const OUString& sLibrary, OUString& sMod, const OUString& sMacro )
 {
     bool bFound = false;
 
@@ -223,7 +222,9 @@ bool hasMacro( SfxObjectShell* pShell, const OUString& sLibrary, OUString& sMod,
     return bFound;
 }
 
-OUString getDefaultProjectName( SfxObjectShell* pShell )
+#endif
+
+OUString getDefaultProjectName( SfxObjectShell const * pShell )
 {
     OUString aPrjName;
     if( BasicManager* pBasicMgr = pShell ? pShell->GetBasicManager() : nullptr )
@@ -235,7 +236,9 @@ OUString getDefaultProjectName( SfxObjectShell* pShell )
     return aPrjName;
 }
 
-void parseMacro( const OUString& sMacro, OUString& sContainer, OUString& sModule, OUString& sProcedure )
+#if HAVE_FEATURE_SCRIPTING
+
+static void parseMacro( const OUString& sMacro, OUString& sContainer, OUString& sModule, OUString& sProcedure )
 {
     sal_Int32 nMacroDot = sMacro.lastIndexOf( '.' );
 
@@ -256,7 +259,9 @@ void parseMacro( const OUString& sMacro, OUString& sContainer, OUString& sModule
        sProcedure = sMacro;
 }
 
-OUString resolveVBAMacro( SfxObjectShell* pShell, const OUString& rLibName, const OUString& rModuleName, const OUString& rMacroName )
+#endif
+
+OUString resolveVBAMacro( SfxObjectShell const * pShell, const OUString& rLibName, const OUString& rModuleName, const OUString& rMacroName )
 {
 #if !HAVE_FEATURE_SCRIPTING
     (void) pShell;
@@ -306,7 +311,7 @@ MacroResolvedInfo resolveVBAMacro( SfxObjectShell* pShell, const OUString& Macro
         if( bSearchGlobalTemplates )
         {
             SvtPathOptions aPathOpt;
-            OUString aAddinPath = aPathOpt.GetAddinPath();
+            const OUString& aAddinPath = aPathOpt.GetAddinPath();
             if( sDocUrlOrPath.startsWith( aAddinPath ) )
                 pFoundShell = pShell;
         }
@@ -374,7 +379,7 @@ MacroResolvedInfo resolveVBAMacro( SfxObjectShell* pShell, const OUString& Macro
             }
             catch( const uno::Exception& /*e*/) {}
 
-        sSearchList.push_back( sThisProject ); // First Lib to search
+            sSearchList.push_back( sThisProject ); // First Lib to search
 
 // service VBAProjectNameProvider not implemented
 #if 0
@@ -437,12 +442,14 @@ MacroResolvedInfo resolveVBAMacro( SfxObjectShell* pShell, const OUString& Macro
 #endif
     }
 
-    std::vector< OUString >::iterator it_end = sSearchList.end();
-    for ( std::vector< OUString >::iterator it = sSearchList.begin(); !aRes.mbFound && (it != it_end); ++it )
+    for (auto const& search : sSearchList)
     {
-        aRes.mbFound = hasMacro( pShell, *it, sModule, sProcedure );
+        aRes.mbFound = hasMacro( pShell, search, sModule, sProcedure );
         if ( aRes.mbFound )
-            sContainer = *it;
+        {
+            sContainer = search;
+            break;
+        }
     }
     //aRes.msResolvedMacro = sProcedure.Insert( '.', 0 ).Insert( sModule, 0).Insert( '.', 0 ).Insert( sContainer, 0 );
     aRes.msResolvedMacro = sContainer + "." + sModule + "." + sProcedure;
@@ -471,20 +478,16 @@ bool executeMacro( SfxObjectShell* pShell, const OUString& sMacroName, uno::Sequ
     uno::Sequence< uno::Any > aOutArgs;
 
     try
-    {   ErrCode nErr( ERRCODE_BASIC_INTERNAL_ERROR );
-        if ( pShell )
+    {
+        ErrCode nErr = pShell->CallXScript(sUrl, aArgs, aRet, aOutArgsIndex, aOutArgs, false);
+        sal_Int32 nLen = aOutArgs.getLength();
+        // convert any out params to seem like they were inputs
+        if (nLen)
         {
-            nErr = pShell->CallXScript( sUrl,
-                               aArgs, aRet, aOutArgsIndex, aOutArgs, false );
-            sal_Int32 nLen = aOutArgs.getLength();
-            // convert any out params to seem like they were inputs
-            if ( nLen )
+            for (sal_Int32 index = 0; index < nLen; ++index)
             {
-                for ( sal_Int32 index=0; index < nLen; ++index )
-                {
-                    sal_Int32 nOutIndex = aOutArgsIndex[ index ];
-                    aArgs[ nOutIndex ] = aOutArgs[ index ];
-                }
+                sal_Int32 nOutIndex = aOutArgsIndex[index];
+                aArgs[nOutIndex] = aOutArgs[index];
             }
         }
         bRes = ( nErr == ERRCODE_NONE );
@@ -497,22 +500,6 @@ bool executeMacro( SfxObjectShell* pShell, const OUString& sMacroName, uno::Sequ
 #endif
 }
 
-
-uno::Sequence< OUString > VBAMacroResolver_getSupportedServiceNames()
-{
-    uno::Sequence<OUString> aServiceNames { "com.sun.star.script.vba.VBAMacroResolver" };
-    return aServiceNames;
-}
-
-OUString VBAMacroResolver_getImplementationName()
-{
-    return OUString( "com.sun.star.comp.vba.VBAMacroResolver" );
-}
-
-uno::Reference< uno::XInterface > SAL_CALL VBAMacroResolver_createInstance( const uno::Reference< uno::XComponentContext >& )
-{
-    return static_cast< ::cppu::OWeakObject* >( new VBAMacroResolver );
-}
 
 
 VBAMacroResolver::VBAMacroResolver() :
@@ -528,7 +515,7 @@ VBAMacroResolver::~VBAMacroResolver()
 
 OUString SAL_CALL VBAMacroResolver::getImplementationName()
 {
-    return VBAMacroResolver_getImplementationName();
+    return "com.sun.star.comp.vba.VBAMacroResolver";
 }
 
 sal_Bool SAL_CALL VBAMacroResolver::supportsService( const OUString& rService )
@@ -538,14 +525,14 @@ sal_Bool SAL_CALL VBAMacroResolver::supportsService( const OUString& rService )
 
 uno::Sequence< OUString > SAL_CALL VBAMacroResolver::getSupportedServiceNames()
 {
-    return VBAMacroResolver_getSupportedServiceNames();
+    return { "com.sun.star.script.vba.VBAMacroResolver" };
 }
 
 // com.sun.star.lang.XInitialization interface --------------------------------
 
 void SAL_CALL VBAMacroResolver::initialize( const uno::Sequence< uno::Any >& rArgs )
 {
-    OSL_ENSURE( rArgs.getLength() < 2, "VBAMacroResolver::initialize - missing arguments" );
+    OSL_ENSURE( rArgs.getLength() > 1, "VBAMacroResolver::initialize - missing arguments" );
     if( rArgs.getLength() < 2 )
         throw uno::RuntimeException();
 
@@ -600,7 +587,7 @@ OUString SAL_CALL VBAMacroResolver::resolveScriptURLtoVBAMacro( const OUString& 
     throw uno::RuntimeException();
 }
 
-bool getModifier( sal_Unicode c, sal_uInt16& mod )
+static bool getModifier( sal_Unicode c, sal_uInt16& mod )
 {
     if ( c == '+' ) {
         mod |= KEY_SHIFT;
@@ -616,7 +603,7 @@ bool getModifier( sal_Unicode c, sal_uInt16& mod )
 }
 
 /// @throws uno::RuntimeException
-sal_uInt16 parseChar( sal_Unicode c )
+static sal_uInt16 parseChar( sal_Unicode c )
 {
     sal_uInt16 nVclKey = 0;
     // do we care about locale here for letters/digits? probably not
@@ -637,11 +624,15 @@ sal_uInt16 parseChar( sal_Unicode c )
     return nVclKey;
 }
 
+namespace {
+
 struct KeyCodeEntry
 {
    const char* sName;
    sal_uInt16 nCode;
 };
+
+}
 
 KeyCodeEntry const aMSKeyCodesData[] = {
     { "BACKSPACE", KEY_BACKSPACE },
@@ -682,14 +673,15 @@ KeyCodeEntry const aMSKeyCodesData[] = {
 
 awt::KeyEvent parseKeyEvent( const OUString& Key )
 {
-    static std::map< OUString, sal_uInt16 > s_KeyCodes;
-    if ( s_KeyCodes.empty() )
+    static std::map< OUString, sal_uInt16 > s_KeyCodes = [&]()
     {
+        std::map< OUString, sal_uInt16 > tmp;
         for (KeyCodeEntry const & i : aMSKeyCodesData)
         {
-            s_KeyCodes[ OUString::createFromAscii( i.sName ) ] = i.nCode;
+            tmp[ OUString::createFromAscii( i.sName ) ] = i.nCode;
         }
-    }
+        return tmp;
+    }();
     OUString sKeyCode;
     sal_uInt16 nVclKey = 0;
 
@@ -711,7 +703,7 @@ awt::KeyEvent parseKeyEvent( const OUString& Key )
     }
     else // key should be enclosed in '{}'
     {
-        if ( sKeyCode.getLength() < 3 ||  !( sKeyCode[0] == '{' && sKeyCode[sKeyCode.getLength() - 1 ] == '}' ) )
+        if ( sKeyCode.getLength() < 3 || sKeyCode[0] != '{' || sKeyCode[sKeyCode.getLength() - 1 ] != '}' )
             throw uno::RuntimeException();
 
         sKeyCode = sKeyCode.copy(1, sKeyCode.getLength() - 2 );
@@ -750,12 +742,12 @@ void applyShortCutKeyBinding ( const uno::Reference< frame::XModel >& rxModel, c
         MacroResolvedInfo aMacroInfo = resolveVBAMacro( pShell, aMacroName );
         if( !aMacroInfo.mbFound )
             throw uno::RuntimeException( "The procedure doesn't exist" );
-       MacroName = aMacroInfo.msResolvedMacro;
+        MacroName = aMacroInfo.msResolvedMacro;
     }
     uno::Reference< ui::XUIConfigurationManagerSupplier > xCfgSupplier(rxModel, uno::UNO_QUERY_THROW);
     uno::Reference< ui::XUIConfigurationManager > xCfgMgr = xCfgSupplier->getUIConfigurationManager();
 
-    uno::Reference< ui::XAcceleratorConfiguration > xAcc( xCfgMgr->getShortCutManager(), uno::UNO_QUERY_THROW );
+    uno::Reference< ui::XAcceleratorConfiguration > xAcc( xCfgMgr->getShortCutManager(), uno::UNO_SET_THROW );
     if ( MacroName.isEmpty() )
         // I believe this should really restore the [application] default. Since
         // afaik we don't actually setup application default bindings on import
@@ -767,7 +759,14 @@ void applyShortCutKeyBinding ( const uno::Reference< frame::XModel >& rxModel, c
 }
 
 
-} // namespace vba
 } // namespace ooo
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+filter_VBAMacroResolver_get_implementation(
+    css::uno::XComponentContext* , css::uno::Sequence<css::uno::Any> const&)
+{
+    return cppu::acquire(new ooo::vba::VBAMacroResolver());
+}
+
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */
 

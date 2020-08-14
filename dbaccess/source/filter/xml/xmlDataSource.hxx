@@ -20,8 +20,6 @@
 #define INCLUDED_DBACCESS_SOURCE_FILTER_XML_XMLDATASOURCE_HXX
 
 #include <xmloff/xmlictxt.hxx>
-#include <com/sun/star/beans/PropertyValue.hpp>
-#include <vector>
 
 namespace dbaxml
 {
@@ -37,15 +35,15 @@ namespace dbaxml
             eAppSettings
         };
 
-        OXMLDataSource( ODBFilter& rImport, sal_uInt16 nPrfx,
-                    const OUString& rLName,
-                    const css::uno::Reference< css::xml::sax::XAttributeList > & xAttrList,
-                    const UsedFor _eUsedFor = eDataSource );
+        OXMLDataSource( ODBFilter& rImport,
+                    const css::uno::Reference< css::xml::sax::XFastAttributeList >& _xAttrList,
+                    const UsedFor _eUsedFor );
         virtual ~OXMLDataSource() override;
 
-        virtual SvXMLImportContext *CreateChildContext( sal_uInt16 nPrefix,
-                    const OUString& rLocalName,
-                    const css::uno::Reference< css::xml::sax::XAttributeList > & xAttrList ) override;
+        virtual void SAL_CALL startFastElement( sal_Int32 /*nElement*/,
+                const css::uno::Reference< css::xml::sax::XFastAttributeList >& ) override {}
+        virtual css::uno::Reference< css::xml::sax::XFastContextHandler > SAL_CALL createFastChildContext(
+            sal_Int32 nElement, const css::uno::Reference< css::xml::sax::XFastAttributeList >& AttrList ) override;
     };
 } // namespace dbaxml
 

@@ -16,42 +16,32 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#include <comphelper/processfactory.hxx>
 
 #include <com/sun/star/text/XTextDocument.hpp>
 #include <com/sun/star/container/XEnumerationAccess.hpp>
-#include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/frame/XModel.hpp>
-#include <com/sun/star/util/XModifiable.hpp>
-#include <com/sun/star/lang/DisposedException.hpp>
-#include <com/sun/star/beans/PropertyVetoException.hpp>
-#include <com/sun/star/util/XCloseable.hpp>
-#include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
-#include <com/sun/star/document/XTypeDetection.hpp>
 
-#include <sfx2/objsh.hxx>
 #include <tools/urlobj.hxx>
 
-#include "vbaglobals.hxx"
 #include "vbadocument.hxx"
 #include "vbadocuments.hxx"
-#include <vbahelper/vbahelper.hxx>
 
 #include <osl/file.hxx>
 using namespace ::ooo::vba;
 using namespace ::com::sun::star;
 
 static uno::Any
-getDocument( uno::Reference< uno::XComponentContext >& xContext, const uno::Reference< text::XTextDocument > &xDoc, const uno::Any& aApplication )
+getDocument( uno::Reference< uno::XComponentContext > const & xContext, const uno::Reference< text::XTextDocument > &xDoc, const uno::Any& aApplication )
 {
     // FIXME: fine as long as SwVbaDocument is stateless ...
-    uno::Reference< frame::XModel > xModel( xDoc, uno::UNO_QUERY );
-    if( !xModel.is() )
+    if( !xDoc.is() )
         return uno::Any();
 
-    SwVbaDocument *pWb = new SwVbaDocument(  uno::Reference< XHelperInterface >( aApplication, uno::UNO_QUERY_THROW ), xContext, xModel );
+    SwVbaDocument *pWb = new SwVbaDocument(  uno::Reference< XHelperInterface >( aApplication, uno::UNO_QUERY_THROW ), xContext, xDoc );
     return uno::Any( uno::Reference< word::XDocument > (pWb) );
 }
+
+namespace {
 
 class DocumentEnumImpl : public EnumerationHelperImpl
 {
@@ -66,6 +56,8 @@ public:
         return getDocument( m_xContext, xDoc, m_aApplication );
     }
 };
+
+}
 
 SwVbaDocuments::SwVbaDocuments( const uno::Reference< XHelperInterface >& xParent, const uno::Reference< uno::XComponentContext >& xContext ) : SwVbaDocuments_BASE( xParent, xContext, VbaDocumentsBase::WORD_DOCUMENT )
 {
@@ -103,13 +95,11 @@ SwVbaDocuments::Add( const uno::Any& Template, const uno::Any& /*NewTemplate*/, 
         return  Open( sFileName, uno::Any(), uno::Any(), uno::Any(), uno::Any(), uno::Any(), uno::Any(), uno::Any(), uno::Any(), uno::Any(), uno::Any(), uno::Any(), uno::Any(), uno::Any(), uno::Any(), uno::Any());
     }
     uno::Reference <text::XTextDocument> xTextDoc( createDocument() , uno::UNO_QUERY_THROW );
-
-    if( xTextDoc.is() )
-        return getDocument( mxContext, xTextDoc, Application() );
-    return uno::Any();
+    return getDocument( mxContext, xTextDoc, Application() );
 }
 
 // #TODO# #FIXME# can any of the unused params below be used?
+// #TODO# #FIXME# surely we should actually close the document here
 void SAL_CALL
 SwVbaDocuments::Close( const uno::Any& /*SaveChanges*/, const uno::Any& /*OriginalFormat*/, const uno::Any& /*RouteDocument*/ )
 {
@@ -119,6 +109,8 @@ SwVbaDocuments::Close( const uno::Any& /*SaveChanges*/, const uno::Any& /*Origin
 uno::Any SAL_CALL
 SwVbaDocuments::Open( const OUString& Filename, const uno::Any& /*ConfirmConversions*/, const uno::Any& ReadOnly, const uno::Any& /*AddToRecentFiles*/, const uno::Any& /*PasswordDocument*/, const uno::Any& /*PasswordTemplate*/, const uno::Any& /*Revert*/, const uno::Any& /*WritePasswordDocument*/, const uno::Any& /*WritePasswordTemplate*/, const uno::Any& /*Format*/, const uno::Any& /*Encoding*/, const uno::Any& /*Visible*/, const uno::Any& /*OpenAndRepair*/, const uno::Any& /*DocumentDirection*/, const uno::Any& /*NoEncodingDialog*/, const uno::Any& /*XMLTransform*/ )
 {
+    SAL_INFO("sw.vba", "Documents.Open(Filename:=" << Filename << ",ReadOnly:=" << ReadOnly << ")");
+
     // we need to detect if this is a URL, if not then assume it's a file path
     OUString aURL;
     INetURLObject aObj;
@@ -139,21 +131,31 @@ SwVbaDocuments::Open( const OUString& Filename, const uno::Any& /*ConfirmConvers
     return aRet;
 }
 
+uno::Any SAL_CALL
+SwVbaDocuments::OpenNoRepairDialog( const OUString& Filename, const uno::Any& ConfirmConversions, const uno::Any& ReadOnly, const uno::Any& AddToRecentFiles, const uno::Any& PasswordDocument, const uno::Any& PasswordTemplate, const uno::Any& Revert, const uno::Any& WritePasswordDocument, const uno::Any& WritePasswordTemplate, const uno::Any& Format, const uno::Any& Encoding, const uno::Any& Visible, const uno::Any& OpenAndRepair, const uno::Any& DocumentDirection, const uno::Any& NoEncodingDialog, const uno::Any& XMLTransform )
+{
+    return Open( Filename, ConfirmConversions, ReadOnly, AddToRecentFiles, PasswordDocument, PasswordTemplate, Revert, WritePasswordDocument, WritePasswordTemplate, Format, Encoding, Visible, OpenAndRepair, DocumentDirection, NoEncodingDialog, XMLTransform );
+}
+
+uno::Any SAL_CALL
+SwVbaDocuments::OpenOld( const OUString& FileName, const uno::Any& ConfirmConversions, const uno::Any& ReadOnly, const uno::Any& AddToRecentFiles, const uno::Any& PasswordDocument, const uno::Any& PasswordTemplate, const uno::Any& Revert, const uno::Any& WritePasswordDocument, const uno::Any& WritePasswordTemplate, const uno::Any& Format )
+{
+    return Open( FileName, ConfirmConversions, ReadOnly, AddToRecentFiles, PasswordDocument, PasswordTemplate, Revert, WritePasswordDocument, WritePasswordTemplate, Format, uno::Any(), uno::Any(), uno::Any(), uno::Any(), uno::Any(), uno::Any() );
+}
+
 OUString
 SwVbaDocuments::getServiceImplName()
 {
-    return OUString("SwVbaDocuments");
+    return "SwVbaDocuments";
 }
 
 uno::Sequence<OUString>
 SwVbaDocuments::getServiceNames()
 {
-    static uno::Sequence< OUString > sNames;
-    if ( sNames.getLength() == 0 )
+    static uno::Sequence< OUString > const sNames
     {
-        sNames.realloc( 1 );
-        sNames[0] = "ooo.vba.word.Documents";
-    }
+        "ooo.vba.word.Documents"
+    };
     return sNames;
 }
 

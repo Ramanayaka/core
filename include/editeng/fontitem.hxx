@@ -21,22 +21,18 @@
 
 #include <editeng/editengdllapi.h>
 #include <rtl/ustring.hxx>
+#include <tools/fontenum.hxx>
 #include <svl/poolitem.hxx>
-#include <vcl/font.hxx>
-
-class SvXMLUnitConverter;
 
 /** This item describes a Font.
 */
-class EDITENG_DLLPUBLIC SvxFontItem : public SfxPoolItem
+class EDITENG_DLLPUBLIC SvxFontItem final : public SfxPoolItem
 {
     OUString aFamilyName;
     OUString  aStyleName;
     FontFamily eFamily;
     FontPitch ePitch;
     rtl_TextEncoding eTextEncoding;
-
-    static bool bEnableStoreUnicodeNames;
 
 public:
     static SfxPoolItem* CreateDefault();
@@ -50,15 +46,13 @@ public:
 
     // "pure virtual Methods" from SfxPoolItem
     virtual bool operator==(const SfxPoolItem& rItem) const override;
-    virtual SfxPoolItem* Clone(SfxItemPool *pPool = nullptr) const override;
-    virtual SfxPoolItem* Create(SvStream& rStream, sal_uInt16) const override;
-    virtual SvStream& Store(SvStream& rStream, sal_uInt16 nItemVersion) const override;
+    virtual SvxFontItem* Clone(SfxItemPool *pPool = nullptr) const override;
     virtual bool QueryValue(css::uno::Any& rVal, sal_uInt8 nMemberId = 0) const override;
     virtual bool PutValue(const css::uno::Any& rVal, sal_uInt8 nMemberId) override;
 
     virtual bool GetPresentation(SfxItemPresentation ePres,
                                  MapUnit eCoreMetric, MapUnit ePresMetric,
-                                 OUString &rText, const IntlWrapper* = nullptr) const override;
+                                 OUString &rText, const IntlWrapper&) const override;
 
     // Access methods:
     void SetFamilyName(const OUString& rFamilyName)
@@ -106,11 +100,7 @@ public:
         return eTextEncoding;
     }
 
-    SvxFontItem& operator=(const SvxFontItem& rFont);
-
-    static void EnableStoreUnicodeNames(bool bEnable);
-
-    void dumpAsXml(struct _xmlTextWriter* pWriter) const override;
+    void dumpAsXml(xmlTextWriterPtr pWriter) const override;
 };
 
 EDITENG_DLLPUBLIC void GetDefaultFonts(SvxFontItem& rLatin,

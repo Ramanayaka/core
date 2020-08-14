@@ -29,7 +29,7 @@
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <rtl/ref.hxx>
 
-namespace sdext { namespace presenter {
+namespace sdext::presenter {
 
 typedef ::cppu::WeakComponentImplHelper <
     css::lang::XInitialization,
@@ -48,11 +48,6 @@ public:
     virtual ~PresenterProtocolHandler() override;
 
     void SAL_CALL disposing() override;
-
-    static OUString getImplementationName_static();
-    static css::uno::Sequence< OUString > getSupportedServiceNames_static();
-    static css::uno::Reference<css::uno::XInterface> Create(
-        const css::uno::Reference<css::uno::XComponentContext>& rxContext);
 
     // XInitialization
 
@@ -85,7 +80,7 @@ private:
     void ThrowIfDisposed() const;
 };
 
-} }
+}
 
 #endif
 

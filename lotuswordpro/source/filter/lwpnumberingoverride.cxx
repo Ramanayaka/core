@@ -59,12 +59,12 @@
 ************************************************************************/
 
 #include "lwpnumberingoverride.hxx"
-#include "lwpobjstrm.hxx"
+#include <lwpobjstrm.hxx>
 
 LwpNumberingOverride::LwpNumberingOverride()
+    : m_nLevel(0)
+    , m_nPosition(0)
 {
-    m_nLevel = 0;
-    m_nPosition = 0;
 }
 
 LwpNumberingOverride::LwpNumberingOverride(LwpNumberingOverride const& rOther)
@@ -79,7 +79,7 @@ LwpNumberingOverride* LwpNumberingOverride::clone() const
     return new LwpNumberingOverride(*this);
 }
 
-void    LwpNumberingOverride::Read(LwpObjectStream *pStrm)
+void LwpNumberingOverride::Read(LwpObjectStream* pStrm)
 {
     if (pStrm->QuickReadBool())
     {

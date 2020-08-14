@@ -18,21 +18,20 @@
  */
 
 #include <com/sun/star/style/TabAlign.hpp>
-#include <o3tl/make_unique.hxx>
-#include <rtl/ustrbuf.hxx>
 #include <xmloff/xmltkmap.hxx>
-#include <xmloff/nmspmap.hxx>
-#include <xmloff/xmlnmspe.hxx>
+#include <xmloff/namespacemap.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmlimp.hxx>
 #include <com/sun/star/style/TabStop.hpp>
 #include <xmloff/xmltoken.hxx>
-#include <xmloff/i18nmap.hxx>
 #include <xmloff/xmluconv.hxx>
-#include "xmltabi.hxx"
+#include <xmltabi.hxx>
 
 
 using namespace ::com::sun::star;
 using namespace ::xmloff::token;
+
+namespace {
 
 enum SvXMLTokenMapAttrs
 {
@@ -43,7 +42,9 @@ enum SvXMLTokenMapAttrs
     XML_TOK_TABSTOP_LEADER_TEXT
 };
 
-static SvXMLTokenMapEntry aTabsAttributesAttrTokenMap[] =
+}
+
+const SvXMLTokenMapEntry aTabsAttributesAttrTokenMap[] =
 {
     { XML_NAMESPACE_STYLE, XML_POSITION,     XML_TOK_TABSTOP_POSITION },
     { XML_NAMESPACE_STYLE, XML_TYPE,         XML_TOK_TABSTOP_TYPE },
@@ -65,10 +66,6 @@ public:
                                const OUString& rLName,
                                const uno::Reference< xml::sax::XAttributeList > & xAttrList );
 
-    virtual SvXMLImportContext *CreateChildContext( sal_uInt16 nPrefix,
-                                   const OUString& rLocalName,
-                                   const uno::Reference< xml::sax::XAttributeList > & xAttrList ) override;
-
     const style::TabStop& getTabStop() const { return aTabStop; }
 };
 
@@ -85,7 +82,7 @@ SvxXMLTabStopContext_Impl::SvxXMLTabStopContext_Impl(
     aTabStop.FillChar = ' ';
     sal_Unicode cTextFillChar = 0;
 
-    SvXMLTokenMap aTokenMap( aTabsAttributesAttrTokenMap );
+    static const SvXMLTokenMap aTokenMap( aTabsAttributesAttrTokenMap );
 
     sal_Int16 nAttrCount = xAttrList.is() ? xAttrList->getLength() : 0;
     for( sal_Int16 i=0; i < nAttrCount; i++ )
@@ -152,14 +149,6 @@ SvxXMLTabStopContext_Impl::SvxXMLTabStopContext_Impl(
         aTabStop.FillChar = cTextFillChar;
 }
 
-SvXMLImportContext *SvxXMLTabStopContext_Impl::CreateChildContext(
-                                   sal_uInt16 nPrefix,
-                                   const OUString& rLocalName,
-                                   const uno::Reference< xml::sax::XAttributeList > & )
-{
-    return new SvXMLImportContext( GetImport(), nPrefix, rLocalName );
-}
-
 
 SvxXMLTabStopImportContext::SvxXMLTabStopImportContext(
                                 SvXMLImport& rImport, sal_uInt16 nPrfx,
@@ -170,7 +159,7 @@ SvxXMLTabStopImportContext::SvxXMLTabStopImportContext(
 {
 }
 
-SvXMLImportContext *SvxXMLTabStopImportContext::CreateChildContext(
+SvXMLImportContextRef SvxXMLTabStopImportContext::CreateChildContext(
                                    sal_uInt16 nPrefix,
                                    const OUString& rLocalName,
                                    const uno::Reference< xml::sax::XAttributeList > & xAttrList )
@@ -186,15 +175,11 @@ SvXMLImportContext *SvxXMLTabStopImportContext::CreateChildContext(
 
         // add new tabstop to array of tabstops
         if( !mpTabStops )
-            mpTabStops = o3tl::make_unique<SvxXMLTabStopArray_Impl>();
+            mpTabStops = std::make_unique<SvxXMLTabStopArray_Impl>();
 
         mpTabStops->push_back( xTabStopContext );
 
         pContext = xTabStopContext.get();
-    }
-    else
-    {
-        pContext = new SvXMLImportContext( GetImport(), nPrefix, rLocalName );
     }
 
     return pContext;

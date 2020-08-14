@@ -32,7 +32,7 @@ class VirtualMachine;
 /** An encapsulating wrapper around a Java virtual machine and an appropriate
     UNO class loader.
  */
-class JVMACCESS_DLLPUBLIC UnoVirtualMachine: public salhelper::SimpleReferenceObject {
+class JVMACCESS_DLLPUBLIC UnoVirtualMachine final : public salhelper::SimpleReferenceObject {
 public:
     /** An exception indicating failure to create a UnoVirtualMachine.
      */
@@ -88,8 +88,8 @@ public:
     void * getClassLoader() const { return m_classLoader;}
 
 private:
-    UnoVirtualMachine(UnoVirtualMachine &) = delete;
-    void operator =(UnoVirtualMachine &) = delete;
+    UnoVirtualMachine(UnoVirtualMachine const &) = delete;
+    UnoVirtualMachine& operator =(UnoVirtualMachine const &) = delete;
 
     virtual ~UnoVirtualMachine() override;
 

@@ -21,49 +21,24 @@
 
 #include <sfx2/tabdlg.hxx>
 #include <sfx2/basedlgs.hxx>
-#include <vcl/button.hxx>
-#include <vcl/fixed.hxx>
-#include <vcl/field.hxx>
+#include <svx/swframetypes.hxx>
 
 namespace vcl { class Window; }
 class SfxItemSet;
 class SwWrtShell;
 
-class SwWrapDlg : public SfxSingleTabDialog
+class SwWrapDlg : public SfxSingleTabDialogController
 {
-    SwWrtShell*         pWrtShell;
-
 public:
-    SwWrapDlg(vcl::Window* pParent, SfxItemSet& rSet, SwWrtShell* pSh, bool bDrawMode);
+    SwWrapDlg(weld::Window* pParent, SfxItemSet& rSet, SwWrtShell* pSh, bool bDrawMode);
 };
 
 // circulation TabPage
 class SwWrapTabPage: public SfxTabPage
 {
-    // WRAPPING
-    VclPtr<RadioButton>   m_pNoWrapRB;
-    VclPtr<RadioButton>   m_pWrapLeftRB;
-    VclPtr<RadioButton>   m_pWrapRightRB;
-    VclPtr<RadioButton>   m_pWrapParallelRB;
-    VclPtr<RadioButton>   m_pWrapThroughRB;
-    VclPtr<RadioButton>   m_pIdealWrapRB;
-
-    // MARGIN
-    VclPtr<MetricField>   m_pLeftMarginED;
-    VclPtr<MetricField>   m_pRightMarginED;
-    VclPtr<MetricField>   m_pTopMarginED;
-    VclPtr<MetricField>   m_pBottomMarginED;
-
-    // OPTIONS
-    VclPtr<CheckBox>      m_pWrapAnchorOnlyCB;
-    VclPtr<CheckBox>      m_pWrapTransparentCB;
-    VclPtr<CheckBox>      m_pWrapOutlineCB;
-    VclPtr<CheckBox>      m_pWrapOutsideCB;
-
     RndStdIds             m_nAnchorId;
     sal_uInt16            m_nHtmlMode;
 
-    Size                  m_aFrameSize;
     SwWrtShell*           m_pWrtSh;
 
     bool m_bFormat;
@@ -72,27 +47,41 @@ class SwWrapTabPage: public SfxTabPage
     bool m_bDrawMode;
     bool m_bContourImage;
 
-    virtual ~SwWrapTabPage() override;
-    virtual void dispose() override;
+    // WRAPPING
+    std::unique_ptr<weld::RadioButton> m_xNoWrapRB;
+    std::unique_ptr<weld::RadioButton> m_xWrapLeftRB;
+    std::unique_ptr<weld::RadioButton> m_xWrapRightRB;
+    std::unique_ptr<weld::RadioButton> m_xWrapParallelRB;
+    std::unique_ptr<weld::RadioButton> m_xWrapThroughRB;
+    std::unique_ptr<weld::RadioButton> m_xIdealWrapRB;
+
+    // MARGIN
+    std::unique_ptr<weld::MetricSpinButton> m_xLeftMarginED;
+    std::unique_ptr<weld::MetricSpinButton> m_xRightMarginED;
+    std::unique_ptr<weld::MetricSpinButton> m_xTopMarginED;
+    std::unique_ptr<weld::MetricSpinButton> m_xBottomMarginED;
+
+    // OPTIONS
+    std::unique_ptr<weld::CheckButton> m_xWrapAnchorOnlyCB;
+    std::unique_ptr<weld::CheckButton> m_xWrapTransparentCB;
+    std::unique_ptr<weld::CheckButton> m_xWrapOutlineCB;
+    std::unique_ptr<weld::CheckButton> m_xWrapOutsideCB;
+    std::unique_ptr<weld::CheckButton> m_xAllowOverlapCB;
 
     void            SetImages();
     virtual void    ActivatePage(const SfxItemSet& rSet) override;
     virtual DeactivateRC   DeactivatePage(SfxItemSet *pSet) override;
 
-    DECL_LINK( RangeModifyHdl, SpinField&, void );
-    DECL_LINK( RangeLoseFocusHdl, Control&, void );
-    DECL_LINK( WrapTypeHdl, Button *, void );
-    DECL_LINK( ContourHdl, Button *, void);
-
-    using SfxTabPage::ActivatePage;
-    using SfxTabPage::DeactivatePage;
+    DECL_LINK(RangeModifyHdl, weld::MetricSpinButton&, void);
+    DECL_LINK(WrapTypeHdl, weld::ToggleButton&, void);
+    DECL_LINK(ContourHdl, weld::ToggleButton&, void);
 
     static const sal_uInt16 m_aWrapPageRg[];
 
 public:
-    SwWrapTabPage(vcl::Window *pParent, const SfxItemSet &rSet);
-
-    static VclPtr<SfxTabPage> Create(vcl::Window *pParent, const SfxItemSet *rSet);
+    SwWrapTabPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet &rSet);
+    static std::unique_ptr<SfxTabPage> Create(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet *rSet);
+    virtual ~SwWrapTabPage() override;
 
     virtual bool    FillItemSet(SfxItemSet *rSet) override;
     virtual void    Reset(const SfxItemSet *rSet) override;

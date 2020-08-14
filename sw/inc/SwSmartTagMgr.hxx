@@ -23,10 +23,10 @@
 #include <svx/SmartTagMgr.hxx>
 
 // Wrapper for the svx SmartTagMgr
-class SwSmartTagMgr : public SmartTagMgr
+class SwSmartTagMgr final : public SmartTagMgr
 {
 private:
-    static SwSmartTagMgr* mpTheSwSmartTagMgr;
+    static SwSmartTagMgr* spTheSwSmartTagMgr;
 
     SwSmartTagMgr( const OUString& rModuleName );
     virtual ~SwSmartTagMgr() override;

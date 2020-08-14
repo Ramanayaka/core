@@ -19,7 +19,7 @@ class SdrObjUserData;
 
 class SdrObjUserDataList
 {
-    typedef std::vector<std::unique_ptr<SdrObjUserData> > ListType;
+    typedef std::vector<std::unique_ptr<SdrObjUserData>> ListType;
     ListType maList;
 
 public:
@@ -28,7 +28,7 @@ public:
 
     size_t GetUserDataCount() const;
     SdrObjUserData& GetUserData(size_t nNum);
-    void AppendUserData(SdrObjUserData* pData);
+    void AppendUserData(std::unique_ptr<SdrObjUserData> pData);
     void DeleteUserData(size_t nNum);
 };
 

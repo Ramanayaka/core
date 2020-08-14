@@ -43,11 +43,12 @@ Expr const * lookThroughInitListExpr(Expr const * expr) {
     return expr;
 }
 
-class Visitor final:
-    public RecursiveASTVisitor<Visitor>, public loplugin::Plugin
+class CastToVoid final:
+    public loplugin::FilteringPlugin<CastToVoid>
 {
 public:
-    explicit Visitor(InstantiationData const & data): Plugin(data) {}
+    explicit CastToVoid(loplugin::InstantiationData const & data):
+        FilteringPlugin(data) {}
 
     bool TraverseCStyleCastExpr(CStyleCastExpr * expr) {
         auto const dre = checkCast(expr);
@@ -104,7 +105,6 @@ public:
         return ret;
     }
 
-#if CLANG_VERSION >= 50000
     bool TraverseCXXDeductionGuideDecl(CXXDeductionGuideDecl * decl) {
         returnTypes_.push(decl->getReturnType());
         auto const ret = RecursiveASTVisitor::TraverseCXXDeductionGuideDecl(
@@ -114,7 +114,6 @@ public:
         returnTypes_.pop();
         return ret;
     }
-#endif
 
     bool TraverseCXXMethodDecl(CXXMethodDecl * decl) {
         returnTypes_.push(decl->getReturnType());
@@ -146,6 +145,15 @@ public:
     bool TraverseCXXConversionDecl(CXXConversionDecl * decl) {
         returnTypes_.push(decl->getReturnType());
         auto const ret = RecursiveASTVisitor::TraverseCXXConversionDecl(decl);
+        assert(!returnTypes_.empty());
+        assert(returnTypes_.top() == decl->getReturnType());
+        returnTypes_.pop();
+        return ret;
+    }
+
+    bool TraverseObjCMethodDecl(ObjCMethodDecl * decl) {
+        returnTypes_.push(decl->getReturnType());
+        auto const ret = RecursiveASTVisitor::TraverseObjCMethodDecl(decl);
         assert(!returnTypes_.empty());
         assert(returnTypes_.top() == decl->getReturnType());
         returnTypes_.pop();
@@ -195,13 +203,38 @@ public:
         }
         unsigned firstArg = 0;
         if (auto const cmce = dyn_cast<CXXMemberCallExpr>(expr)) {
-            recordConsumption(cmce->getImplicitObjectArgument());
+            if (auto const e1 = cmce->getMethodDecl()) {
+                if (e1->isConst() || e1->isStatic()) {
+                    recordConsumption(cmce->getImplicitObjectArgument());
+                }
+            } else if (auto const e2 = dyn_cast<BinaryOperator>(
+                           cmce->getCallee()->IgnoreParenImpCasts()))
+            {
+                switch (e2->getOpcode()) {
+                case BO_PtrMemD:
+                case BO_PtrMemI:
+                    if (e2->getRHS()->getType()->getAs<MemberPointerType>()
+                        ->getPointeeType()->getAs<FunctionProtoType>()
+                        ->isConst())
+                    {
+                        recordConsumption(e2->getLHS());
+                    }
+                    break;
+                default:
+                    break;
+                }
+            }
         } else if (isa<CXXOperatorCallExpr>(expr)) {
-            auto const dc = expr->getDirectCallee();
-            if (dc != nullptr && isa<CXXMethodDecl>(dc)) {
-                assert(expr->getNumArgs() != 0);
-                recordConsumption(expr->getArg(0));
-                firstArg = 1;
+            if (auto const cmd = dyn_cast_or_null<CXXMethodDecl>(
+                    expr->getDirectCallee()))
+            {
+                if (!cmd->isStatic()) {
+                    assert(expr->getNumArgs() != 0);
+                    if (cmd->isConst()) {
+                        recordConsumption(expr->getArg(0));
+                    }
+                    firstArg = 1;
+                }
             }
         }
         auto fun = expr->getDirectCallee();
@@ -291,16 +324,19 @@ private:
         DeclRefExpr const * firstConsumption = nullptr;
     };
 
-    struct CastToVoid {
+    struct Cast {
         ExplicitCastExpr const * cast;
         DeclRefExpr const * sub;
     };
 
     std::map<VarDecl const *, Usage> vars_;
-    std::stack<CastToVoid> castToVoid_;
+    std::stack<Cast> castToVoid_;
     std::stack<QualType> returnTypes_;
 
     void run() override {
+        if (compiler.getPreprocessor().getIdentifierInfo("NDEBUG")->hasMacroDefinition()) {
+            return;
+        }
         if (!TraverseDecl(compiler.getASTContext().getTranslationUnitDecl())) {
             return;
         }
@@ -315,8 +351,11 @@ private:
                     {
                         continue;
                     }
-                    auto const fun = dyn_cast_or_null<FunctionDecl>(
-                        i.first->getDeclContext());
+                    auto const ctxt = i.first->getDeclContext();
+                    if (dyn_cast_or_null<ObjCMethodDecl>(ctxt) != nullptr) {
+                        continue;
+                    }
+                    auto const fun = dyn_cast_or_null<FunctionDecl>(ctxt);
                     assert(fun != nullptr);
                     if (containsPreprocessingConditionalInclusion(
                             fun->getSourceRange()))
@@ -339,6 +378,11 @@ private:
                 } else if (!i.second.castToVoid.empty()
                            && !isWarnUnusedType(i.first->getType()))
                 {
+                    auto const fun = dyn_cast_or_null<FunctionDecl>(i.first->getDeclContext());
+                    assert(fun != nullptr);
+                    if (containsPreprocessingConditionalInclusion(fun->getSourceRange())) {
+                        continue;
+                    }
                     report(
                         DiagnosticsEngine::Warning,
                         "unused variable %select{declaration|name}0",
@@ -376,7 +420,7 @@ private:
     }
 
     bool isSharedCAndCppCode(VarDecl const * decl) const {
-        auto loc = decl->getLocStart();
+        auto loc = decl->getLocation();
         while (compiler.getSourceManager().isMacroArgExpansion(loc)) {
             loc = compiler.getSourceManager().getImmediateMacroCallerLoc(loc);
         }
@@ -389,46 +433,12 @@ private:
                 || compiler.getSourceManager().isMacroBodyExpansion(loc));
     }
 
-    bool containsPreprocessingConditionalInclusion(SourceRange range) {
-        auto hash = false;
-        for (auto loc = range.getBegin();;) {
-            Token tok;
-            if (Lexer::getRawToken(
-                    loc, tok, compiler.getSourceManager(),
-                    compiler.getLangOpts(), true))
-            {
-                // Conservatively assume "yes" if lexing fails (e.g., due to
-                // macros):
-                return true;
-            }
-            if (hash && tok.is(tok::raw_identifier)) {
-                auto const id = tok.getRawIdentifier();
-                if (id == "if" || id == "ifdef" || id == "ifndef"
-                    || id == "elif" || id == "else" || id == "endif")
-                {
-                    return true;
-                }
-            }
-            if (loc == range.getEnd()) {
-                break;
-            }
-            hash = tok.is(tok::hash) && tok.isAtStartOfLine();
-            loc = loc.getLocWithOffset(
-                std::max<unsigned>(
-                    Lexer::MeasureTokenLength(
-                        loc, compiler.getSourceManager(),
-                        compiler.getLangOpts()),
-                    1));
-        }
-        return false;
-    }
-
     DeclRefExpr const * checkCast(ExplicitCastExpr const * expr) {
         if (!loplugin::TypeCheck(expr->getTypeAsWritten()).Void()) {
             return nullptr;
         }
         if (compiler.getSourceManager().isMacroBodyExpansion(
-                expr->getLocStart()))
+                compat::getBeginLoc(expr)))
         {
             return nullptr;
         }
@@ -475,9 +485,9 @@ private:
         if (usage.firstConsumption != nullptr) {
             return;
         }
-        auto const loc = dre->getLocStart();
+        auto const loc = compat::getBeginLoc(dre);
         if (compiler.getSourceManager().isMacroArgExpansion(loc)
-            && (compat::getImmediateMacroNameForDiagnostics(
+            && (Lexer::getImmediateMacroNameForDiagnostics(
                     loc, compiler.getSourceManager(), compiler.getLangOpts())
                 == "assert"))
         {
@@ -487,7 +497,7 @@ private:
     }
 };
 
-static loplugin::Plugin::Registration<Visitor> reg("casttovoid", false);
+static loplugin::Plugin::Registration<CastToVoid> reg("casttovoid");
 
 }
 

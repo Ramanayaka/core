@@ -20,29 +20,26 @@
 #ifndef INCLUDED_VCL_TEXTVIEW_HXX
 #define INCLUDED_VCL_TEXTVIEW_HXX
 
+#include <config_options.h>
 #include <tools/gen.hxx>
 #include <tools/lineend.hxx>
+#include <tools/stream.hxx>
 #include <vcl/dllapi.h>
 #include <vcl/dndhelp.hxx>
 #include <vcl/textdata.hxx>
-#include <vcl/window.hxx>
+#include <vcl/outdev.hxx>
 #include <memory>
 
 class TextEngine;
-class OutputDevice;
 
 class KeyEvent;
 class MouseEvent;
 class CommandEvent;
-class TextSelFunctionSet;
-class SelectionEngine;
-class VirtualDevice;
-struct TextDDInfo;
+namespace vcl { class Window; }
 
-namespace com { namespace sun { namespace star {
-    namespace datatransfer { namespace clipboard {
-        class XClipboard;
-}}}}}
+namespace com::sun::star::datatransfer::clipboard {
+    class XClipboard;
+}
 namespace i18nutil {
     struct SearchOptions;
 }
@@ -51,27 +48,50 @@ namespace i18nutil {
 struct ImpTextView;
 class ExtTextEngine;
 
-class VCL_DLLPUBLIC TextView : public vcl::unohelper::DragAndDropClient
+class UNLESS_MERGELIBS(VCL_DLLPUBLIC) TETextDataObject final : public css::datatransfer::XTransferable,
+                        public ::cppu::OWeakObject
+
+{
+private:
+    OUString        maText;
+    SvMemoryStream  maHTMLStream;
+
+public:
+    explicit TETextDataObject( const OUString& rText );
+
+    SvMemoryStream& GetHTMLStream() { return maHTMLStream; }
+
+    // css::uno::XInterface
+    css::uno::Any                               SAL_CALL queryInterface( const css::uno::Type & rType ) override;
+    void                                        SAL_CALL acquire() throw() override  { OWeakObject::acquire(); }
+    void                                        SAL_CALL release() throw() override  { OWeakObject::release(); }
+
+    // css::datatransfer::XTransferable
+    css::uno::Any SAL_CALL getTransferData( const css::datatransfer::DataFlavor& aFlavor ) override;
+    css::uno::Sequence< css::datatransfer::DataFlavor > SAL_CALL getTransferDataFlavors(  ) override;
+    sal_Bool SAL_CALL isDataFlavorSupported( const css::datatransfer::DataFlavor& aFlavor ) override;
+};
+
+
+class VCL_DLLPUBLIC TextView final : public vcl::unohelper::DragAndDropClient
 {
     friend class        TextEngine;
     friend class        TextUndo;
     friend class        TextUndoManager;
     friend class        TextSelFunctionSet;
 
-private:
     std::unique_ptr<ImpTextView>  mpImpl;
 
                         TextView( const TextView& ) = delete;
     TextView&           operator=( const TextView& ) = delete;
 
-protected:
     bool                ImpIndentBlock( bool bRight );
     void                ShowSelection();
     void                HideSelection();
     void                ShowSelection( const TextSelection& rSel );
     void                ImpShowHideSelection( const TextSelection* pRange = nullptr );
 
-    TextSelection       ImpMoveCursor( const KeyEvent& rKeyEvent );
+    TextSelection const & ImpMoveCursor( const KeyEvent& rKeyEvent );
     TextPaM             ImpDelete( sal_uInt8 nMode, sal_uInt8 nDelMode );
     bool                IsInSelection( const TextPaM& rPaM );
 
@@ -139,13 +159,13 @@ public:
     void                Copy();
     void                Paste();
 
-    void                Copy( css::uno::Reference< css::datatransfer::clipboard::XClipboard >& rxClipboard );
-    void                Paste( css::uno::Reference< css::datatransfer::clipboard::XClipboard >& rxClipboard );
+    void                Copy( css::uno::Reference< css::datatransfer::clipboard::XClipboard > const & rxClipboard );
+    void                Paste( css::uno::Reference< css::datatransfer::clipboard::XClipboard > const & rxClipboard );
 
     void                Undo();
     void                Redo();
 
-    bool                Read( SvStream& rInput );
+    void                Read( SvStream& rInput );
 
     void                SetStartDocPos( const Point& rPos );
     const Point&        GetStartDocPos() const;
@@ -164,7 +184,7 @@ public:
     void                SetAutoScroll( bool bAutoScroll );
     bool                IsAutoScroll() const;
 
-    bool                SetCursorAtPoint( const Point& rPointPixel );
+    void                SetCursorAtPoint( const Point& rPointPixel );
     bool                IsSelectionAtPoint( const Point& rPointPixel );
 
     void                SetPaintSelection( bool bPaint);
@@ -187,19 +207,15 @@ public:
     TextPaM             CursorEndOfDoc();
 
     /**
-        Drag and Drop, deleting and selection regards all text that has an attribute
-        TEXTATTR_PROTECTED set as one entity. Drag and dropped text is automatically
-        attributed as protected.
-     */
-    void                SupportProtectAttribute(bool bSupport);
-
-    /**
         Returns the number in paragraph of the line in which the cursor is blinking
         if enabled, -1 otherwise.
      */
     sal_Int32           GetLineNumberOfCursorInSelection() const;
 
-    bool                MatchGroup();
+    void                MatchGroup();
+
+    // tdf#49482: Moves the start of the PaM to the center of the textview
+    void                CenterPaM( const TextPaM& rPaM );
 
     bool                Search( const i18nutil::SearchOptions& rSearchOptions, bool bForward );
     sal_uInt16          Replace( const i18nutil::SearchOptions& rSearchOptions, bool bAll, bool bForward );

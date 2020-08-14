@@ -17,15 +17,16 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "oox/drawingml/drawingmltypes.hxx"
+#include <oox/drawingml/drawingmltypes.hxx>
 #include <com/sun/star/awt/FontUnderline.hpp>
 #include <com/sun/star/awt/FontStrikeout.hpp>
 #include <com/sun/star/drawing/Hatch.hpp>
 #include <com/sun/star/style/CaseMap.hpp>
 #include <com/sun/star/xml/sax/XFastAttributeList.hpp>
+#include <o3tl/safeint.hxx>
 #include <osl/diagnose.h>
 #include <sax/tools/converter.hxx>
-#include "oox/token/tokens.hxx"
+#include <oox/token/tokens.hxx>
 
 using ::com::sun::star::uno::Reference;
 using ::com::sun::star::xml::sax::XFastAttributeList;
@@ -34,13 +35,13 @@ using namespace ::com::sun::star::drawing;
 using namespace ::com::sun::star::geometry;
 using namespace ::com::sun::star::style;
 
-namespace oox {
-namespace drawingml {
+namespace oox::drawingml {
 
 /** converts EMUs into 1/100th mmm */
 sal_Int32 GetCoordinate( sal_Int32 nValue )
 {
-    return (nValue + 180) / 360;
+    nValue = o3tl::saturating_add<sal_Int32>(nValue, 180);
+    return nValue / 360;
 }
 
 /** converts an emu string into 1/100th mmm */
@@ -50,6 +51,12 @@ sal_Int32 GetCoordinate( const OUString& sValue )
     if( !::sax::Converter::convertNumber( nRet, sValue ) )
         nRet = 0;
     return GetCoordinate( nRet );
+}
+
+/** converts 1/100mm to EMU */
+sal_Int32 GetPointFromCoordinate( sal_Int32 nValue )
+{
+    return nValue * 360;
 }
 
 /** converts a ST_Percentage % string into 1/1000th of % */
@@ -68,10 +75,10 @@ double GetPositiveFixedPercentage( const OUString& sValue )
     return fPercent;
 }
 
-/** converts the attributes from an CT_TLPoint into an awt Point with 1/1000% */
+/** converts the attributes from a CT_TLPoint into an awt Point with 1/1000% */
 awt::Point GetPointPercent( const Reference< XFastAttributeList >& xAttribs )
 {
-    return awt::Point( GetPercent( xAttribs->getOptionalValue( XML_x ) ), GetCoordinate( xAttribs->getOptionalValue( XML_y ) ) );
+    return awt::Point(GetPercent(xAttribs->getOptionalValue(XML_x)), GetPercent(xAttribs->getOptionalValue(XML_y)));
 }
 
 /** converts the ST_TextFontSize to point */
@@ -88,14 +95,18 @@ float GetTextSize( const OUString& sValue )
 sal_Int32 GetTextSpacingPoint( const OUString& sValue )
 {
     sal_Int32 nRet;
-    if( ::sax::Converter::convertNumber( nRet, sValue ) )
+    if( ::sax::Converter::convertNumber( nRet, sValue, (SAL_MIN_INT32 + 360) / 254, (SAL_MAX_INT32 - 360) / 254 ) )
         nRet = GetTextSpacingPoint( nRet );
     return nRet;
 }
 
-sal_Int32 GetTextSpacingPoint( const sal_Int32 nValue )
+sal_Int32 GetTextSpacingPoint(sal_Int32 nValue)
 {
-    return ( nValue * 254 + 360 ) / 720;
+    if (nValue > 0)
+        nValue = (nValue * 254 + 360);
+    else if (nValue < 0)
+        nValue = (nValue * 254 - 360);
+    return nValue / 720;
 }
 
 float GetFontHeight( sal_Int32 nHeight )
@@ -378,7 +389,7 @@ IntegerRectangle2D GetRelativeRect( const Reference< XFastAttributeList >& xAttr
     return r;
 }
 
-/** converts the attributes from an CT_Size2D into an awt Size with 1/100thmm */
+/** converts the attributes from a CT_Size2D into an awt Size with 1/100thmm */
 awt::Size GetSize2D( const Reference< XFastAttributeList >& xAttribs )
 {
     return awt::Size( GetCoordinate( xAttribs->getOptionalValue( XML_cx ) ), GetCoordinate( xAttribs->getOptionalValue( XML_cy ) ) );
@@ -392,7 +403,6 @@ IndexRange GetIndexRange( const Reference< XFastAttributeList >& xAttributes )
     return range;
 }
 
-} // namespace drawingml
-} // namespace oox
+} // namespace oox::drawingml
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

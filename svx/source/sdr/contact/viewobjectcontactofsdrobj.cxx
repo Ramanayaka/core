@@ -22,19 +22,19 @@
 #include <svx/sdr/contact/viewcontactofsdrobj.hxx>
 #include <svx/sdr/contact/objectcontact.hxx>
 #include <svx/sdr/contact/displayinfo.hxx>
-#include <sdr/contact/objectcontactofpageview.hxx>
-#include <sdr/contact/viewcontactofsdrole2obj.hxx>
+#include <svx/sdr/contact/objectcontactofpageview.hxx>
 #include <svx/sdrpagewindow.hxx>
 #include <svx/sdrpaintwindow.hxx>
 #include <svx/svdobj.hxx>
 #include <svx/svdoole2.hxx>
+#include <svx/svdpagv.hxx>
 #include <svx/svdview.hxx>
 #include <vcl/outdev.hxx>
 #include <vcl/canvastools.hxx>
 
-#include "fmobj.hxx"
+#include <fmobj.hxx>
 
-namespace sdr { namespace contact {
+namespace sdr::contact {
 
 const SdrObject& ViewObjectContactOfSdrObj::getSdrObject() const
 {
@@ -170,7 +170,7 @@ bool ViewObjectContactOfSdrObj::isPrimitiveVisible(const DisplayInfo& rDisplayIn
     return true;
 }
 
-boost::optional<const OutputDevice&> ViewObjectContactOfSdrObj::getPageViewOutputDevice() const
+const OutputDevice* ViewObjectContactOfSdrObj::getPageViewOutputDevice() const
 {
     ObjectContactOfPageView* pPageViewContact = dynamic_cast< ObjectContactOfPageView* >( &GetObjectContact() );
     if ( pPageViewContact )
@@ -181,13 +181,13 @@ boost::optional<const OutputDevice&> ViewObjectContactOfSdrObj::getPageViewOutpu
         // #i72429# / 2007-02-20 / frank.schoenheit (at) sun.com
         SdrPageWindow& rPageWindow( pPageViewContact->GetPageWindow() );
         if ( rPageWindow.GetOriginalPaintWindow() )
-            return rPageWindow.GetOriginalPaintWindow()->GetOutputDevice();
+            return &rPageWindow.GetOriginalPaintWindow()->GetOutputDevice();
 
-        return rPageWindow.GetPaintWindow().GetOutputDevice();
+        return &rPageWindow.GetPaintWindow().GetOutputDevice();
     }
-    return boost::optional<const OutputDevice&>();
+    return nullptr;
 }
 
-}}
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

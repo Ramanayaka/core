@@ -17,16 +17,17 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "PropertyMapper.hxx"
-#include "macros.hxx"
+#include <PropertyMapper.hxx>
 #include <unonames.hxx>
 
 #include <com/sun/star/beans/XMultiPropertySet.hpp>
-#include <com/sun/star/drawing/LineStyle.hpp>
+#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/drawing/TextVerticalAdjust.hpp>
 #include <com/sun/star/drawing/TextHorizontalAdjust.hpp>
 #include <com/sun/star/drawing/LineJoint.hpp>
+#include <com/sun/star/style/ParagraphAdjust.hpp>
 #include <comphelper/sequence.hxx>
+#include <tools/diagnose_ex.h>
 
 namespace chart
 {
@@ -38,11 +39,8 @@ namespace
 void lcl_overwriteOrAppendValues(
     tPropertyNameValueMap &rMap, const tPropertyNameValueMap& rOverwriteMap )
 {
-    tPropertyNameValueMap::const_iterator aIt( rOverwriteMap.begin() );
-    tPropertyNameValueMap::const_iterator aEnd( rOverwriteMap.end() );
-
-    for( ; aIt != aEnd; ++aIt )
-        rMap[ aIt->first ] = aIt->second;
+    for (auto const& elem : rOverwriteMap)
+        rMap[ elem.first ] = elem.second;
 }
 
 } // anonymous namespace
@@ -51,7 +49,7 @@ void PropertyMapper::setMappedProperties(
           const uno::Reference< beans::XPropertySet >& xTarget
         , const uno::Reference< beans::XPropertySet >& xSource
         , const tPropertyNameMap& rMap
-        , tPropertyNameValueMap* pOverwriteMap )
+        , tPropertyNameValueMap const * pOverwriteMap )
 {
     if( !xTarget.is() || !xSource.is() )
         return;
@@ -78,43 +76,42 @@ void PropertyMapper::getValueMap(
                 , const uno::Reference< beans::XPropertySet >& xSourceProp
                 )
 {
-    tPropertyNameMap::const_iterator aIt( rNameMap.begin() );
-    tPropertyNameMap::const_iterator aEnd( rNameMap.end() );
-
     uno::Reference< beans::XMultiPropertySet > xMultiPropSet(xSourceProp, uno::UNO_QUERY);
-    if(false && xMultiPropSet.is())
+    if((false) && xMultiPropSet.is())
     {
-        uno::Sequence< rtl::OUString > aPropSourceNames(rNameMap.size());
-        uno::Sequence< rtl::OUString > aPropTargetNames(rNameMap.size());
-        for(sal_Int32 i = 0; aIt != aEnd; ++aIt, ++i)
+        uno::Sequence< OUString > aPropSourceNames(rNameMap.size());
+        uno::Sequence< OUString > aPropTargetNames(rNameMap.size());
+        sal_Int32 i = 0;
+        for (auto const& elem : rNameMap)
         {
-            aPropTargetNames[i] = aIt->first;
-            aPropSourceNames[i] = aIt->second;
+            aPropTargetNames[i] = elem.first;
+            aPropSourceNames[i] = elem.second;
+            ++i;
         }
 
         uno::Sequence< uno::Any > xValues = xMultiPropSet->getPropertyValues(aPropSourceNames);
-
-        for(sal_Int32 i = 0, n = rNameMap.size(); i < n; ++i)
+        sal_Int32 n = rNameMap.size();
+        for(i = 0;i < n; ++i)
         {
             if( xValues[i].hasValue() )
-                rValueMap.insert( tPropertyNameValueMap::value_type( aPropTargetNames[i], xValues[i] ) );
+                rValueMap.emplace(  aPropTargetNames[i], xValues[i] );
         }
     }
     else
     {
-        for( ; aIt != aEnd; ++aIt )
+        for (auto const& elem : rNameMap)
         {
-            OUString aTarget = aIt->first;
-            OUString aSource = aIt->second;
+            OUString aTarget = elem.first;
+            OUString aSource = elem.second;
             try
             {
                 uno::Any aAny( xSourceProp->getPropertyValue(aSource) );
                 if( aAny.hasValue() )
-                    rValueMap.insert( tPropertyNameValueMap::value_type( aTarget, aAny ) );
+                    rValueMap.emplace(  aTarget, aAny );
             }
-            catch( const uno::Exception& e )
+            catch( const uno::Exception& )
             {
-                ASSERT_EXCEPTION( e );
+                TOOLS_WARN_EXCEPTION("chart2", "" );
             }
         }
     }
@@ -143,16 +140,14 @@ void PropertyMapper::getMultiPropertyListsFromValueMap(
     rValues.realloc(nPropertyCount);
 
     //fill sequences
-    tPropertyNameValueMap::const_iterator aValueIt(  rValueMap.begin() );
-    tPropertyNameValueMap::const_iterator aValueEnd( rValueMap.end()   );
     sal_Int32 nN=0;
-    for( ; aValueIt != aValueEnd; ++aValueIt )
+    for (auto const& elem : rValueMap)
     {
-        const uno::Any& rAny = aValueIt->second;
+        const uno::Any& rAny = elem.second;
         if( rAny.hasValue() )
         {
             //do not set empty anys because of performance (otherwise SdrAttrObj::ItemChange will take much longer)
-            rNames[nN]  = aValueIt->first;
+            rNames[nN]  = elem.first;
             rValues[nN] = rAny;
             ++nN;
         }
@@ -169,7 +164,7 @@ uno::Any* PropertyMapper::getValuePointer( tAnySequence& rPropValues
     sal_Int32 nCount = rPropNames.getLength();
     for( sal_Int32 nN = 0; nN < nCount; nN++ )
     {
-        if(rPropNames[nN].equals(rPropName))
+        if(rPropNames[nN] == rPropName)
             return &rPropValues[nN];
     }
     return nullptr;
@@ -287,7 +282,8 @@ const tPropertyNameMap& PropertyMapper::getPropertyNameMapForLineProperties()
         {"LineJoint",              "LineJoint"},
         {"LineStyle",              "LineStyle"},
         {"LineTransparence",       "LineTransparence"},
-        {"LineWidth",              "LineWidth"}};
+        {"LineWidth",              "LineWidth"},
+        {"LineCap",                "LineCap"}};
     return s_aShapePropertyMapForLineProperties;
 }
 
@@ -334,7 +330,8 @@ const tPropertyNameMap& PropertyMapper::getPropertyNameMapForLineSeriesPropertie
         {"LineDashName",        "LineDashName"},
         {"LineStyle",           "LineStyle"},
         {"LineTransparence",    "Transparency"},
-        {"LineWidth",           "LineWidth"}};
+        {"LineWidth",           "LineWidth"},
+        {"LineCap",             "LineCap"}};
     return s_aShapePropertyMapForLineSeriesProperties;
 }
 
@@ -345,7 +342,12 @@ namespace {
             {"LineStyle", CHART_UNONAME_LABEL_BORDER_STYLE},
             {"LineWidth", CHART_UNONAME_LABEL_BORDER_WIDTH},
             {"LineColor", CHART_UNONAME_LABEL_BORDER_COLOR},
-            {"LineTransparence", CHART_UNONAME_LABEL_BORDER_TRANS}});
+            {"LineTransparence", CHART_UNONAME_LABEL_BORDER_TRANS},
+            {"FillStyle", CHART_UNONAME_LABEL_FILL_STYLE},
+            {"FillColor", CHART_UNONAME_LABEL_FILL_COLOR},
+            {"FillBackground", CHART_UNONAME_LABEL_FILL_BACKGROUND},
+            {"FillHatchName", CHART_UNONAME_LABEL_FILL_HATCH_NAME}
+            });
                 // fix the spelling!
         return map;
     }
@@ -385,7 +387,8 @@ const tPropertyNameMap& PropertyMapper::getPropertyNameMapForFilledSeriesPropert
         {"LineDashName",                 "BorderDashName"},
         {"LineStyle",                    "BorderStyle"},
         {"LineTransparence",             "BorderTransparency"},
-        {"LineWidth",                    "BorderWidth"}};
+        {"LineWidth",                    "BorderWidth"},
+        {"LineCap",                      "LineCap"}};
     return s_aShapePropertyMapForFilledSeriesProperties;
 }
 
@@ -405,12 +408,14 @@ void PropertyMapper::setMultiProperties(
             bSuccess = true;
         }
     }
-    catch( const uno::Exception& e )
+    catch( const uno::Exception& )
     {
-        ASSERT_EXCEPTION( e ); //if this occurs more often think of removing the XMultiPropertySet completely for better performance
+        TOOLS_WARN_EXCEPTION("chart2", "" ); //if this occurs more often think of removing the XMultiPropertySet completely for better performance
     }
 
-    if(!bSuccess)
+    if(bSuccess)
+        return;
+
     try
     {
         sal_Int32 nCount = std::max( rNames.getLength(), rValues.getLength() );
@@ -425,15 +430,15 @@ void PropertyMapper::setMultiProperties(
             {
                 xTarget->setPropertyValue( aPropName, aValue );
             }
-            catch( const uno::Exception& e )
+            catch( const uno::Exception& )
             {
-                ASSERT_EXCEPTION( e );
+                TOOLS_WARN_EXCEPTION("chart2", "" );
             }
         }
     }
-    catch( const uno::Exception& e )
+    catch( const uno::Exception& )
     {
-        ASSERT_EXCEPTION( e );
+        TOOLS_WARN_EXCEPTION("chart2", "" );
     }
 }
 
@@ -452,20 +457,21 @@ void PropertyMapper::getTextLabelMultiPropertyLists(
     PropertyMapper::getValueMap(aValueMap, aNameMap, xSourceProp);
 
     //some more shape properties apart from character properties, position-matrix and label string
-    aValueMap.insert( tPropertyNameValueMap::value_type( "TextHorizontalAdjust", uno::Any(drawing::TextHorizontalAdjust_CENTER) ) ); // drawing::TextHorizontalAdjust - needs to be overwritten
-    aValueMap.insert( tPropertyNameValueMap::value_type( "TextVerticalAdjust", uno::Any(drawing::TextVerticalAdjust_CENTER) ) ); //drawing::TextVerticalAdjust - needs to be overwritten
-    aValueMap.insert( tPropertyNameValueMap::value_type( "TextAutoGrowHeight", uno::Any(true) ) ); // sal_Bool
-    aValueMap.insert( tPropertyNameValueMap::value_type( "TextAutoGrowWidth", uno::Any(true) ) ); // sal_Bool
+    aValueMap.emplace( "TextHorizontalAdjust", uno::Any(drawing::TextHorizontalAdjust_CENTER) ); // drawing::TextHorizontalAdjust - needs to be overwritten
+    aValueMap.emplace( "TextVerticalAdjust", uno::Any(drawing::TextVerticalAdjust_CENTER) ); //drawing::TextVerticalAdjust - needs to be overwritten
+    aValueMap.emplace( "TextAutoGrowHeight", uno::Any(true) ); // sal_Bool
+    aValueMap.emplace( "TextAutoGrowWidth", uno::Any(true) ); // sal_Bool
+    aValueMap.emplace( "ParaAdjust", uno::Any(style::ParagraphAdjust_CENTER) ); // style::ParagraphAdjust_CENTER - needs to be overwritten
     if( bName )
-        aValueMap.insert( tPropertyNameValueMap::value_type( "Name", uno::Any( OUString() ) ) ); //CID OUString - needs to be overwritten for each point
+        aValueMap.emplace( "Name", uno::Any( OUString() ) ); //CID OUString - needs to be overwritten for each point
 
     if( nLimitedSpace > 0 )
     {
         if(bLimitedHeight)
-            aValueMap.insert( tPropertyNameValueMap::value_type( "TextMaximumFrameHeight", uno::Any(nLimitedSpace) ) ); //sal_Int32
+            aValueMap.emplace( "TextMaximumFrameHeight", uno::Any(nLimitedSpace) ); //sal_Int32
         else
-            aValueMap.insert( tPropertyNameValueMap::value_type( "TextMaximumFrameWidth", uno::Any(nLimitedSpace) ) ); //sal_Int32
-        aValueMap.insert( tPropertyNameValueMap::value_type( "ParaIsHyphenation", uno::Any(true) ) );
+            aValueMap.emplace( "TextMaximumFrameWidth", uno::Any(nLimitedSpace) ); //sal_Int32
+        aValueMap.emplace( "ParaIsHyphenation", uno::Any(true) );
     }
 
     PropertyMapper::getMultiPropertyListsFromValueMap( rPropNames, rPropValues, aValueMap );
@@ -482,18 +488,18 @@ void PropertyMapper::getPreparedTextShapePropertyLists(
             , xSourceProp );
 
     // auto-grow makes sure the shape has the correct size after setting text
-    aValueMap.insert( tPropertyNameValueMap::value_type( "TextHorizontalAdjust", uno::Any( drawing::TextHorizontalAdjust_CENTER )));
-    aValueMap.insert( tPropertyNameValueMap::value_type( "TextVerticalAdjust", uno::Any( drawing::TextVerticalAdjust_CENTER )));
-    aValueMap.insert( tPropertyNameValueMap::value_type( "TextAutoGrowHeight", uno::Any( true )));
-    aValueMap.insert( tPropertyNameValueMap::value_type( "TextAutoGrowWidth", uno::Any( true )));
+    aValueMap.emplace( "TextHorizontalAdjust", uno::Any( drawing::TextHorizontalAdjust_CENTER ));
+    aValueMap.emplace( "TextVerticalAdjust", uno::Any( drawing::TextVerticalAdjust_CENTER ));
+    aValueMap.emplace( "TextAutoGrowHeight", uno::Any( true ));
+    aValueMap.emplace( "TextAutoGrowWidth", uno::Any( true ));
 
     // set some distance to the border, in case it is shown
     const sal_Int32 nWidthDist  = 250;
     const sal_Int32 nHeightDist = 125;
-    aValueMap.insert( tPropertyNameValueMap::value_type( "TextLeftDistance",  uno::Any( nWidthDist )));
-    aValueMap.insert( tPropertyNameValueMap::value_type( "TextRightDistance", uno::Any( nWidthDist )));
-    aValueMap.insert( tPropertyNameValueMap::value_type( "TextUpperDistance", uno::Any( nHeightDist )));
-    aValueMap.insert( tPropertyNameValueMap::value_type( "TextLowerDistance", uno::Any( nHeightDist )));
+    aValueMap.emplace( "TextLeftDistance",  uno::Any( nWidthDist ));
+    aValueMap.emplace( "TextRightDistance", uno::Any( nWidthDist ));
+    aValueMap.emplace( "TextUpperDistance", uno::Any( nHeightDist ));
+    aValueMap.emplace( "TextLowerDistance", uno::Any( nHeightDist ));
 
     // use a line-joint showing the border of thick lines like two rectangles
     // filled in between.

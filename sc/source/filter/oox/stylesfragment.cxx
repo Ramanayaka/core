@@ -17,14 +17,14 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "stylesfragment.hxx"
+#include <stylesfragment.hxx>
+#include <biffhelper.hxx>
 
 #include <oox/helper/attributelist.hxx>
 #include <oox/token/namespaces.hxx>
 #include <oox/token/tokens.hxx>
 
-namespace oox {
-namespace xls {
+namespace oox::xls {
 
 using namespace ::oox::core;
 
@@ -57,20 +57,20 @@ ContextHandlerRef IndexedColorsContext::onCreateRecordContext( sal_Int32 nRecId,
 
 ContextHandlerRef FontContext::onCreateContext( sal_Int32 nElement, const AttributeList& rAttribs )
 {
-    if( mxFont.get() )
+    if( mxFont )
         mxFont->importAttribs( nElement, rAttribs );
     return nullptr;
 }
 
 void BorderContext::onStartElement( const AttributeList& rAttribs )
 {
-    if( mxBorder.get() && (getCurrentElement() == XLS_TOKEN( border )) )
+    if( mxBorder && (getCurrentElement() == XLS_TOKEN( border )) )
         mxBorder->importBorder( rAttribs );
 }
 
 ContextHandlerRef BorderContext::onCreateContext( sal_Int32 nElement, const AttributeList& rAttribs )
 {
-    if( mxBorder.get() ) switch( getCurrentElement() )
+    if( mxBorder ) switch( getCurrentElement() )
     {
         case XLS_TOKEN( border ):
             mxBorder->importStyle( nElement, rAttribs );
@@ -85,7 +85,7 @@ ContextHandlerRef BorderContext::onCreateContext( sal_Int32 nElement, const Attr
 
 ContextHandlerRef FillContext::onCreateContext( sal_Int32 nElement, const AttributeList& rAttribs )
 {
-    if( mxFill.get() ) switch( getCurrentElement() )
+    if( mxFill ) switch( getCurrentElement() )
     {
         case XLS_TOKEN( fill ):
             switch( nElement )
@@ -118,13 +118,13 @@ ContextHandlerRef FillContext::onCreateContext( sal_Int32 nElement, const Attrib
 
 void XfContext::onStartElement( const AttributeList& rAttribs )
 {
-    if( mxXf.get() && (getCurrentElement() == XLS_TOKEN( xf )) )
+    if( mxXf && (getCurrentElement() == XLS_TOKEN( xf )) )
         mxXf->importXf( rAttribs, mbCellXf );
 }
 
 ContextHandlerRef XfContext::onCreateContext( sal_Int32 nElement, const AttributeList& rAttribs )
 {
-    if( mxXf.get() ) switch( getCurrentElement() )
+    if( mxXf ) switch( getCurrentElement() )
     {
         case XLS_TOKEN( xf ):
             switch( nElement )
@@ -139,7 +139,7 @@ ContextHandlerRef XfContext::onCreateContext( sal_Int32 nElement, const Attribut
 
 ContextHandlerRef DxfContext::onCreateContext( sal_Int32 nElement, const AttributeList& rAttribs )
 {
-    if( mxDxf.get() ) switch( getCurrentElement() )
+    if( mxDxf ) switch( getCurrentElement() )
     {
         case XLS_TOKEN( dxf ):
             switch( nElement )
@@ -153,6 +153,19 @@ ContextHandlerRef DxfContext::onCreateContext( sal_Int32 nElement, const Attribu
                 case XLS_TOKEN( alignment ):    mxDxf->importAlignment( rAttribs );     break;
                 case XLS_TOKEN( protection ):   mxDxf->importProtection( rAttribs );    break;
 #endif
+            }
+        break;
+    }
+
+    if( mxExtDxf ) switch( getCurrentElement() )
+    {
+        case XLS14_TOKEN( dxf ):
+            switch( nElement )
+            {
+                case XLS_TOKEN( font ):         return new FontContext( *this, mxExtDxf->createFont() );
+                case XLS_TOKEN( border ):       return new BorderContext( *this, mxExtDxf->createBorder() );
+                case XLS_TOKEN( fill ):         return new FillContext( *this, mxExtDxf->createFill() );
+                case XLS_TOKEN( numFmt ):       mxExtDxf->importNumFmt( rAttribs );     break;
             }
         break;
     }
@@ -299,7 +312,6 @@ void StylesFragment::finalizeImport()
     getStyles().finalizeImport();
 }
 
-} // namespace xls
-} // namespace oox
+} // namespace oox::xls
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

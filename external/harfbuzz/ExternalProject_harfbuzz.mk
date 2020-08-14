@@ -21,6 +21,7 @@ $(eval $(call gb_ExternalProject_use_externals,harfbuzz,\
 ))
 
 $(call gb_ExternalProject_get_state_target,harfbuzz,build) :
+	$(call gb_Trace_StartRange,harfbuzz,EXTERNAL)
 	$(call gb_ExternalProject_run,build,\
 		$(if $(CROSS_COMPILING),ICU_CONFIG=$(SRCDIR)/external/icu/cross-bin/icu-config) \
 		$(if $(SYSTEM_ICU),,ICU_CONFIG=$(SRCDIR)/external/icu/cross-bin/icu-config) \
@@ -37,19 +38,22 @@ $(call gb_ExternalProject_get_state_target,harfbuzz,build) :
 			--with-cairo=no \
 			--with-glib=no \
 			--with-graphite2=yes \
-			$(if $(filter IOS MACOSX,$(OS)),--with-coretext=auto) \
 			$(if $(verbose),--disable-silent-rules,--enable-silent-rules) \
+			$(if $(gb_FULLDEPS),,--disable-dependency-tracking) \
 			--libdir=$(call gb_UnpackedTarball_get_dir,harfbuzz/src/.libs) \
 			$(if $(CROSS_COMPILING),--build=$(BUILD_PLATFORM) --host=$(HOST_PLATFORM)) \
 			CXXFLAGS=' \
-				$(if $(filter $(true),$(gb_SYMBOL)),$(gb_DEBUGINFO_FLAGS)) \
+				$(if $(filter ANDROID,$(OS)),-DHB_NO_MMAP=1,) \
+				$(if $(call gb_Module__symbols_enabled,harfbuzz),$(gb_DEBUGINFO_FLAGS)) \
 				$(if $(ENABLE_OPTIMIZED), \
 					$(gb_COMPILEROPTFLAGS),$(gb_COMPILERNOOPTFLAGS)) \
-				$(if $(debug),$(gb_DEBUG_CFLAGS) $(gb_DEBUG_CXXFLAGS)) \
-				$(CXXFLAGS) \
+				$(if $(ENABLE_RUNTIME_OPTIMIZATIONS),,-frtti) \
+				$(CXXFLAGS) $(CXXFLAGS_CXX11) \
 				$(ICU_UCHAR_TYPE) \
 				$(if $(filter LINUX,$(OS)),-fvisibility=hidden)' \
+			MAKE=$(MAKE) \
 		&& (cd $(EXTERNAL_WORKDIR)/src && $(MAKE) lib) \
 	)
+	$(call gb_Trace_EndRange,harfbuzz,EXTERNAL)
 
 # vim: set noet sw=4 ts=4:

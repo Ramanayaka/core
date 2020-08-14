@@ -7,6 +7,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
+#ifndef LO_CLANG_SHARED_PLUGINS
+
 #include <string>
 
 #include "plugin.hxx"
@@ -17,10 +19,10 @@
 namespace {
 
 class ExternAndNotDefined:
-    public RecursiveASTVisitor<ExternAndNotDefined>, public loplugin::Plugin
+    public loplugin::FilteringPlugin<ExternAndNotDefined>
 {
 public:
-    explicit ExternAndNotDefined(InstantiationData const & data): Plugin(data) {}
+    explicit ExternAndNotDefined(loplugin::InstantiationData const & data): FilteringPlugin(data) {}
 
     virtual void run() override { TraverseDecl(compiler.getASTContext().getTranslationUnitDecl()); }
 
@@ -46,7 +48,7 @@ bool ExternAndNotDefined::VisitFunctionDecl(const FunctionDecl * functionDecl) {
     }
     // this is the bison/flex C API, it has to be defined this way
     std::string functionName = functionDecl->getNameAsString();
-    if (functionName == "yyerror" || functionName == "YYWarning" || functionName == "yyparse" || functionName == "yylex") {
+    if (functionName == "yyerror" || functionName == "yyparse" || functionName == "yylex") {
         return true;
     }
     // see vcl/unx/gtk/app/gtksys.cxx, typename conflicts prevent using the right include
@@ -57,7 +59,7 @@ bool ExternAndNotDefined::VisitFunctionDecl(const FunctionDecl * functionDecl) {
     {
         return true;
     }
-    StringRef fileName { compiler.getSourceManager().getFilename(functionDecl->getLocation()) };
+    StringRef fileName { getFilenameOfLocation(functionDecl->getLocation()) };
     // the filters use some kind of dynamic loading stunt
     if (loplugin::hasPathnamePrefix(fileName, SRCDIR "/filter/qa/")) {
         return true;
@@ -71,8 +73,10 @@ bool ExternAndNotDefined::VisitFunctionDecl(const FunctionDecl * functionDecl) {
 }
 
 
-loplugin::Plugin::Registration< ExternAndNotDefined > X("externandnotdefined");
+loplugin::Plugin::Registration< ExternAndNotDefined > externandnotdefined("externandnotdefined");
 
 }
+
+#endif // LO_CLANG_SHARED_PLUGINS
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

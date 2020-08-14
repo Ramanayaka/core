@@ -23,20 +23,22 @@
 #include <svx/fmtools.hxx>
 #include <svx/svxdllapi.h>
 
-#include <com/sun/star/awt/XCheckBox.hpp>
-#include <com/sun/star/awt/XListBox.hpp>
-#include <com/sun/star/awt/XTextComponent.hpp>
-#include <com/sun/star/util/XNumberFormatsSupplier.hpp>
-#include <com/sun/star/util/XNumberFormatter.hpp>
+#include <com/sun/star/beans/XPropertyChangeListener.hpp>
 
 #include <cppuhelper/implbase.hxx>
 #include <osl/mutex.hxx>
 #include <unotools/charclass.hxx>
 #include <unotools/collatorwrapper.hxx>
-#include <osl/thread.hxx>
+#include <tools/link.hxx>
 
 #include <deque>
+#include <memory>
 #include <vector>
+
+namespace com::sun::star::awt { class XCheckBox; }
+namespace com::sun::star::awt { class XListBox; }
+namespace com::sun::star::awt { class XTextComponent; }
+namespace com::sun::star::sdb { class XColumn; }
 
 enum class TransliterationFlags;
 
@@ -66,7 +68,7 @@ struct FmSearchProgress
  * class FmRecordCountListener - utility class for FmSearchEngine, listens at a certain cursor and provides
  *                               the differences in RecordCount
  */
-class SAL_WARN_UNUSED FmRecordCountListener : public cppu::WeakImplHelper< css::beans::XPropertyChangeListener >
+class SAL_WARN_UNUSED FmRecordCountListener final : public cppu::WeakImplHelper< css::beans::XPropertyChangeListener >
 {
 // attribute
     Link<sal_Int32,void>     m_lnkWhoWantsToKnow;
@@ -119,7 +121,7 @@ namespace svxform {
         virtual OUString getCurrentText() const = 0;
     };
 
-    class SAL_WARN_UNUSED SimpleTextWrapper : public ControlTextWrapper
+    class SAL_WARN_UNUSED SimpleTextWrapper final : public ControlTextWrapper
     {
         css::uno::Reference< css::awt::XTextComponent >  m_xText;
     public:
@@ -127,7 +129,7 @@ namespace svxform {
         virtual OUString getCurrentText() const override;
     };
 
-    class SAL_WARN_UNUSED ListBoxWrapper : public ControlTextWrapper
+    class SAL_WARN_UNUSED ListBoxWrapper final : public ControlTextWrapper
     {
         css::uno::Reference< css::awt::XListBox >  m_xBox;
     public:
@@ -135,7 +137,7 @@ namespace svxform {
         virtual OUString getCurrentText() const override;
     };
 
-    class SAL_WARN_UNUSED CheckBoxWrapper : public ControlTextWrapper
+    class SAL_WARN_UNUSED CheckBoxWrapper final : public ControlTextWrapper
     {
         css::uno::Reference< css::awt::XCheckBox >  m_xBox;
     public:
@@ -158,9 +160,6 @@ class SAL_WARN_UNUSED SVX_DLLPUBLIC FmSearchEngine final
     // Since the iterator could have more columns, as managed here (in this field listbox),
     // a mapping of this css::form keys on the indices of the respective columns is kept in the iterator
 
-    // the formatter
-    css::uno::Reference< css::util::XNumberFormatsSupplier >  m_xFormatSupplier;
-
     CharClass               m_aCharacterClassficator;
     CollatorWrapper         m_aStringCompare;
 
@@ -168,15 +167,14 @@ class SAL_WARN_UNUSED SVX_DLLPUBLIC FmSearchEngine final
     struct FieldInfo
     {
         css::uno::Reference< css::sdb::XColumn >          xContents;
-        sal_uInt32              nFormatKey;
     };
 
     typedef std::vector<FieldInfo> FieldCollection;
     FieldCollection             m_arrUsedFields;
     sal_Int32                   m_nCurrentFieldIndex;   // the last parameter of RebuildUsedFields, it allows checks in FormatField
 
-    typedef std::vector<svxform::ControlTextWrapper*> ControlTextSuppliers;
-    ControlTextSuppliers    m_aControlTexts;
+    std::vector<std::unique_ptr<svxform::ControlTextWrapper>>
+                            m_aControlTexts;
 
     CursorWrapper           m_xOriginalIterator;
     CursorWrapper           m_xClonedIterator;
@@ -263,7 +261,7 @@ public:
     // position will be ignored in case of m_bWildCard==sal_True
 
 public:
-    /** two constructs, both analogical to FmSearchDialog, therefore look this up for explanations ....
+    /** two constructs, both analogical to FmSearchDialog, therefore look this up for explanations...
         xCursor has to implement css::data::DatabaseCursor service  each time.
         If eMode == SM_USETHREAD, a ProgressHandler should be set, because in this case the result forwarding will be done
         by this handler.
@@ -276,8 +274,6 @@ public:
         const css::uno::Reference< css::sdbc::XResultSet >& xCursor,
         const OUString& strVisibleFields,
         const InterfaceArray& arrFields);
-
-    ~FmSearchEngine();
 
     /** the link will be called on every record and after the completion of the search, the parameter is a pointer to
         a FmSearchProgress structure
@@ -321,7 +317,6 @@ private:
     // start a thread-search (or call SearchNextImpl directly, depending on the search mode)
     void ImplStartNextSearch();
 
-    SVX_DLLPRIVATE void clearControlTexts();
     SVX_DLLPRIVATE void fillControlTexts(const InterfaceArray& arrFields);
 
     // three methods implementing a complete search loop (null/not null, wildcard, SearchText)

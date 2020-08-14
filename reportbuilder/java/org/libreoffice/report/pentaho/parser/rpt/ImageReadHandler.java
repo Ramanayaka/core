@@ -61,7 +61,7 @@ public class ImageReadHandler extends ElementReadHandler
         final String formula = attrs.getValue(OfficeNamespaces.OOREPORT_NS, "formula");
         if (formula != null && formula.length() != 0)
         {
-            // now, the evaulated content ends up in the 'content' attribute of the
+            // now, the evaluated content ends up in the 'content' attribute of the
             // element.
             final FormulaExpression valueExpression = new FormulaExpression();
             valueExpression.setFormula(formula);
@@ -116,9 +116,9 @@ public class ImageReadHandler extends ElementReadHandler
     @Override
     protected void doneParsing() throws SAXException
     {
-        // if we have static content (as well or only), that one goes into the
+        // if we have static content (as well as or only), that one goes into the
         // alternate-content attribute right now. It is part of the output target
-        // and style rules to deal with them properly ..
+        // and style rules to deal with them properly.
         if (xLinkReadHandler != null)
         {
             contentElement.setAttribute(OfficeNamespaces.OOREPORT_NS,

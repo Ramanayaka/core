@@ -7,14 +7,14 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include "PivotTableDataSource.hxx"
+#include <PivotTableDataSource.hxx>
 
 #include <sal/config.h>
 
-#include "miscuno.hxx"
-#include "docsh.hxx"
+#include <miscuno.hxx>
 
 #include <comphelper/sequence.hxx>
+#include <vcl/svapp.hxx>
 
 using namespace css;
 
@@ -23,7 +23,7 @@ namespace sc
 
 SC_SIMPLE_SERVICE_INFO(PivotTableDataSource, "PivotTableDataSource", "com.sun.star.chart2.data.DataSource")
 
-PivotTableDataSource::PivotTableDataSource(std::vector<css::uno::Reference<css::chart2::data::XLabeledDataSequence>>& xLabeledSequence)
+PivotTableDataSource::PivotTableDataSource(const std::vector<css::uno::Reference<css::chart2::data::XLabeledDataSequence>>& xLabeledSequence)
     : m_xLabeledSequence(xLabeledSequence)
 {
 }

@@ -20,39 +20,32 @@
 #ifndef INCLUDED_SC_SOURCE_UI_INC_NAMEPAST_HXX
 #define INCLUDED_SC_SOURCE_UI_INC_NAMEPAST_HXX
 
-#include <vcl/dialog.hxx>
-#include <vcl/button.hxx>
-#include <vcl/fixed.hxx>
-#include <vcl/lstbox.hxx>
+#include <vcl/weld.hxx>
 #include "namemgrtable.hxx"
-
 #include <memory>
 #include <vector>
 #include <map>
 
-#include "scui_def.hxx"
 class ScRangeName;
 class ScDocShell;
 
-class ScNamePasteDlg : public ModalDialog
+class ScNamePasteDlg : public weld::GenericDialogController
 {
-    DECL_LINK( ButtonHdl, Button *, void );
+    DECL_LINK(ButtonHdl, weld::Button&, void);
 
 private:
-    VclPtr<PushButton> m_pBtnPasteAll;
-    VclPtr<PushButton> m_pBtnPaste;
-    VclPtr<PushButton> m_pBtnClose;
-
-    VclPtr<ScRangeManagerTable> mpTable;
+    std::unique_ptr<weld::Button> m_xBtnPasteAll;
+    std::unique_ptr<weld::Button> m_xBtnPaste;
+    std::unique_ptr<weld::Button> m_xBtnClose;
+    std::unique_ptr<ScRangeManagerTable> m_xTable;
 
     std::vector<OUString> maSelectedNames;
     std::map<OUString, std::unique_ptr<ScRangeName>> m_RangeMap;
 
 public:
-    ScNamePasteDlg( vcl::Window * pParent, ScDocShell* pShell, bool bInsList );
+    ScNamePasteDlg(weld::Window* pParent, ScDocShell* pShell);
 
     virtual ~ScNamePasteDlg() override;
-    virtual void dispose() override;
 
     const std::vector<OUString>& GetSelectedNames() const;
 };

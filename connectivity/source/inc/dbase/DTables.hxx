@@ -20,11 +20,9 @@
 #ifndef INCLUDED_CONNECTIVITY_SOURCE_INC_DBASE_DTABLES_HXX
 #define INCLUDED_CONNECTIVITY_SOURCE_INC_DBASE_DTABLES_HXX
 
-#include "file/FTables.hxx"
+#include <file/FTables.hxx>
 
-namespace connectivity
-{
-    namespace dbase
+namespace connectivity::dbase
     {
         typedef file::OTables ODbaseTables_BASE;
 
@@ -38,12 +36,12 @@ namespace connectivity
             virtual void dropObject(sal_Int32 _nPos, const OUString& _sElementName) override;
         public:
             ODbaseTables(const css::uno::Reference< css::sdbc::XDatabaseMetaData >& _rMetaData,::cppu::OWeakObject& _rParent, ::osl::Mutex& _rMutex,
-                const TStringVector &_rVector) : ODbaseTables_BASE(_rMetaData,_rParent,_rMutex,_rVector)
+                const ::std::vector< OUString> &_rVector) : ODbaseTables_BASE(_rMetaData,_rParent,_rMutex,_rVector)
             {}
 
             virtual css::uno::Any SAL_CALL queryInterface( const css::uno::Type & rType ) override;
         };
-    }
+
 }
 #endif // INCLUDED_CONNECTIVITY_SOURCE_INC_DBASE_DTABLES_HXX
 

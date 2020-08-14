@@ -16,28 +16,21 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#include "Section.hxx"
+#include <Section.hxx>
 #include <comphelper/enumhelper.hxx>
-#include <connectivity/dbtools.hxx>
+#include <comphelper/servicehelper.hxx>
 #include <cppuhelper/supportsservice.hxx>
+#include <cppuhelper/typeprovider.hxx>
 #include <com/sun/star/report/XReportComponent.hpp>
 #include <com/sun/star/report/ForceNewPage.hpp>
-#include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <com/sun/star/lang/NoSupportException.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
-#include "corestrings.hrc"
-#include "core_resource.hxx"
-#include "core_resource.hrc"
-#include "Tools.hxx"
-#include "RptModel.hxx"
-#include "RptPage.hxx"
-#include "ReportDefinition.hxx"
-#include "Shape.hxx"
-#include <svx/unoshape.hxx>
+#include <strings.hxx>
+#include <Tools.hxx>
+#include <RptModel.hxx>
+#include <RptPage.hxx>
+#include <ReportControlModel.hxx>
+#include <ReportDefinition.hxx>
 #include <vcl/svapp.hxx>
-#include "RptObject.hxx"
-#include "ReportDrawPage.hxx"
-#include <comphelper/property.hxx>
 
 namespace reportdesign
 {
@@ -46,7 +39,7 @@ namespace reportdesign
     using namespace comphelper;
 
 
-uno::Sequence< OUString> lcl_getGroupAbsent()
+static uno::Sequence< OUString> lcl_getGroupAbsent()
 {
     const OUString pProps[] = {
                 OUString(PROPERTY_CANGROW)
@@ -57,7 +50,7 @@ uno::Sequence< OUString> lcl_getGroupAbsent()
 }
 
 
-uno::Sequence< OUString> lcl_getAbsent(bool _bPageSection)
+static uno::Sequence< OUString> lcl_getAbsent(bool _bPageSection)
 {
     if ( _bPageSection )
     {
@@ -171,7 +164,7 @@ void SAL_CALL OSection::disposing()
 
 OUString SAL_CALL OSection::getImplementationName(  )
 {
-    return OUString("com.sun.star.comp.report.Section");
+    return "com.sun.star.comp.report.Section";
 }
 
 uno::Sequence< OUString> OSection::getSupportedServiceNames_Static()
@@ -196,22 +189,22 @@ void OSection::init()
     uno::Reference< report::XReportDefinition> xReport = getReportDefinition();
     std::shared_ptr<rptui::OReportModel> pModel = OReportDefinition::getSdrModel(xReport);
     assert(pModel && "No model set at the report definition!");
-    if ( pModel )
-    {
-        uno::Reference<report::XSection> const xSection(this);
-        SdrPage & rSdrPage(*pModel->createNewPage(xSection));
-        m_xDrawPage.set(rSdrPage.getUnoPage(), uno::UNO_QUERY_THROW);
-        m_xDrawPage_ShapeGrouper.set(m_xDrawPage, uno::UNO_QUERY_THROW);
-        // apparently we may also get OReportDrawPage which doesn't support this
-        m_xDrawPage_FormSupplier.set(m_xDrawPage, uno::UNO_QUERY);
-        m_xDrawPage_Tunnel.set(m_xDrawPage, uno::UNO_QUERY_THROW);
-        // fdo#53872: now also exchange the XDrawPage in the SdrPage so that
-        // rSdrPage.getUnoPage returns this
-        rSdrPage.SetUnoPage(this);
-        // createNewPage _should_ have stored away 2 uno::References to this,
-        // so our ref count cannot be 1 here, so this isn't destroyed here
-        assert(m_refCount > 1);
-    }
+    if ( !pModel )
+        return;
+
+    uno::Reference<report::XSection> const xSection(this);
+    SdrPage & rSdrPage(*pModel->createNewPage(xSection));
+    m_xDrawPage.set(rSdrPage.getUnoPage(), uno::UNO_QUERY_THROW);
+    m_xDrawPage_ShapeGrouper.set(m_xDrawPage, uno::UNO_QUERY_THROW);
+    // apparently we may also get OReportDrawPage which doesn't support this
+    m_xDrawPage_FormSupplier.set(m_xDrawPage, uno::UNO_QUERY);
+    m_xDrawPage_Tunnel.set(m_xDrawPage, uno::UNO_QUERY_THROW);
+    // fdo#53872: now also exchange the XDrawPage in the SdrPage so that
+    // rSdrPage.getUnoPage returns this
+    rSdrPage.SetUnoPage(this);
+    // createNewPage _should_ have stored away 2 uno::References to this,
+    // so our ref count cannot be 1 here, so this isn't destroyed here
+    assert(m_refCount > 1);
 }
 
 // XSection
@@ -252,7 +245,7 @@ void SAL_CALL OSection::setHeight( ::sal_uInt32 _height )
 ::sal_Int32 SAL_CALL OSection::getBackColor()
 {
     ::osl::MutexGuard aGuard(m_aMutex);
-    return m_bBacktransparent ? COL_TRANSPARENT : m_nBackgroundColor;
+    return sal_Int32(m_bBacktransparent ? COL_TRANSPARENT : m_nBackgroundColor);
 }
 
 void SAL_CALL OSection::setBackColor( ::sal_Int32 _backgroundcolor )
@@ -573,24 +566,12 @@ sal_Bool SAL_CALL OSection::hasForms()
 
 sal_Int64 OSection::getSomething( const uno::Sequence< sal_Int8 > & rId )
 {
-    if (rId.getLength() == 16 && 0 == memcmp(getUnoTunnelImplementationId().getConstArray(),  rId.getConstArray(), 16 ) )
+    if (isUnoTunnelId<OSection>(rId) )
         return reinterpret_cast<sal_Int64>(this);
     return (m_xDrawPage_Tunnel.is()) ? m_xDrawPage_Tunnel->getSomething(rId) : 0;
 }
 
-
-OSection* OSection::getImplementation( const uno::Reference< uno::XInterface >& _rxComponent )
-{
-    OSection* pContent( nullptr );
-
-    uno::Reference< lang::XUnoTunnel > xUnoTunnel( _rxComponent, uno::UNO_QUERY );
-    if ( xUnoTunnel.is() )
-        pContent = reinterpret_cast< OSection* >( xUnoTunnel->getSomething( getUnoTunnelImplementationId() ) );
-
-    return pContent;
-}
-
-uno::Sequence< sal_Int8 > OSection::getUnoTunnelImplementationId()
+uno::Sequence< sal_Int8 > OSection::getUnoTunnelId()
 {
     static ::cppu::OImplementationId implId;
 

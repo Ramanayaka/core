@@ -21,11 +21,9 @@
 #include <basegfx/numeric/ftools.hxx>
 #include <basegfx/polygon/b2dpolygontools.hxx>
 #include "ellipsewipe.hxx"
-#include "transitiontools.hxx"
 
 
-namespace slideshow {
-namespace internal {
+namespace slideshow::internal {
 
 ::basegfx::B2DPolyPolygon EllipseWipe::operator () ( double t )
 {
@@ -36,19 +34,18 @@ namespace internal {
     {
         // oval:
         ::basegfx::B2DPolygon poly (
-            ::basegfx::tools::createPolygonFromEllipse( rCenter, fRadius*2, fRadius ) ); //Horizontal Ellipse is rotated by 90 degress
+            ::basegfx::utils::createPolygonFromEllipse( rCenter, fRadius*2, fRadius ) ); //Horizontal Ellipse is rotated by 90 degrees
         return ::basegfx::B2DPolyPolygon( poly );
     }
     else
     {
          // circle:
         ::basegfx::B2DPolygon poly(
-            ::basegfx::tools::createPolygonFromCircle( rCenter, fRadius ) );
+            ::basegfx::utils::createPolygonFromCircle( rCenter, fRadius ) );
         return ::basegfx::B2DPolyPolygon( poly );
     }
 }
 
-}
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

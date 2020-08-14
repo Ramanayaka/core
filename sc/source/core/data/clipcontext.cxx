@@ -8,9 +8,9 @@
  */
 
 #include <memory>
-#include "clipcontext.hxx"
-#include "document.hxx"
-#include "mtvelements.hxx"
+#include <clipcontext.hxx>
+#include <document.hxx>
+#include <mtvelements.hxx>
 #include <column.hxx>
 #include <scitems.hxx>
 #include <tokenarray.hxx>
@@ -19,6 +19,7 @@
 
 #include <svl/intitem.hxx>
 #include <formula/errorcodes.hxx>
+#include <refdata.hxx>
 
 namespace sc {
 
@@ -151,7 +152,7 @@ void CopyFromClipContext::setSingleCell( const ScAddress& rSrcPos, const ScColum
         aRef.InitAddress(rSrcPos);
         aRef.SetFlag3D(true);
 
-        ScTokenArray aArr;
+        ScTokenArray aArr(mpClipDoc);
         aArr.AddSingleReference(aRef);
         rSrcCell.set(new ScFormulaCell(mpClipDoc, rSrcPos, aArr));
         return;
@@ -191,7 +192,7 @@ void CopyFromClipContext::setSingleCell( const ScAddress& rSrcPos, const ScColum
             if (bBoolean)
             {
                 // Check if this formula cell is a boolean cell, and if so, go ahead and paste it.
-                ScTokenArray* pCode = rSrcCell.mpFormula->GetCode();
+                const ScTokenArray* pCode = rSrcCell.mpFormula->GetCode();
                 if (pCode && pCode->GetLen() == 1)
                 {
                     const formula::FormulaToken* p = pCode->FirstToken();
@@ -254,7 +255,7 @@ void CopyFromClipContext::setSingleCell( const ScAddress& rSrcPos, const ScColum
                     // TODO : Add shared string support to the edit engine to
                     // make this process simpler.
                     ScFieldEditEngine& rEngine = mrDestDoc.GetEditEngine();
-                    rEngine.SetText(rSrcCell.mpFormula->GetString().getString());
+                    rEngine.SetTextCurrentDefaults(rSrcCell.mpFormula->GetString().getString());
                     std::unique_ptr<EditTextObject> pObj(rEngine.CreateTextObject());
                     pObj->NormalizeString(mrDestDoc.GetSharedStringPool());
                     rSrcCell.set(*pObj);
@@ -335,9 +336,9 @@ bool CopyFromClipContext::isCloneNotes() const
 
 bool CopyFromClipContext::isDateCell( const ScColumn& rCol, SCROW nRow ) const
 {
-    sal_uLong nNumIndex = static_cast<const SfxUInt32Item&>(rCol.GetAttr(nRow, ATTR_VALUE_FORMAT)).GetValue();
-    short nType = mpClipDoc->GetFormatTable()->GetType(nNumIndex);
-    return (nType == css::util::NumberFormat::DATE) || (nType == css::util::NumberFormat::TIME) || (nType == css::util::NumberFormat::DATETIME);
+    sal_uLong nNumIndex = rCol.GetAttr(nRow, ATTR_VALUE_FORMAT).GetValue();
+    SvNumFormatType nType = mpClipDoc->GetFormatTable()->GetType(nNumIndex);
+    return (nType == SvNumFormatType::DATE) || (nType == SvNumFormatType::TIME) || (nType == SvNumFormatType::DATETIME);
 }
 
 CopyToClipContext::CopyToClipContext(

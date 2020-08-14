@@ -19,15 +19,18 @@
 #ifndef INCLUDED_CHART2_SOURCE_VIEW_MAIN_VLEGEND_HXX
 #define INCLUDED_CHART2_SOURCE_VIEW_MAIN_VLEGEND_HXX
 
-#include <com/sun/star/chart2/XLegend.hpp>
-#include <com/sun/star/drawing/XShapes.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
-#include <com/sun/star/awt/Rectangle.hpp>
-
-#include "ChartModel.hxx"
+#include <com/sun/star/uno/Reference.hxx>
 
 #include <vector>
+
+namespace chart { class ChartModel; }
+namespace com::sun::star::awt { struct Rectangle; }
+namespace com::sun::star::awt { struct Size; }
+namespace com::sun::star::chart2 { class XLegend; }
+namespace com::sun::star::drawing { class XShape; }
+namespace com::sun::star::drawing { class XShapes; }
+namespace com::sun::star::lang { class XMultiServiceFactory; }
+namespace com::sun::star::uno { class XComponentContext; }
 
 namespace chart
 {
@@ -47,7 +50,8 @@ public:
     void setDefaultWritingMode( sal_Int16 nDefaultWritingMode );
 
     void createShapes( const css::awt::Size & rAvailableSpace,
-                       const css::awt::Size & rPageSize );
+                       const css::awt::Size & rPageSize,
+                       css::awt::Size & rDefaultLegendSize );
 
     /** Sets the position according to its internal anchor.
 
@@ -60,7 +64,8 @@ public:
      */
     void changePosition(
         css::awt::Rectangle & rOutAvailableSpace,
-        const css::awt::Size & rReferenceSize );
+        const css::awt::Size & rReferenceSize,
+        const css::awt::Size & rDefaultLegendSize );
 
     static bool isVisible(
         const css::uno::Reference< css::chart2::XLegend > & xLegend );

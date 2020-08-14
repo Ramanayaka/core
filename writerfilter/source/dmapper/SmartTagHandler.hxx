@@ -11,34 +11,43 @@
 
 #include <vector>
 
-#include <com/sun/star/rdf/XDocumentMetadataAccess.hpp>
-#include <com/sun/star/text/XTextDocument.hpp>
-#include <com/sun/star/text/XTextRange.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
-
 #include "LoggedResources.hxx"
 
-namespace writerfilter
+namespace com::sun::star
 {
-namespace dmapper
+namespace rdf
 {
+class XDocumentMetadataAccess;
+}
+namespace text
+{
+class XTextDocument;
+class XTextRange;
+}
+namespace uno
+{
+class XComponentContext;
+}
+}
 
+namespace writerfilter::dmapper
+{
 /// Handler for smart tags, i.e. <w:smartTag> and below.
-class SmartTagHandler
-    : public LoggedProperties
+class SmartTagHandler : public LoggedProperties
 {
     css::uno::Reference<css::uno::XComponentContext> m_xComponentContext;
     css::uno::Reference<css::rdf::XDocumentMetadataAccess> m_xDocumentMetadataAccess;
     OUString m_aURI;
     OUString m_aElement;
-    std::vector< std::pair<OUString, OUString> > m_aAttributes;
+    std::vector<std::pair<OUString, OUString>> m_aAttributes;
 
 public:
-    SmartTagHandler(css::uno::Reference<css::uno::XComponentContext> xComponentContext, const css::uno::Reference<css::text::XTextDocument>& xTextDocument);
-    virtual ~SmartTagHandler() override;
+    SmartTagHandler(css::uno::Reference<css::uno::XComponentContext> xComponentContext,
+                    const css::uno::Reference<css::text::XTextDocument>& xTextDocument);
+    ~SmartTagHandler() override;
 
-    virtual void lcl_attribute(Id Name, Value& val) override;
-    virtual void lcl_sprm(Sprm& sprm) override;
+    void lcl_attribute(Id nId, Value& rValue) override;
+    void lcl_sprm(Sprm& rSprm) override;
 
     void setURI(const OUString& rURI);
     void setElement(const OUString& rElement);
@@ -47,8 +56,7 @@ public:
     void handle(const css::uno::Reference<css::text::XTextRange>& xParagraph);
 };
 
-} // namespace dmapper
-} // namespace writerfilter
+} // namespace writerfilter::dmapper
 
 #endif
 

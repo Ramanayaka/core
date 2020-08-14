@@ -17,6 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <sal/config.h>
+
+#include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/geometry/RealPoint2D.hpp>
 #include <com/sun/star/text/XTextCursor.hpp>
 #include <com/sun/star/util/DateTime.hpp>
@@ -24,19 +27,19 @@
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <cppuhelper/implbase.hxx>
 #include <sax/tools/converter.hxx>
-#include "XMLNumberStylesImport.hxx"
+#include <XMLNumberStylesImport.hxx>
 #include <xmloff/xmlstyle.hxx>
 #include <xmloff/xmltoken.hxx>
-#include <xmloff/xmlnmspe.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include "ximppage.hxx"
-#include "ximpshap.hxx"
-#include "animimp.hxx"
-#include "XMLStringBufferImportContext.hxx"
+#include <animimp.hxx>
+#include <XMLStringBufferImportContext.hxx>
 #include <xmloff/xmlictxt.hxx>
 #include "ximpstyl.hxx"
 #include <xmloff/prstylei.hxx>
-#include "PropertySetMerger.hxx"
+#include <PropertySetMerger.hxx>
 #include <osl/diagnose.h>
+#include <sal/log.hxx>
 
 #include <xmloff/unointerfacetouniqueidentifiermapper.hxx>
 #include <xmloff/xmluconv.hxx>
@@ -54,14 +57,19 @@ using namespace ::com::sun::star::office;
 using namespace ::com::sun::star::xml::sax;
 using namespace ::com::sun::star::geometry;
 
+namespace {
+
 class DrawAnnotationContext : public SvXMLImportContext
 {
 
 public:
-    DrawAnnotationContext( SvXMLImport& rImport, sal_uInt16 nPrfx, const OUString& rLocalName,const Reference< xml::sax::XAttributeList>& xAttrList, const Reference< XAnnotationAccess >& xAnnotationAccess );
+    DrawAnnotationContext( SvXMLImport& rImport, const Reference< xml::sax::XFastAttributeList>& xAttrList, const Reference< XAnnotationAccess >& xAnnotationAccess );
 
-    virtual SvXMLImportContext * CreateChildContext( sal_uInt16 nPrefix, const OUString& rLocalName, const css::uno::Reference< css::xml::sax::XAttributeList>& xAttrList ) override;
-    virtual void EndElement() override;
+    virtual css::uno::Reference< css::xml::sax::XFastContextHandler > SAL_CALL createFastChildContext(
+        sal_Int32 nElement, const css::uno::Reference< css::xml::sax::XFastAttributeList >& AttrList ) override;
+    virtual SvXMLImportContextRef CreateChildContext( sal_uInt16 nPrefix, const OUString& rLocalName, const css::uno::Reference< css::xml::sax::XAttributeList>& xAttrList ) override;
+    virtual void SAL_CALL startFastElement( sal_Int32 nElement, const css::uno::Reference< css::xml::sax::XFastAttributeList >& xAttrList ) override;
+    virtual void SAL_CALL endFastElement(sal_Int32 nElement) override;
 
 private:
     Reference< XAnnotation > mxAnnotation;
@@ -72,81 +80,103 @@ private:
     OUStringBuffer maDateBuffer;
 };
 
-DrawAnnotationContext::DrawAnnotationContext( SvXMLImport& rImport, sal_uInt16 nPrfx, const OUString& rLocalName,const Reference< xml::sax::XAttributeList>& xAttrList, const Reference< XAnnotationAccess >& xAnnotationAccess )
-: SvXMLImportContext( rImport, nPrfx, rLocalName )
+}
+
+DrawAnnotationContext::DrawAnnotationContext( SvXMLImport& rImport, const Reference< xml::sax::XFastAttributeList>& xAttrList, const Reference< XAnnotationAccess >& xAnnotationAccess )
+: SvXMLImportContext( rImport )
 , mxAnnotation( xAnnotationAccess->createAndInsertAnnotation() )
+{
+    if( !mxAnnotation.is() )
+        return;
+
+    RealPoint2D aPosition;
+    RealSize2D aSize;
+
+    for (auto &aIter : sax_fastparser::castToFastAttributeList( xAttrList ))
+    {
+        OUString sValue = aIter.toString();
+
+        switch( aIter.getToken() )
+        {
+            case XML_ELEMENT(SVG, XML_X):
+            {
+                sal_Int32 x;
+                GetImport().GetMM100UnitConverter().convertMeasureToCore(
+                        x, sValue);
+                aPosition.X = static_cast<double>(x) / 100.0;
+                break;
+            }
+            case XML_ELEMENT(SVG, XML_Y):
+            {
+                sal_Int32 y;
+                GetImport().GetMM100UnitConverter().convertMeasureToCore(
+                        y, sValue);
+                aPosition.Y = static_cast<double>(y) / 100.0;
+                break;
+            }
+            case XML_ELEMENT(SVG, XML_WIDTH):
+            {
+                sal_Int32 w;
+                GetImport().GetMM100UnitConverter().convertMeasureToCore(
+                        w, sValue);
+                aSize.Width = static_cast<double>(w) / 100.0;
+                break;
+            }
+            case XML_ELEMENT(SVG, XML_HEIGHT):
+            {
+                sal_Int32 h;
+                GetImport().GetMM100UnitConverter().convertMeasureToCore(
+                        h, sValue);
+                aSize.Height = static_cast<double>(h) / 100.0;
+            }
+            break;
+            default:
+                SAL_WARN("xmloff", "unknown attribute " << SvXMLImport::getPrefixAndNameFromToken(aIter.getToken()) << "=" << sValue);        }
+    }
+
+    mxAnnotation->setPosition( aPosition );
+    mxAnnotation->setSize( aSize );
+}
+
+css::uno::Reference< css::xml::sax::XFastContextHandler > DrawAnnotationContext::createFastChildContext(
+        sal_Int32 nElement,
+        const css::uno::Reference< css::xml::sax::XFastAttributeList >& /*xAttrList*/ )
 {
     if( mxAnnotation.is() )
     {
-        sal_Int16 nAttrCount = xAttrList.is() ? xAttrList->getLength() : 0;
-
-        RealPoint2D aPosition;
-        RealSize2D aSize;
-
-        for(sal_Int16 i=0; i < nAttrCount; i++)
+        if (IsTokenInNamespace(nElement, XML_NAMESPACE_DC))
         {
-            OUString sValue( xAttrList->getValueByIndex( i ) );
-            OUString sAttrName( xAttrList->getNameByIndex( i ) );
-            OUString aLocalName;
-            switch( GetImport().GetNamespaceMap().GetKeyByAttrName( sAttrName, &aLocalName ) )
-            {
-            case XML_NAMESPACE_SVG:
-                if( IsXMLToken( aLocalName, XML_X ) )
-                {
-                    sal_Int32 x;
-                    GetImport().GetMM100UnitConverter().convertMeasureToCore(
-                            x, sValue);
-                    aPosition.X = static_cast<double>(x) / 100.0;
-                }
-                else if( IsXMLToken( aLocalName, XML_Y ) )
-                {
-                    sal_Int32 y;
-                    GetImport().GetMM100UnitConverter().convertMeasureToCore(
-                            y, sValue);
-                    aPosition.Y = static_cast<double>(y) / 100.0;
-                }
-                else if( IsXMLToken( aLocalName, XML_WIDTH ) )
-                {
-                    sal_Int32 w;
-                    GetImport().GetMM100UnitConverter().convertMeasureToCore(
-                            w, sValue);
-                    aSize.Width = static_cast<double>(w) / 100.0;
-                }
-                else if( IsXMLToken( aLocalName, XML_HEIGHT ) )
-                {
-                    sal_Int32 h;
-                    GetImport().GetMM100UnitConverter().convertMeasureToCore(
-                            h, sValue);
-                    aSize.Height = static_cast<double>(h) / 100.0;
-                }
-                break;
-            default:
-                break;
-            }
+            if( (nElement & TOKEN_MASK) == XML_CREATOR )
+                return new XMLStringBufferImportContext(GetImport(), maAuthorBuffer);
+            else if( (nElement & TOKEN_MASK) == XML_DATE )
+                return new XMLStringBufferImportContext(GetImport(), maDateBuffer);
         }
-
-        mxAnnotation->setPosition( aPosition );
-        mxAnnotation->setSize( aSize );
+        else if ( nElement == XML_ELEMENT(TEXT, XML_SENDER_INITIALS)
+                || nElement == XML_ELEMENT(LO_EXT, XML_SENDER_INITIALS)
+                || nElement == XML_ELEMENT(META, XML_CREATOR_INITIALS))
+        {
+            return new XMLStringBufferImportContext(GetImport(), maInitialsBuffer);
+        }
     }
+    return nullptr;
 }
 
-SvXMLImportContext * DrawAnnotationContext::CreateChildContext( sal_uInt16 nPrefix, const OUString& rLocalName, const Reference< XAttributeList >& xAttrList )
+SvXMLImportContextRef DrawAnnotationContext::CreateChildContext( sal_uInt16 nPrefix, const OUString& rLocalName, const Reference< XAttributeList >& xAttrList )
 {
-    SvXMLImportContext * pContext = nullptr;
+    SvXMLImportContextRef xContext;
 
     if( mxAnnotation.is() )
     {
         if( XML_NAMESPACE_DC == nPrefix )
         {
-            if( IsXMLToken( rLocalName, XML_CREATOR ) )
-                pContext = new XMLStringBufferImportContext(GetImport(), nPrefix, rLocalName, maAuthorBuffer);
-            else if( IsXMLToken( rLocalName, XML_DATE ) )
-                pContext = new XMLStringBufferImportContext(GetImport(), nPrefix, rLocalName, maDateBuffer);
+            // handled in createFastChildContext
         }
-        else if( (XML_NAMESPACE_TEXT == nPrefix || XML_NAMESPACE_LO_EXT == nPrefix) &&
-                 IsXMLToken(rLocalName, XML_SENDER_INITIALS) )
+        else if (((XML_NAMESPACE_TEXT == nPrefix || XML_NAMESPACE_LO_EXT == nPrefix)
+                    && IsXMLToken(rLocalName, XML_SENDER_INITIALS))
+                 || (XML_NAMESPACE_META == nPrefix
+                     && IsXMLToken(rLocalName, XML_CREATOR_INITIALS)))
         {
-            pContext = new XMLStringBufferImportContext(GetImport(), nPrefix, rLocalName, maInitialsBuffer);
+            // handled in createFastChildContext
         }
         else
         {
@@ -166,19 +196,20 @@ SvXMLImportContext * DrawAnnotationContext::CreateChildContext( sal_uInt16 nPref
             // if we have a text cursor, lets  try to import some text
             if( mxCursor.is() )
             {
-                pContext = GetImport().GetTextImport()->CreateTextChildContext( GetImport(), nPrefix, rLocalName, xAttrList );
+                xContext = GetImport().GetTextImport()->CreateTextChildContext( GetImport(), nPrefix, rLocalName, xAttrList );
             }
         }
     }
 
-    // call parent for content
-    if(!pContext)
-        pContext = SvXMLImportContext::CreateChildContext( nPrefix, rLocalName, xAttrList );
-
-    return pContext;
+    return xContext;
 }
 
-void DrawAnnotationContext::EndElement()
+void DrawAnnotationContext::startFastElement( sal_Int32 /*nElement*/,
+    const css::uno::Reference< css::xml::sax::XFastAttributeList >& /*xAttrList*/ )
+{
+}
+
+void DrawAnnotationContext::endFastElement(sal_Int32)
 {
     if(mxCursor.is())
     {
@@ -197,7 +228,7 @@ void DrawAnnotationContext::EndElement()
         mxAnnotation->setInitials( maInitialsBuffer.makeStringAndClear() );
 
         util::DateTime aDateTime;
-        if (::sax::Converter::parseDateTime(aDateTime, nullptr,
+        if (::sax::Converter::parseDateTime(aDateTime,
                 maDateBuffer.makeStringAndClear()))
         {
             mxAnnotation->setDateTime(aDateTime);
@@ -208,23 +239,17 @@ void DrawAnnotationContext::EndElement()
 
 SdXMLGenericPageContext::SdXMLGenericPageContext(
     SvXMLImport& rImport,
-    sal_uInt16 nPrfx, const OUString& rLocalName,
-    const Reference< xml::sax::XAttributeList>& xAttrList,
-    Reference< drawing::XShapes >& rShapes)
-: SvXMLImportContext( rImport, nPrfx, rLocalName )
+    const Reference< xml::sax::XFastAttributeList>& xAttrList,
+    Reference< drawing::XShapes > const & rShapes)
+: SvXMLImportContext( rImport )
 , mxShapes( rShapes )
 , mxAnnotationAccess( rShapes, UNO_QUERY )
 {
-    sal_Int16 nAttrCount = xAttrList.is() ? xAttrList->getLength() : 0;
-
-    for(sal_Int16 i=0; i < nAttrCount; i++)
+    for (auto &aIter : sax_fastparser::castToFastAttributeList( xAttrList ))
     {
-        OUString sAttrName = xAttrList->getNameByIndex( i );
-        OUString aLocalName;
-        sal_uInt16 nPrefix = GetSdImport().GetNamespaceMap().GetKeyByAttrName( sAttrName, &aLocalName );
-        if( (nPrefix == XML_NAMESPACE_DRAW) && IsXMLToken( aLocalName, XML_NAV_ORDER ) )
+        if( aIter.getToken() == XML_ELEMENT(DRAW, XML_NAV_ORDER) )
         {
-            msNavOrder = xAttrList->getValueByIndex( i );
+            msNavOrder = aIter.toString();
             break;
         }
     }
@@ -234,51 +259,62 @@ SdXMLGenericPageContext::~SdXMLGenericPageContext()
 {
 }
 
-void SdXMLGenericPageContext::StartElement( const Reference< css::xml::sax::XAttributeList >& )
+void SdXMLGenericPageContext::startFastElement( sal_Int32 /*nElement*/, const Reference< css::xml::sax::XFastAttributeList >& )
 {
-    GetImport().GetShapeImport()->pushGroupForSorting( mxShapes );
+    GetImport().GetShapeImport()->pushGroupForPostProcessing( mxShapes );
 
     if( GetImport().IsFormsSupported() )
         GetImport().GetFormImport()->startPage( Reference< drawing::XDrawPage >::query( mxShapes ) );
 }
 
-SvXMLImportContext* SdXMLGenericPageContext::CreateChildContext( sal_uInt16 nPrefix,
+css::uno::Reference< css::xml::sax::XFastContextHandler > SdXMLGenericPageContext::createFastChildContext(
+    sal_Int32 nElement,
+    const Reference< xml::sax::XFastAttributeList>& xAttrList )
+{
+    if( nElement == XML_ELEMENT(PRESENTATION, XML_ANIMATIONS) )
+    {
+        return new XMLAnimationsContext( GetImport() );
+    }
+    else if( nElement == XML_ELEMENT(OFFICE, XML_ANNOTATION) || nElement == XML_ELEMENT(OFFICE_EXT, XML_ANNOTATION) )
+    {
+        if( mxAnnotationAccess.is() )
+            return new DrawAnnotationContext( GetImport(), xAttrList, mxAnnotationAccess );
+    }
+    return nullptr;
+}
+
+SvXMLImportContextRef SdXMLGenericPageContext::CreateChildContext( sal_uInt16 nPrefix,
     const OUString& rLocalName,
     const Reference< xml::sax::XAttributeList>& xAttrList )
 {
-    SvXMLImportContext* pContext = nullptr;
+    SvXMLImportContextRef xContext;
 
     if( nPrefix == XML_NAMESPACE_PRESENTATION && IsXMLToken( rLocalName, XML_ANIMATIONS ) )
     {
-        pContext = new XMLAnimationsContext( GetImport(), nPrefix, rLocalName, xAttrList );
+        // handled in createFastChildContext
     }
     else if( nPrefix == XML_NAMESPACE_OFFICE && IsXMLToken( rLocalName, XML_FORMS ) )
     {
         if( GetImport().IsFormsSupported() )
-            pContext = xmloff::OFormLayerXMLImport::createOfficeFormsContext( GetImport(), nPrefix, rLocalName );
+            xContext = xmloff::OFormLayerXMLImport::createOfficeFormsContext( GetImport(), nPrefix, rLocalName );
     }
     else if( ((nPrefix == XML_NAMESPACE_OFFICE) || (nPrefix == XML_NAMESPACE_OFFICE_EXT)) && IsXMLToken( rLocalName, XML_ANNOTATION ) )
     {
-        if( mxAnnotationAccess.is() )
-            pContext = new DrawAnnotationContext( GetImport(), nPrefix, rLocalName, xAttrList, mxAnnotationAccess );
+        // handled in createFastChildContext
     }
     else
     {
         // call GroupChildContext function at common ShapeImport
-        pContext = GetImport().GetShapeImport()->CreateGroupChildContext(
+        xContext = GetImport().GetShapeImport()->CreateGroupChildContext(
             GetImport(), nPrefix, rLocalName, xAttrList, mxShapes);
     }
 
-    // call parent when no own context was created
-    if(!pContext)
-        pContext = SvXMLImportContext::CreateChildContext(nPrefix, rLocalName, xAttrList);
-
-    return pContext;
+    return xContext;
 }
 
-void SdXMLGenericPageContext::EndElement()
+void SdXMLGenericPageContext::endFastElement(sal_Int32 )
 {
-    GetImport().GetShapeImport()->popGroupAndSort();
+    GetImport().GetShapeImport()->popGroupAndPostProcess();
 
     if( GetImport().IsFormsSupported() )
         GetImport().GetFormImport()->endPage();
@@ -331,7 +367,7 @@ void SdXMLGenericPageContext::EndElement()
                         if( pStyles )
                         {
                             const SdXMLNumberFormatImportContext* pSdNumStyle =
-                                dynamic_cast< const SdXMLNumberFormatImportContext* >( pStyles->FindStyleChildContext( XML_STYLE_FAMILY_DATA_STYLE, aDateTimeFormat, true ) );
+                                dynamic_cast< const SdXMLNumberFormatImportContext* >( pStyles->FindStyleChildContext( XmlStyleFamily::DATA_STYLE, aDateTimeFormat, true ) );
 
                             if( pSdNumStyle )
                             {
@@ -352,103 +388,103 @@ void SdXMLGenericPageContext::EndElement()
     SetNavigationOrder();
 }
 
-void SdXMLGenericPageContext::SetStyle( OUString& rStyleName )
+void SdXMLGenericPageContext::SetStyle( OUString const & rStyleName )
 {
     // set PageProperties?
-    if(!rStyleName.isEmpty())
+    if(rStyleName.isEmpty())
+        return;
+
+    try
     {
-        try
+        const SvXMLImportContext* pContext = GetSdImport().GetShapeImport()->GetAutoStylesContext();
+
+        if (const SdXMLStylesContext* pStyles = dynamic_cast<const SdXMLStylesContext *>(pContext))
         {
-            const SvXMLImportContext* pContext = GetSdImport().GetShapeImport()->GetAutoStylesContext();
+            const SvXMLStyleContext* pStyle = pStyles->FindStyleChildContext(
+                XmlStyleFamily::SD_DRAWINGPAGE_ID, rStyleName);
 
-            if (const SdXMLStylesContext* pStyles = dynamic_cast<const SdXMLStylesContext *>(pContext))
+            if (const XMLPropStyleContext* pPropStyle = dynamic_cast<const XMLPropStyleContext*>(pStyle))
             {
-                const SvXMLStyleContext* pStyle = pStyles->FindStyleChildContext(
-                    XML_STYLE_FAMILY_SD_DRAWINGPAGE_ID, rStyleName);
-
-                if (const XMLPropStyleContext* pPropStyle = dynamic_cast<const XMLPropStyleContext*>(pStyle))
+                Reference <beans::XPropertySet> xPropSet1(mxShapes, uno::UNO_QUERY);
+                if(xPropSet1.is())
                 {
-                    Reference <beans::XPropertySet> xPropSet1(mxShapes, uno::UNO_QUERY);
-                    if(xPropSet1.is())
+                    Reference< beans::XPropertySet > xPropSet( xPropSet1 );
+                    Reference< beans::XPropertySet > xBackgroundSet;
+
+                    const OUString aBackground("Background");
+                    if( xPropSet1->getPropertySetInfo()->hasPropertyByName( aBackground ) )
                     {
-                        Reference< beans::XPropertySet > xPropSet( xPropSet1 );
-                        Reference< beans::XPropertySet > xBackgroundSet;
-
-                        const OUString aBackground("Background");
-                        if( xPropSet1->getPropertySetInfo()->hasPropertyByName( aBackground ) )
+                        Reference< beans::XPropertySetInfo > xInfo( xPropSet1->getPropertySetInfo() );
+                        if( xInfo.is() && xInfo->hasPropertyByName( aBackground ) )
                         {
-                            Reference< beans::XPropertySetInfo > xInfo( xPropSet1->getPropertySetInfo() );
-                            if( xInfo.is() && xInfo->hasPropertyByName( aBackground ) )
+                            Reference< lang::XMultiServiceFactory > xServiceFact(GetSdImport().GetModel(), uno::UNO_QUERY);
+                            if(xServiceFact.is())
                             {
-                                Reference< lang::XMultiServiceFactory > xServiceFact(GetSdImport().GetModel(), uno::UNO_QUERY);
-                                if(xServiceFact.is())
-                                {
-                                    xBackgroundSet.set(xServiceFact->createInstance("com.sun.star.drawing.Background"), UNO_QUERY);
-                                }
+                                xBackgroundSet.set(xServiceFact->createInstance("com.sun.star.drawing.Background"), UNO_QUERY);
                             }
-
-                            if( xBackgroundSet.is() )
-                                xPropSet = PropertySetMerger_CreateInstance( xPropSet1, xBackgroundSet );
                         }
 
-                        if(xPropSet.is())
-                        {
-                            const_cast<XMLPropStyleContext*>(pPropStyle)->FillPropertySet(xPropSet);
+                        if( xBackgroundSet.is() )
+                            xPropSet = PropertySetMerger_CreateInstance( xPropSet1, xBackgroundSet );
+                    }
 
-                            if( xBackgroundSet.is() )
-                                xPropSet1->setPropertyValue( aBackground, uno::makeAny( xBackgroundSet ) );
-                        }
+                    if(xPropSet.is())
+                    {
+                        const_cast<XMLPropStyleContext*>(pPropStyle)->FillPropertySet(xPropSet);
+
+                        if( xBackgroundSet.is() )
+                            xPropSet1->setPropertyValue( aBackground, uno::makeAny( xBackgroundSet ) );
                     }
                 }
             }
         }
-        catch (const uno::Exception&)
-        {
-            OSL_FAIL( "SdXMLGenericPageContext::SetStyle(): uno::Exception caught!" );
-        }
+    }
+    catch (const uno::Exception&)
+    {
+        OSL_FAIL( "SdXMLGenericPageContext::SetStyle(): uno::Exception caught!" );
     }
 }
 
 void SdXMLGenericPageContext::SetLayout()
 {
     // set PresentationPageLayout?
-    if(GetSdImport().IsImpress() && !maPageLayoutName.isEmpty())
+    if(!(GetSdImport().IsImpress() && !maPageLayoutName.isEmpty()))
+        return;
+
+    sal_Int32 nType = -1;
+
+    const SvXMLImportContext* pContext = GetSdImport().GetShapeImport()->GetStylesContext();
+
+    if (const SdXMLStylesContext* pStyles = dynamic_cast<const SdXMLStylesContext *>(pContext))
     {
-        sal_Int32 nType = -1;
+        const SvXMLStyleContext* pStyle = pStyles->FindStyleChildContext( XmlStyleFamily::SD_PRESENTATIONPAGELAYOUT_ID, maPageLayoutName);
 
-        const SvXMLImportContext* pContext = GetSdImport().GetShapeImport()->GetStylesContext();
-
-        if (const SdXMLStylesContext* pStyles = dynamic_cast<const SdXMLStylesContext *>(pContext))
+        if (const SdXMLPresentationPageLayoutContext* pLayout = dynamic_cast<const SdXMLPresentationPageLayoutContext*>(pStyle))
         {
-            const SvXMLStyleContext* pStyle = pStyles->FindStyleChildContext( XML_STYLE_FAMILY_SD_PRESENTATIONPAGELAYOUT_ID, maPageLayoutName);
+            nType = pLayout->GetTypeId();
+        }
+    }
 
-            if (const SdXMLPresentationPageLayoutContext* pLayout = dynamic_cast<const SdXMLPresentationPageLayoutContext*>(pStyle))
-            {
-                nType = pLayout->GetTypeId();
-            }
+    if( -1 == nType )
+    {
+        Reference< container::XNameAccess > xPageLayouts( GetSdImport().getPageLayouts() );
+        if( xPageLayouts.is() )
+        {
+            if( xPageLayouts->hasByName( maPageLayoutName ) )
+                xPageLayouts->getByName( maPageLayoutName ) >>= nType;
         }
 
-        if( -1 == nType )
-        {
-            Reference< container::XNameAccess > xPageLayouts( GetSdImport().getPageLayouts() );
-            if( xPageLayouts.is() )
-            {
-                if( xPageLayouts->hasByName( maPageLayoutName ) )
-                    xPageLayouts->getByName( maPageLayoutName ) >>= nType;
-            }
+    }
 
-        }
-
-        if( -1 != nType )
+    if( -1 != nType )
+    {
+        Reference <beans::XPropertySet> xPropSet(mxShapes, uno::UNO_QUERY);
+        if(xPropSet.is())
         {
-            Reference <beans::XPropertySet> xPropSet(mxShapes, uno::UNO_QUERY);
-            if(xPropSet.is())
-            {
-                OUString aPropName("Layout");
-                Reference< beans::XPropertySetInfo > xInfo( xPropSet->getPropertySetInfo() );
-                if( xInfo.is() && xInfo->hasPropertyByName( aPropName ) )
-                    xPropSet->setPropertyValue(aPropName, uno::makeAny( (sal_Int16)nType ) );
-            }
+            OUString aPropName("Layout");
+            Reference< beans::XPropertySetInfo > xInfo( xPropSet->getPropertySetInfo() );
+            if( xInfo.is() && xInfo->hasPropertyByName( aPropName ) )
+                xPropSet->setPropertyValue(aPropName, uno::makeAny( static_cast<sal_Int16>(nType) ) );
         }
     }
 }
@@ -471,43 +507,46 @@ void SdXMLGenericPageContext::DeleteAllShapes()
     }
 }
 
-void SdXMLGenericPageContext::SetPageMaster( OUString& rsPageMasterName )
+void SdXMLGenericPageContext::SetPageMaster( OUString const & rsPageMasterName )
 {
-    if (GetSdImport().GetShapeImport()->GetStylesContext())
+    if (!GetSdImport().GetShapeImport()->GetStylesContext())
+        return;
+
+    // look for PageMaster with this name
+
+    // #80012# GetStylesContext() replaced with GetAutoStylesContext()
+    const SvXMLStylesContext* pAutoStyles = GetSdImport().GetShapeImport()->GetAutoStylesContext();
+
+    const SvXMLStyleContext* pStyle = pAutoStyles ? pAutoStyles->FindStyleChildContext(XmlStyleFamily::SD_PAGEMASTERCONEXT_ID, rsPageMasterName) : nullptr;
+
+    const SdXMLPageMasterContext* pPageMaster = dynamic_cast<const SdXMLPageMasterContext*>(pStyle);
+    if (!pPageMaster)
+        return;
+
+    const SdXMLPageMasterStyleContext* pPageMasterContext = pPageMaster->GetPageMasterStyle();
+
+    if (!pPageMasterContext)
+        return;
+
+    Reference< drawing::XDrawPage > xMasterPage(GetLocalShapesContext(), uno::UNO_QUERY);
+    if (!xMasterPage.is())
+        return;
+
+    // set sizes for this masterpage
+    Reference <beans::XPropertySet> xPropSet(xMasterPage, uno::UNO_QUERY);
+    if (xPropSet.is())
     {
-        // look for PageMaster with this name
-
-        // #80012# GetStylesContext() replaced with GetAutoStylesContext()
-        const SvXMLStylesContext* pAutoStyles = GetSdImport().GetShapeImport()->GetAutoStylesContext();
-
-        const SvXMLStyleContext* pStyle = pAutoStyles ? pAutoStyles->FindStyleChildContext(XML_STYLE_FAMILY_SD_PAGEMASTERCONEXT_ID, rsPageMasterName) : nullptr;
-
-        if (const SdXMLPageMasterContext* pPageMaster = dynamic_cast<const SdXMLPageMasterContext*>(pStyle))
-        {
-            const SdXMLPageMasterStyleContext* pPageMasterContext = pPageMaster->GetPageMasterStyle();
-
-            if (pPageMasterContext)
-            {
-                Reference< drawing::XDrawPage > xMasterPage(GetLocalShapesContext(), uno::UNO_QUERY);
-                if (xMasterPage.is())
-                {
-                    // set sizes for this masterpage
-                    Reference <beans::XPropertySet> xPropSet(xMasterPage, uno::UNO_QUERY);
-                    if (xPropSet.is())
-                    {
-                        xPropSet->setPropertyValue("BorderBottom", Any(pPageMasterContext->GetBorderBottom()));
-                        xPropSet->setPropertyValue("BorderLeft", Any(pPageMasterContext->GetBorderLeft()));
-                        xPropSet->setPropertyValue("BorderRight", Any(pPageMasterContext->GetBorderRight()));
-                        xPropSet->setPropertyValue("BorderTop", Any(pPageMasterContext->GetBorderTop()));
-                        xPropSet->setPropertyValue("Width", Any(pPageMasterContext->GetWidth()));
-                        xPropSet->setPropertyValue("Height", Any(pPageMasterContext->GetHeight()));
-                        xPropSet->setPropertyValue("Orientation", Any(pPageMasterContext->GetOrientation()));
-                    }
-                }
-            }
-        }
+        xPropSet->setPropertyValue("BorderBottom", Any(pPageMasterContext->GetBorderBottom()));
+        xPropSet->setPropertyValue("BorderLeft", Any(pPageMasterContext->GetBorderLeft()));
+        xPropSet->setPropertyValue("BorderRight", Any(pPageMasterContext->GetBorderRight()));
+        xPropSet->setPropertyValue("BorderTop", Any(pPageMasterContext->GetBorderTop()));
+        xPropSet->setPropertyValue("Width", Any(pPageMasterContext->GetWidth()));
+        xPropSet->setPropertyValue("Height", Any(pPageMasterContext->GetHeight()));
+        xPropSet->setPropertyValue("Orientation", Any(pPageMasterContext->GetOrientation()));
     }
 }
+
+namespace {
 
 class XoNavigationOrderAccess : public ::cppu::WeakImplHelper< XIndexAccess >
 {
@@ -525,6 +564,8 @@ public:
 private:
     std::vector< Reference< XShape > > maShapes;
 };
+
+}
 
 XoNavigationOrderAccess::XoNavigationOrderAccess( std::vector< Reference< XShape > >& rShapes )
 {
@@ -558,7 +599,10 @@ sal_Bool SAL_CALL XoNavigationOrderAccess::hasElements(  )
 
 void SdXMLGenericPageContext::SetNavigationOrder()
 {
-    if( !msNavOrder.isEmpty() ) try
+    if( msNavOrder.isEmpty() )
+        return;
+
+    try
     {
         sal_uInt32 nIndex;
         const sal_uInt32 nCount = static_cast< sal_uInt32 >( mxShapes->getCount() );

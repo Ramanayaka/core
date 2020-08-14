@@ -34,14 +34,14 @@
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace awt { class XControlModel; }
     namespace container { class XIndexContainer; }
     namespace drawing { class XDrawPage; }
     namespace frame { class XModel; }
     namespace form { class XFormsSupplier; }
     namespace lang { class XMultiServiceFactory; }
-} } }
+}
 
 namespace oox {
     class BinaryInputStream;
@@ -50,8 +50,7 @@ namespace oox {
     class PropertyMap;
 }
 
-namespace oox {
-namespace ole {
+namespace oox::ole {
 
 
 #define COMCTL_GUID_SCROLLBAR_60   "{FE38753A-44A3-11D1-B5B7-0000C09000C4}"
@@ -219,7 +218,7 @@ public:
                             sal_uInt32 nOleColor ) const;
 
     static void         convertToMSColor(
-                            PropertySet& rPropSet,
+                            PropertySet const & rPropSet,
                             sal_Int32 nPropId,
                             sal_uInt32& nOleColor,
                             sal_uInt32 nDefault = 0 );
@@ -236,7 +235,7 @@ public:
                             bool bHorizontal );
 
     static void         convertToMSOrientation(
-                            PropertySet& rPropMap,
+                            PropertySet const & rPropMap,
                             bool& bHorizontal );
 
     /** Converts the vertical alignment to UNO properties. */
@@ -281,7 +280,7 @@ public:
                             sal_Int32 nSpecialEffect ) const;
 
     static void        convertToAxBorder(
-                            PropertySet& rPropSet,
+                            PropertySet const & rPropSet,
                             sal_uInt32& nBorderColor,
                             sal_Int32& nBorderStyle,
                             sal_Int32& nSpecialEffect );
@@ -292,7 +291,7 @@ public:
                             sal_Int32 nSpecialEffect );
 
     static void         convertToAxVisualEffect(
-                            PropertySet& rPropSet,
+                            PropertySet const & rPropSet,
                             sal_Int32& nSpecialEffect );
 
     /** Converts the passed picture stream and Forms 2.0 position to UNO
@@ -319,11 +318,10 @@ public:
                             bool bAwtModel );
 
     static void        convertToAxState(
-                            PropertySet& rPropSet,
+                            PropertySet const & rPropSet,
                             OUString& rValue,
                             sal_Int32& nMultiSelect,
-                            ApiDefaultStateMode eDefStateMode,
-                            bool bAwtModel );
+                            ApiDefaultStateMode eDefStateMode );
 
     /** Converts the Forms 2.0 control orientation to UNO properties. */
     static void        convertAxOrientation(
@@ -332,8 +330,7 @@ public:
                             sal_Int32 nOrientation );
 
     static void        convertToAxOrientation(
-                            PropertySet& rPropSet,
-                            const AxPairData& rSize,
+                            PropertySet const & rPropSet,
                             sal_Int32& nOrientation );
 
 private:
@@ -432,7 +429,7 @@ private:
 
 
 /** Model for a ComCtl scroll bar. */
-class ComCtlScrollBarModel : public ComCtlModelBase
+class ComCtlScrollBarModel final : public ComCtlModelBase
 {
 public:
     explicit            ComCtlScrollBarModel( sal_uInt16 nVersion );
@@ -440,10 +437,9 @@ public:
     virtual ApiControlType getControlType() const override;
     virtual void        convertProperties( PropertyMap& rPropMap, const ControlConverter& rConv ) const override;
 
-protected:
+private:
     virtual void        importControlData( BinaryInputStream& rInStrm ) override;
 
-private:
     sal_uInt32          mnScrollBarFlags;   ///< Special flags for scroll bar model.
     sal_Int32           mnLargeChange;      ///< Increment step size (thumb).
     sal_Int32           mnSmallChange;      ///< Increment step size (buttons).
@@ -454,7 +450,7 @@ private:
 
 
 /** Model for a ComCtl progress bar. */
-class ComCtlProgressBarModel : public ComCtlModelBase
+class ComCtlProgressBarModel final : public ComCtlModelBase
 {
 public:
     explicit            ComCtlProgressBarModel( sal_uInt16 nVersion );
@@ -462,10 +458,9 @@ public:
     virtual ApiControlType getControlType() const override;
     virtual void        convertProperties( PropertyMap& rPropMap, const ControlConverter& rConv ) const override;
 
-protected:
+private:
     virtual void        importControlData( BinaryInputStream& rInStrm ) override;
 
-private:
     float               mfMin;              ///< Minimum of the value range.
     float               mfMax;              ///< Maximum of the value range.
     sal_uInt16          mnVertical;         ///< 0 = horizontal, 1 = vertical.
@@ -507,7 +502,7 @@ private:
 
 
 /** Model for a Forms 2.0 command button. */
-class OOX_DLLPUBLIC AxCommandButtonModel : public AxFontDataModel
+class OOX_DLLPUBLIC AxCommandButtonModel final : public AxFontDataModel
 {
 public:
     explicit            AxCommandButtonModel();
@@ -535,7 +530,7 @@ public: // direct access needed for legacy VML drawing controls
 
 
 /** Model for a Forms 2.0 label. */
-class OOX_DLLPUBLIC AxLabelModel : public AxFontDataModel
+class OOX_DLLPUBLIC AxLabelModel final : public AxFontDataModel
 {
 public:
     explicit            AxLabelModel();
@@ -562,7 +557,7 @@ public: // direct access needed for legacy VML drawing controls
 
 
 /** Model for a Forms 2.0 image. */
-class OOX_DLLPUBLIC AxImageModel : public AxControlModelBase
+class OOX_DLLPUBLIC AxImageModel final : public AxControlModelBase
 {
 public:
     explicit            AxImageModel();
@@ -588,7 +583,7 @@ private:
     bool                mbPicTiling;        ///< True = picture is repeated.
 };
 
-class OOX_DLLPUBLIC AxTabStripModel : public AxFontDataModel
+class OOX_DLLPUBLIC AxTabStripModel final : public AxFontDataModel
 {
 public:
     explicit            AxTabStripModel();
@@ -602,8 +597,8 @@ public:
     sal_uInt32   mnTabStyle;
     sal_uInt32   mnTabData;
     sal_uInt32   mnVariousPropertyBits;
-    std::vector< ::rtl::OUString > maItems; // captions for each tab
-    std::vector< ::rtl::OUString > maTabNames; // names for each tab
+    std::vector< OUString > maItems; // captions for each tab
+    std::vector< OUString > maTabNames; // names for each tab
 };
 
 
@@ -618,6 +613,7 @@ public:
     virtual bool        importBinaryModel( BinaryInputStream& rInStrm ) override;
     virtual void        exportBinaryModel( BinaryOutputStream& rOutStrm ) override;
     virtual void        convertProperties( PropertyMap& rPropMap, const ControlConverter& rConv ) const override;
+    virtual void        convertFromProperties( PropertySet& rPropSet, const ControlConverter& rConv ) override;
 
 public: // direct access needed for legacy VML drawing controls
     StreamDataSequence  maPictureData;      ///< Binary picture stream.
@@ -644,7 +640,7 @@ public: // direct access needed for legacy VML drawing controls
 
 
 /** Model for a Forms 2.0 toggle button. */
-class OOX_DLLPUBLIC AxToggleButtonModel : public AxMorphDataModelBase
+class OOX_DLLPUBLIC AxToggleButtonModel final : public AxMorphDataModelBase
 {
 public:
     explicit            AxToggleButtonModel();
@@ -657,7 +653,7 @@ public:
 
 
 /** Model for a Forms 2.0 check box. */
-class OOX_DLLPUBLIC AxCheckBoxModel : public AxMorphDataModelBase
+class OOX_DLLPUBLIC AxCheckBoxModel final : public AxMorphDataModelBase
 {
 public:
     explicit            AxCheckBoxModel();
@@ -670,7 +666,7 @@ public:
 
 
 /** Model for a Forms 2.0 option button. */
-class OOX_DLLPUBLIC AxOptionButtonModel : public AxMorphDataModelBase
+class OOX_DLLPUBLIC AxOptionButtonModel final : public AxMorphDataModelBase
 {
 public:
     explicit            AxOptionButtonModel();
@@ -699,7 +695,7 @@ public:
 
 
 /** Model for a numeric field (legacy drawing controls only). */
-class OOX_DLLPUBLIC AxNumericFieldModel : public AxMorphDataModelBase
+class OOX_DLLPUBLIC AxNumericFieldModel final : public AxMorphDataModelBase
 {
 public:
     explicit            AxNumericFieldModel();
@@ -725,7 +721,7 @@ public:
 
 
 /** Model for a Forms 2.0 combo box. */
-class OOX_DLLPUBLIC AxComboBoxModel : public AxMorphDataModelBase
+class OOX_DLLPUBLIC AxComboBoxModel final : public AxMorphDataModelBase
 {
 public:
     explicit            AxComboBoxModel();
@@ -738,7 +734,7 @@ public:
 
 
 /** Model for a Forms 2.0 spin button. */
-class OOX_DLLPUBLIC AxSpinButtonModel : public AxControlModelBase
+class OOX_DLLPUBLIC AxSpinButtonModel final : public AxControlModelBase
 {
 public:
     explicit            AxSpinButtonModel();
@@ -766,7 +762,7 @@ public: // direct access needed for legacy VML drawing controls
 
 
 /** Model for a Forms 2.0 scroll bar. */
-class OOX_DLLPUBLIC AxScrollBarModel : public AxControlModelBase
+class OOX_DLLPUBLIC AxScrollBarModel final : public AxControlModelBase
 {
 public:
     explicit            AxScrollBarModel();
@@ -836,7 +832,7 @@ public: // direct access needed for legacy VML drawing controls
 
 
 /** Model for a Forms 2.0 frame control. */
-class OOX_DLLPUBLIC AxFrameModel : public AxContainerModelBase
+class OOX_DLLPUBLIC AxFrameModel final : public AxContainerModelBase
 {
 public:
     explicit            AxFrameModel();
@@ -845,7 +841,7 @@ public:
     virtual void        convertProperties( PropertyMap& rPropMap, const ControlConverter& rConv ) const override;
 };
 
-class OOX_DLLPUBLIC AxPageModel : public AxContainerModelBase
+class OOX_DLLPUBLIC AxPageModel final : public AxContainerModelBase
 {
 public:
     explicit            AxPageModel();
@@ -854,7 +850,7 @@ public:
     virtual void        convertProperties( PropertyMap& rPropMap, const ControlConverter& rConv ) const override;
 };
 
-class OOX_DLLPUBLIC AxMultiPageModel : public AxContainerModelBase
+class OOX_DLLPUBLIC AxMultiPageModel final : public AxContainerModelBase
 {
 public:
     explicit            AxMultiPageModel();
@@ -869,7 +865,7 @@ public:
 
 
 /** Model for a Forms 2.0 user form. */
-class OOX_DLLPUBLIC AxUserFormModel : public AxContainerModelBase
+class OOX_DLLPUBLIC AxUserFormModel final : public AxContainerModelBase
 {
 public:
     explicit            AxUserFormModel();
@@ -878,7 +874,7 @@ public:
     virtual void        convertProperties( PropertyMap& rPropMap, const ControlConverter& rConv ) const override;
 };
 
-class HtmlSelectModel : public AxListBoxModel
+class HtmlSelectModel final : public AxListBoxModel
 {
     css::uno::Sequence< OUString > msListData;
     css::uno::Sequence< sal_Int16 > msIndices;
@@ -888,7 +884,7 @@ public:
     virtual void        convertProperties( PropertyMap& rPropMap, const ControlConverter& rConv ) const override;
 };
 
-class HtmlTextBoxModel : public AxTextBoxModel
+class HtmlTextBoxModel final : public AxTextBoxModel
 {
 public:
     explicit            HtmlTextBoxModel();
@@ -916,7 +912,7 @@ public:
     ControlModelBase*   createModelFromGuid( const OUString& rClassId );
 
     /** Returns true, if the internal control model exists. */
-    bool         hasModel() const { return mxModel.get() != nullptr; }
+    bool         hasModel() const { return bool(mxModel); }
     /** Returns read-only access to the internal control model. */
     const ControlModelBase* getModel() const { return mxModel.get(); }
     /** Returns read/write access to the internal control model. */
@@ -943,7 +939,7 @@ private:
 template< typename ModelType >
 inline ModelType& EmbeddedControl::createModel()
 {
-    std::shared_ptr< ModelType > xModel( new ModelType );
+    auto xModel = std::make_shared<ModelType>();
     mxModel = xModel;
     xModel->setFormComponentMode();
     return *xModel;
@@ -952,7 +948,7 @@ inline ModelType& EmbeddedControl::createModel()
 template< typename ModelType, typename ParamType >
 inline ModelType& EmbeddedControl::createModel( const ParamType& rParam )
 {
-    std::shared_ptr< ModelType > xModel( new ModelType( rParam ) );
+    auto xModel = std::make_shared<ModelType>( rParam );
     mxModel = xModel;
     xModel->setFormComponentMode();
     return *xModel;
@@ -990,8 +986,7 @@ private:
 };
 
 
-} // namespace ole
-} // namespace oox
+} // namespace oox::ole
 
 #endif
 

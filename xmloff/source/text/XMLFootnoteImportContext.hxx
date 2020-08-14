@@ -24,15 +24,15 @@
 #include <com/sun/star/uno/Reference.h>
 
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace text {
         class XTextCursor;
         class XFootnote;
     }
-    namespace xml { namespace sax {
+    namespace xml::sax {
         class XAttributeList;
-    } }
-} } }
+    }
+}
 class XMLTextImportHelper;
 
 /// import footnote elements (<text:footnote>)
@@ -69,7 +69,7 @@ protected:
 
     virtual void EndElement() override;
 
-    virtual SvXMLImportContext *CreateChildContext(
+    virtual SvXMLImportContextRef CreateChildContext(
         sal_uInt16 nPrefix,
         const OUString& rLocalName,
         const css::uno::Reference<css::xml::sax::XAttributeList> & xAttrList ) override;

@@ -17,19 +17,16 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "pivotcachefragment.hxx"
+#include <pivotcachefragment.hxx>
 
 #include <osl/diagnose.h>
-#include <oox/helper/attributelist.hxx>
 #include <oox/token/namespaces.hxx>
-#include <oox/token/tokens.hxx>
-#include "addressconverter.hxx"
-#include "formulabuffer.hxx"
-#include "pivotcachebuffer.hxx"
-#include "worksheetbuffer.hxx"
+#include <biffhelper.hxx>
+#include <formulabuffer.hxx>
+#include <pivotcachebuffer.hxx>
+#include <worksheetbuffer.hxx>
 
-namespace oox {
-namespace xls {
+namespace oox::xls {
 
 using namespace ::com::sun::star::uno;
 using namespace ::oox::core;
@@ -199,7 +196,7 @@ void PivotCacheDefinitionFragment::finalizeImport()
         {
             SCTAB nSheet = mrPivotCache.getSourceRange().aStart.Tab();
             WorksheetGlobalsRef xSheetGlob = WorksheetHelper::constructGlobals( *this, ISegmentProgressBarRef(), WorksheetType::Work, nSheet );
-            if( xSheetGlob.get() )
+            if( xSheetGlob )
                 importOoxFragment( new PivotCacheRecordsFragment( *xSheetGlob, aRecFragmentPath, mrPivotCache ) );
         }
     }
@@ -243,7 +240,7 @@ ContextHandlerRef PivotCacheRecordsFragment::onCreateContext( sal_Int32 nElement
                 case XLS_TOKEN( n ):    aItem.readNumeric( rAttribs );                      break;
                 case XLS_TOKEN( d ):    aItem.readDate( rAttribs );                         break;
                 case XLS_TOKEN( b ):    aItem.readBool( rAttribs );                         break;
-                case XLS_TOKEN( e ):    aItem.readError( rAttribs, getUnitConverter() );    break;
+                case XLS_TOKEN( e ):    aItem.readError( rAttribs );                        break;
                 case XLS_TOKEN( x ):    aItem.readIndex( rAttribs );                        break;
                 default:    OSL_FAIL( "OoxPivotCacheRecordsFragment::onCreateContext - unexpected element" );
             }
@@ -303,27 +300,26 @@ void PivotCacheRecordsFragment::importPCRecord( SequenceInputStream& rStrm )
 
 void PivotCacheRecordsFragment::importPCRecordItem( sal_Int32 nRecId, SequenceInputStream& rStrm )
 {
-    if( mbInRecord )
+    if( !mbInRecord )
+        return;
+
+    PivotCacheItem aItem;
+    switch( nRecId )
     {
-        PivotCacheItem aItem;
-        switch( nRecId )
-        {
-            case BIFF12_ID_PCITEM_MISSING:                              break;
-            case BIFF12_ID_PCITEM_STRING:   aItem.readString( rStrm );  break;
-            case BIFF12_ID_PCITEM_DOUBLE:   aItem.readDouble( rStrm );  break;
-            case BIFF12_ID_PCITEM_DATE:     aItem.readDate( rStrm );    break;
-            case BIFF12_ID_PCITEM_BOOL:     aItem.readBool( rStrm );    break;
-            case BIFF12_ID_PCITEM_ERROR:    aItem.readError( rStrm );   break;
-            case BIFF12_ID_PCITEM_INDEX:    aItem.readIndex( rStrm );   break;
-            default:    OSL_FAIL( "OoxPivotCacheRecordsFragment::importPCRecordItem - unexpected record" );
-        }
-        mrPivotCache.writeSourceDataCell( *this, mnColIdx, mnRowIdx, aItem );
-        ++mnColIdx;
+        case BIFF12_ID_PCITEM_MISSING:                              break;
+        case BIFF12_ID_PCITEM_STRING:   aItem.readString( rStrm );  break;
+        case BIFF12_ID_PCITEM_DOUBLE:   aItem.readDouble( rStrm );  break;
+        case BIFF12_ID_PCITEM_DATE:     aItem.readDate( rStrm );    break;
+        case BIFF12_ID_PCITEM_BOOL:     aItem.readBool( rStrm );    break;
+        case BIFF12_ID_PCITEM_ERROR:    aItem.readError( rStrm );   break;
+        case BIFF12_ID_PCITEM_INDEX:    aItem.readIndex( rStrm );   break;
+        default:    OSL_FAIL( "OoxPivotCacheRecordsFragment::importPCRecordItem - unexpected record" );
     }
+    mrPivotCache.writeSourceDataCell( *this, mnColIdx, mnRowIdx, aItem );
+    ++mnColIdx;
 }
 
 
-} // namespace xls
-} // namespace oox
+} // namespace oox::xls
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

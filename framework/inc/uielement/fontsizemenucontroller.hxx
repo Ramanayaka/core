@@ -20,27 +20,19 @@
 #ifndef INCLUDED_FRAMEWORK_INC_UIELEMENT_FONTSIZEMENUCONTROLLER_HXX
 #define INCLUDED_FRAMEWORK_INC_UIELEMENT_FONTSIZEMENUCONTROLLER_HXX
 
-#include <macros/xserviceinfo.hxx>
-#include <stdtypes.h>
-
-#include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/lang/XTypeProvider.hpp>
-#include <com/sun/star/lang/XInitialization.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/frame/XFrame.hpp>
 #include <com/sun/star/frame/XDispatch.hpp>
 #include <com/sun/star/frame/status/FontHeight.hpp>
 
 #include <svtools/popupmenucontrollerbase.hxx>
-#include <toolkit/awt/vclxmenu.hxx>
-#include <cppuhelper/weak.hxx>
 #include <rtl/ustring.hxx>
 
 #include <memory>
 
 namespace framework
 {
-    class FontSizeMenuController :  public svt::PopupMenuControllerBase
+    class FontSizeMenuController final : public svt::PopupMenuControllerBase
     {
         using svt::PopupMenuControllerBase::disposing;
 
@@ -48,12 +40,10 @@ namespace framework
             FontSizeMenuController( const css::uno::Reference< css::uno::XComponentContext >& xContext );
             virtual ~FontSizeMenuController() override;
 
-            // XServiceInfo
-            DECLARE_XSERVICEINFO_NOFACTORY
-            /* Helper for registry */
-            /// @throws css::uno::Exception
-            static css::uno::Reference< css::uno::XInterface >             SAL_CALL impl_createInstance                ( const css::uno::Reference< css::lang::XMultiServiceFactory >& xServiceManager );
-            static css::uno::Reference< css::lang::XSingleServiceFactory > SAL_CALL impl_createFactory                 ( const css::uno::Reference< css::lang::XMultiServiceFactory >& xServiceManager );
+            /* interface XServiceInfo */
+            virtual OUString SAL_CALL getImplementationName() override;
+            virtual sal_Bool SAL_CALL supportsService( const OUString& sServiceName ) override;
+            virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 
             // XPopupMenuController
             virtual void SAL_CALL updatePopupMenu() override;
@@ -66,9 +56,9 @@ namespace framework
 
         private:
             virtual void impl_setPopupMenu() override;
-            void setCurHeight( long nHeight, css::uno::Reference< css::awt::XPopupMenu >& rPopupMenu );
-            void fillPopupMenu( css::uno::Reference< css::awt::XPopupMenu >& rPopupMenu );
-            OUString retrievePrinterName( css::uno::Reference< css::frame::XFrame >& rFrame );
+            void setCurHeight( long nHeight, css::uno::Reference< css::awt::XPopupMenu > const & rPopupMenu );
+            void fillPopupMenu( css::uno::Reference< css::awt::XPopupMenu > const & rPopupMenu );
+            OUString retrievePrinterName( css::uno::Reference< css::frame::XFrame > const & rFrame );
 
             std::unique_ptr<long[]>                          m_pHeightArray;
             css::awt::FontDescriptor                         m_aFontDescriptor;

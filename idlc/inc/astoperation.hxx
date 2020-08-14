@@ -19,14 +19,14 @@
 #ifndef INCLUDED_IDLC_INC_ASTOPERATION_HXX
 #define INCLUDED_IDLC_INC_ASTOPERATION_HXX
 
-#include <astdeclaration.hxx>
-#include <astscope.hxx>
+#include "astdeclaration.hxx"
+#include "astscope.hxx"
 
 namespace typereg { class Writer; }
 
 class AstType;
 
-class AstOperation : public AstDeclaration
+class AstOperation final : public AstDeclaration
                    , public AstScope
 {
 public:
@@ -42,7 +42,7 @@ public:
 
     void setExceptions(DeclList const * pExceptions);
 
-    bool dumpBlob(typereg::Writer & rBlob, sal_uInt16 index);
+    void dumpBlob(typereg::Writer & rBlob, sal_uInt16 index);
 
 private:
     AstType const * m_pReturnType;

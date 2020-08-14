@@ -7,14 +7,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include <com/sun/star/beans/PropertyValue.hpp>
-#include <com/sun/star/beans/XPropertyAccess.hpp>
 #include <com/sun/star/frame/XFrame.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 
 #include <stdio.h>
 
-#include "bluthsndapi.hxx"
+#include <bluthsndapi.hxx>
 
 SfxBluetoothModel::SendMailResult SfxBluetoothModel::SaveAndSend( const css::uno::Reference< css::frame::XFrame >& xFrame )
 {
@@ -26,7 +23,7 @@ SfxBluetoothModel::SendMailResult SfxBluetoothModel::SaveAndSend( const css::uno
     if( eSaveResult == SAVE_SUCCESSFULL )
     {
         maAttachedDocuments.push_back( aFileName );
-        return Send( xFrame );
+        return Send();
     }
     else if( eSaveResult == SAVE_CANCELLED )
         eResult = SEND_MAIL_CANCELLED;
@@ -34,7 +31,7 @@ SfxBluetoothModel::SendMailResult SfxBluetoothModel::SaveAndSend( const css::uno
     return eResult;
 }
 
-SfxBluetoothModel::SendMailResult SfxBluetoothModel::Send( const css::uno::Reference< css::frame::XFrame >& /*xFrame*/ )
+SfxBluetoothModel::SendMailResult SfxBluetoothModel::Send()
 {
 #ifndef LINUX
     (void) this; // avoid loplugin:staticmethods

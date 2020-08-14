@@ -20,19 +20,14 @@
 #ifndef INCLUDED_FORMS_SOURCE_XFORMS_XPATHLIB_EXTENSION_HXX
 #define INCLUDED_FORMS_SOURCE_XFORMS_XPATHLIB_EXTENSION_HXX
 
-#include <rtl/ustring.h>
 #include <com/sun/star/uno/Reference.hxx>
 #include <com/sun/star/uno/Sequence.hxx>
 #include <com/sun/star/uno/Any.hxx>
 #include <cppuhelper/implbase.hxx>
 
-#include <com/sun/star/uno/XInterface.hpp>
 #include <com/sun/star/lang/XInitialization.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/xml/xpath/XXPathExtension.hpp>
 #include <com/sun/star/xforms/XModel.hpp>
-#include <com/sun/star/uno/RuntimeException.hpp>
-#include <com/sun/star/beans/NamedValue.hpp>
 #include <com/sun/star/xml/dom/XNode.hpp>
 
 
@@ -46,8 +41,8 @@ private:
 public:
     CLibxml2XFormsExtension() {}
 
-    const css::uno::Reference< css::xforms::XModel >& getModel() { return m_aModel;}
-    const css::uno::Reference< css::xml::dom::XNode >& getContextNode() { return m_aContextNode;}
+    const css::uno::Reference< css::xforms::XModel >& getModel() const { return m_aModel;}
+    const css::uno::Reference< css::xml::dom::XNode >& getContextNode() const { return m_aContextNode;}
 
     virtual css::xml::xpath::Libxml2ExtensionHandle SAL_CALL getLibxml2ExtensionHandle() override;
     virtual void SAL_CALL initialize(const css::uno::Sequence< css::uno::Any >& aSequence) override;

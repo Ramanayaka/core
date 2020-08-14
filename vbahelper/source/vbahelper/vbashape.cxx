@@ -18,25 +18,25 @@
  */
 #include <ooo/vba/office/MsoZOrderCmd.hpp>
 #include <ooo/vba/office/MsoScaleFrom.hpp>
+#include <com/sun/star/container/XChild.hpp>
 #include <com/sun/star/container/XNamed.hpp>
 #include <com/sun/star/drawing/ConnectorType.hpp>
-#include <com/sun/star/lang/XEventListener.hpp>
-#include <com/sun/star/drawing/XDrawPagesSupplier.hpp>
-#include <com/sun/star/drawing/XDrawPages.hpp>
+#include <com/sun/star/drawing/XDrawPage.hpp>
+#include <com/sun/star/drawing/XShapes.hpp>
 #include <com/sun/star/view/XSelectionSupplier.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
-#include <com/sun/star/text/TextContentAnchorType.hpp>
 #include <com/sun/star/text/RelOrientation.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
+#include <com/sun/star/frame/XModel.hpp>
 #include <ooo/vba/office/MsoShapeType.hpp>
+#include <ooo/vba/office/MsoAutoShapeType.hpp>
 #include <ooo/vba/word/WdRelativeHorizontalPosition.hpp>
 #include <ooo/vba/word/WdRelativeVerticalPosition.hpp>
 
 #include <basic/sberrors.hxx>
 #include <comphelper/processfactory.hxx>
 #include <vcl/svapp.hxx>
-#include <svx/unopage.hxx>
-#include <svx/unoshape.hxx>
+#include <sal/log.hxx>
 
 #include <vbahelper/vbashape.hxx>
 #include <vbahelper/vbatextframe.hxx>
@@ -154,6 +154,47 @@ ScVbaShape::getType( const css::uno::Reference< drawing::XShape >& xShape )
         throw uno::RuntimeException("the shape type do not be supported: " + sShapeType );
 }
 
+sal_Int32 ScVbaShape::getAutoShapeType(const css::uno::Reference< drawing::XShape >& xShape)
+{
+    assert( ScVbaShape::getType( xShape ) == office::MsoShapeType::msoAutoShape );
+
+    OUString sShapeType;
+    uno::Reference< drawing::XShapeDescriptor > xShapeDescriptor( xShape, uno::UNO_QUERY_THROW );
+    sShapeType = xShapeDescriptor->getShapeType();
+    SAL_INFO("vbahelper", "ScVbaShape::getAutoShapeType: " << sShapeType);
+
+    if( sShapeType == "com.sun.star.drawing.EllipseShape" )
+        return office::MsoAutoShapeType::msoShapeOval;
+    else if ( sShapeType == "com.sun.star.drawing.RectangleShape" )
+        return office::MsoAutoShapeType::msoShapeRectangle;
+    else if ( sShapeType == "com.sun.star.drawing.CustomShape" )
+    {
+        uno::Reference< beans::XPropertySet > aXPropSet( xShape, uno::UNO_QUERY );
+        uno::Any aGeoPropSet = aXPropSet->getPropertyValue( "CustomShapeGeometry" );
+        uno::Sequence< beans::PropertyValue > aGeoPropSeq;
+        if ( aGeoPropSet >>= aGeoPropSeq )
+        {
+            for( const auto& rProp : std::as_const(aGeoPropSeq) )
+            {
+                if( rProp.Name == "Type" )
+                {
+                    OUString sType;
+                    if( rProp.Value >>= sType )
+                    {
+                        if( sType.endsWith( "ellipse" ) )
+                            return office::MsoAutoShapeType::msoShapeOval;
+                        // TODO other custom shapes here
+                    }
+                }
+            }
+        }
+    }
+
+    SAL_WARN( "vbahelper", "ScVbaShape::getAutoShapeType: unknown auto type" );
+    return -1; // could not decide
+
+}
+
 // Attributes
 OUString SAL_CALL
 ScVbaShape::getName()
@@ -238,8 +279,7 @@ ScVbaShape::setLeft( double _left )
     }
     catch( uno::Exception& )
     {
-        sal_Int32 nLeft = 0;
-        nLeft = Millimeter::getInHundredthsOfOneMillimeter( _left );
+        sal_Int32 nLeft = Millimeter::getInHundredthsOfOneMillimeter( _left );
         m_xPropertySet->setPropertyValue( "HoriOrientPosition" , uno::makeAny( nLeft ) );
     }
 }
@@ -270,8 +310,7 @@ ScVbaShape::setTop( double _top )
     }
     catch( uno::Exception& )
     {
-        sal_Int32 nTop = 0;
-        nTop = Millimeter::getInHundredthsOfOneMillimeter( _top );
+        sal_Int32 nTop = Millimeter::getInHundredthsOfOneMillimeter( _top );
         m_xPropertySet->setPropertyValue( "VertOrientPosition" , uno::makeAny( nTop ) );
     }
 }
@@ -379,7 +418,7 @@ ScVbaShape::ZOrder( sal_Int32 ZOrderCmd )
         m_xPropertySet->setPropertyValue( "ZOrder" , uno::makeAny( SAL_MAX_INT32 ) );
         break;
     case office::MsoZOrderCmd::msoSendToBack:
-        m_xPropertySet->setPropertyValue( "ZOrder" , uno::makeAny( (sal_Int32)0 ) );
+        m_xPropertySet->setPropertyValue( "ZOrder" , uno::makeAny( sal_Int32(0) ) );
         break;
     case office::MsoZOrderCmd::msoBringForward:
         nOrderPosition += 1;
@@ -490,7 +529,7 @@ ScVbaShape::Select( const uno::Any& /*Replace*/ )
     xSelectSupp->select( uno::makeAny( m_xShape ) );
 }
 
-// This method should not be part of Shape, what we reall need to do is...
+// This method should not be part of Shape, what we really need to do is...
 // dynamically create the appropriate objects e.g. TextBox, Oval, Picture etc.
 // ( e.g. the ones that really do have ShapeRange as an attribute )
 uno::Any SAL_CALL
@@ -699,18 +738,16 @@ ScVbaShape::WrapFormat()
 OUString
 ScVbaShape::getServiceImplName()
 {
-    return OUString("ScVbaShape");
+    return "ScVbaShape";
 }
 
 uno::Sequence< OUString >
 ScVbaShape::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.msform.Shape";
-    }
+        "ooo.vba.msform.Shape"
+    };
     return aServiceNames;
 }
 

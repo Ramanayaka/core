@@ -21,18 +21,19 @@
 #define INCLUDED_XMLOFF_SOURCE_TEXT_XMLAUTOTEXTEVENTIMPORT_HXX
 
 #include <xmloff/xmlimp.hxx>
+#include <com/sun/star/container/XNameReplace.hpp>
 #include <com/sun/star/uno/Reference.hxx>
 
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace frame { class XModel; }
     namespace text { class XAutoTextContainer; }
     namespace text { class XAutoTextGroup; }
     namespace text { class XAutoTextEntry; }
     namespace uno { template<class X> class Reference; }
     namespace uno { template<class X> class Sequence; }
-    namespace xml { namespace sax { class XDocumentHandler; } }
-} } }
+    namespace xml::sax { class XDocumentHandler; }
+}
 
 
 class XMLAutoTextEventImport : public SvXMLImport
@@ -41,8 +42,7 @@ class XMLAutoTextEventImport : public SvXMLImport
 
 public:
     explicit XMLAutoTextEventImport(
-        const css::uno::Reference< css::uno::XComponentContext >& xContext
-        ) throw();
+        const css::uno::Reference< css::uno::XComponentContext >& xContext);
 
     virtual ~XMLAutoTextEventImport() throw() override;
 
@@ -52,10 +52,8 @@ public:
 
 protected:
 
-    virtual SvXMLImportContext* CreateContext(
-        sal_uInt16 nPrefix,
-        const OUString& rLocalName,
-        const css::uno::Reference< css::xml::sax::XAttributeList > & xAttrList ) override;
+    virtual SvXMLImportContext *CreateFastContext( sal_Int32 Element,
+        const ::css::uno::Reference< ::css::xml::sax::XFastAttributeList >& xAttrList ) override;
 
 };
 

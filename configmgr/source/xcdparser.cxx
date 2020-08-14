@@ -24,7 +24,6 @@
 #include <set>
 
 #include <com/sun/star/uno/RuntimeException.hpp>
-#include <com/sun/star/uno/XInterface.hpp>
 #include <rtl/ustring.hxx>
 #include <xmlreader/span.hxx>
 #include <xmlreader/xmlreader.hxx>
@@ -62,14 +61,14 @@ bool XcdParser::startElement(
     }
     switch (state_) {
     case STATE_START:
-        if (nsId == ParseManager::NAMESPACE_OOR && name.equals("data")) {
+        if (nsId == ParseManager::NAMESPACE_OOR && name == "data") {
             state_ = STATE_DEPENDENCIES;
             return true;
         }
         break;
     case STATE_DEPENDENCIES:
         if (nsId == xmlreader::XmlReader::NAMESPACE_NONE &&
-            name.equals("dependency"))
+            name == "dependency")
         {
             if (dependencyFile_.isEmpty()) {
                 dependencyOptional_ = false;
@@ -82,12 +81,12 @@ bool XcdParser::startElement(
                     }
                     if (attrNsId == xmlreader::XmlReader::NAMESPACE_NONE &&
                             //TODO: _OOR
-                        attrLn.equals("file"))
+                        attrLn == "file")
                     {
                         attrFile = reader.getAttributeValue(false);
                     } else if ((attrNsId ==
                                 xmlreader::XmlReader::NAMESPACE_NONE) &&
-                               attrLn.equals("optional"))
+                               attrLn == "optional")
                     {
                         dependencyOptional_ = xmldata::parseBoolean(
                             reader.getAttributeValue(true));
@@ -116,10 +115,10 @@ bool XcdParser::startElement(
             return true;
         }
         state_ = STATE_COMPONENTS;
-        SAL_FALLTHROUGH;
+        [[fallthrough]];
     case STATE_COMPONENTS:
         if (nsId == ParseManager::NAMESPACE_OOR &&
-            name.equals("component-schema"))
+            name == "component-schema")
         {
             nestedParser_ = new XcsParser(layer_, data_);
             nesting_ = 1;
@@ -127,7 +126,7 @@ bool XcdParser::startElement(
                 reader, nsId, name, existingDependencies);
         }
         if (nsId == ParseManager::NAMESPACE_OOR &&
-            name.equals("component-data"))
+            (name == "component-data" || name == "items"))
         {
             nestedParser_ = new XcuParser(layer_ + 1, data_, nullptr, nullptr, nullptr);
             nesting_ = 1;

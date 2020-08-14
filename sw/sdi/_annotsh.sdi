@@ -60,6 +60,12 @@ interface _Annotation
         StateMethod = GetNoteState ;
     ]
 
+    FN_RESOLVE_NOTE
+    [
+        ExecMethod = NoteExec ;
+        StateMethod = GetNoteState ;
+    ]
+
     FN_POSTIT
         [
                 ExecMethod = NoteExec ;
@@ -90,6 +96,13 @@ interface _Annotation
     ]
 
     SID_PASTE   // api:
+    [
+        ExecMethod = ExecClpbrd ;
+        StateMethod = StateClpbrd ;
+        DisableFlags="SfxDisableFlags::SwOnProtectedCursor";
+    ]
+
+    SID_PASTE_UNFORMATTED
     [
         ExecMethod = ExecClpbrd ;
         StateMethod = StateClpbrd ;
@@ -180,6 +193,11 @@ interface _Annotation
     ]
 
     SID_EMOJI_CONTROL
+    [
+        DisableFlags="SfxDisableFlags::SwOnProtectedCursor";
+    ]
+
+    SID_CHARMAP_CONTROL
     [
         DisableFlags="SfxDisableFlags::SwOnProtectedCursor";
     ]
@@ -456,7 +474,7 @@ interface _Annotation
         ExecMethod = ExecSearch ;
         DisableFlags="SfxDisableFlags::SwOnProtectedCursor";
     ]
-      // ab hier Export = FALSE;
+      // from here on Export = FALSE;
     FID_SEARCH_ON // status()
     [
         ExecMethod = ExecSearch ;

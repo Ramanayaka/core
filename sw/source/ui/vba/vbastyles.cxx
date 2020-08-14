@@ -20,6 +20,7 @@
 #include "vbastyle.hxx"
 #include <basic/sberrors.hxx>
 #include <cppuhelper/implbase.hxx>
+#include <sal/log.hxx>
 #include <com/sun/star/container/XEnumerationAccess.hpp>
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 #include <com/sun/star/style/XStyleFamiliesSupplier.hpp>
@@ -30,6 +31,8 @@
 using namespace ::ooo::vba;
 using namespace ::com::sun::star;
 
+namespace {
+
 struct BuiltinStyleTable
 {
     sal_Int32 wdBuiltinStyle;
@@ -37,7 +40,9 @@ struct BuiltinStyleTable
     sal_Int32 wdStyleType;
 };
 
-static const BuiltinStyleTable aBuiltinStyleTable[] =
+}
+
+const BuiltinStyleTable aBuiltinStyleTable[] =
 {
     { word::WdBuiltinStyle::wdStyleBlockQuotation, "", word::WdStyleType::wdStyleTypeParagraph },
     { word::WdBuiltinStyle::wdStyleBodyText, "Text body", word::WdStyleType::wdStyleTypeParagraph },
@@ -111,11 +116,11 @@ static const BuiltinStyleTable aBuiltinStyleTable[] =
     { word::WdBuiltinStyle::wdStyleListContinue3, "", word::WdStyleType::wdStyleTypeParagraph },
     { word::WdBuiltinStyle::wdStyleListContinue4, "", word::WdStyleType::wdStyleTypeParagraph },
     { word::WdBuiltinStyle::wdStyleListContinue5, "", word::WdStyleType::wdStyleTypeParagraph },
-    { word::WdBuiltinStyle::wdStyleListNumber, "Numbering 1", word::WdStyleType::wdStyleTypeList },
-    { word::WdBuiltinStyle::wdStyleListNumber2, "Numbering 2", word::WdStyleType::wdStyleTypeList },
-    { word::WdBuiltinStyle::wdStyleListNumber3, "Numbering 3", word::WdStyleType::wdStyleTypeList },
-    { word::WdBuiltinStyle::wdStyleListNumber4, "Numbering 4", word::WdStyleType::wdStyleTypeList },
-    { word::WdBuiltinStyle::wdStyleListNumber5, "Numbering 5", word::WdStyleType::wdStyleTypeList },
+    { word::WdBuiltinStyle::wdStyleListNumber, "Numbering 123", word::WdStyleType::wdStyleTypeList },
+    { word::WdBuiltinStyle::wdStyleListNumber2, "Numbering ABC", word::WdStyleType::wdStyleTypeList },
+    { word::WdBuiltinStyle::wdStyleListNumber3, "Numbering abc", word::WdStyleType::wdStyleTypeList },
+    { word::WdBuiltinStyle::wdStyleListNumber4, "Numbering IVX", word::WdStyleType::wdStyleTypeList },
+    { word::WdBuiltinStyle::wdStyleListNumber5, "Numbering ivx", word::WdStyleType::wdStyleTypeList },
     { word::WdBuiltinStyle::wdStyleMacroText, "", word::WdStyleType::wdStyleTypeParagraph },
     { word::WdBuiltinStyle::wdStyleMessageHeader, "", word::WdStyleType::wdStyleTypeParagraph },
     { word::WdBuiltinStyle::wdStyleNavPane, "", word::WdStyleType::wdStyleTypeParagraph },
@@ -145,17 +150,23 @@ static const BuiltinStyleTable aBuiltinStyleTable[] =
     { 0, nullptr, 0 }
 };
 
+namespace {
+
 struct MSOStyleNameTable
 {
-    const sal_Char* pMSOStyleName;
-    const sal_Char* pOOoStyleName;
+    const char* pMSOStyleName;
+    const char* pOOoStyleName;
 };
 
-static const MSOStyleNameTable aMSOStyleNameTable[] =
+}
+
+const MSOStyleNameTable aMSOStyleNameTable[] =
 {
     { "Normal", "Default" },
     { nullptr, nullptr }
 };
+
+namespace {
 
 class StyleCollectionHelper : public ::cppu::WeakImplHelper< container::XNameAccess,
                                                              container::XIndexAccess,
@@ -212,14 +223,12 @@ public:
         else
         {
             uno::Sequence< OUString > sElementNames = mxParaStyles->getElementNames();
-            for( sal_Int32 j = 0; j < sElementNames.getLength(); j++ )
+            auto pStyleName = std::find_if(sElementNames.begin(), sElementNames.end(),
+                [&aName](const OUString& rStyleName) { return rStyleName.equalsIgnoreAsciiCase( aName ); });
+            if (pStyleName != sElementNames.end())
             {
-                OUString aStyleName = sElementNames[j];
-                if( aStyleName.equalsIgnoreAsciiCase( aName ) )
-                {
-                    cachePos = mxParaStyles->getByName( aStyleName );
-                    return true;
-                }
+                cachePos = mxParaStyles->getByName( *pStyleName );
+                return true;
             }
         }
         return false;
@@ -264,6 +273,8 @@ public:
         throw container::NoSuchElementException();
     }
 };
+
+}
 
 SwVbaStyles::SwVbaStyles( const uno::Reference< XHelperInterface >& xParent, const uno::Reference< css::uno::XComponentContext > & xContext, const uno::Reference< frame::XModel >& xModel )
     : SwVbaStyles_BASE( xParent, xContext, uno::Reference< container::XIndexAccess >( new StyleCollectionHelper( xModel )  ) ), mxModel( xModel )
@@ -339,7 +350,7 @@ SwVbaStyles::Item( const uno::Any& Index1, const uno::Any& Index2 )
                 }
                 else
                 {
-                    SAL_WARN("sw", "the builtin style type is not implemented");
+                    SAL_WARN("sw.vba", "the builtin style type is not implemented");
                     throw uno::RuntimeException("Not implemented" );
                 }
             }
@@ -351,18 +362,16 @@ SwVbaStyles::Item( const uno::Any& Index1, const uno::Any& Index2 )
 OUString
 SwVbaStyles::getServiceImplName()
 {
-    return OUString("SwVbaStyles");
+    return "SwVbaStyles";
 }
 
 uno::Sequence< OUString >
 SwVbaStyles::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.word.XStyles";
-    }
+        "ooo.vba.word.XStyles"
+    };
     return aServiceNames;
 }
 

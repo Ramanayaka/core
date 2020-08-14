@@ -22,17 +22,14 @@
 #include <com/sun/star/sdbc/SQLWarning.hpp>
 #include <com/sun/star/sdbcx/XTablesSupplier.hpp>
 #include <com/sun/star/beans/PropertyValue.hpp>
-#include <connectivity/OSubComponent.hxx>
 #include <map>
 #include <connectivity/CommonTools.hxx>
-#include "OTypeInfo.hxx"
-#include "TConnection.hxx"
-#include "ado/Awrapado.hxx"
+#include <OTypeInfo.hxx>
+#include <TConnection.hxx>
+#include <ado/Awrapado.hxx>
 
-namespace connectivity
+namespace connectivity::ado
 {
-    namespace ado
-    {
         struct OExtendedTypeInfo
         {
             ::connectivity::OTypeInfo       aSimpleType;    // the general type info
@@ -48,11 +45,8 @@ namespace connectivity
         typedef connectivity::OMetaConnection                           OConnection_BASE;
 
 
-        class OConnection : public OConnection_BASE,
-                            public connectivity::OSubComponent<OConnection, OConnection_BASE>
+        class OConnection : public OConnection_BASE
         {
-            friend class connectivity::OSubComponent<OConnection, OConnection_BASE>;
-
         protected:
 
             // Data attributes
@@ -82,13 +76,11 @@ namespace connectivity
 
             //XUnoTunnel
             virtual sal_Int64 SAL_CALL getSomething( const css::uno::Sequence< sal_Int8 >& aIdentifier ) override;
-            static css::uno::Sequence< sal_Int8 > getUnoTunnelImplementationId();
+            static css::uno::Sequence< sal_Int8 > getUnoTunnelId();
             // XServiceInfo
             DECLARE_SERVICE_INFO();
             // OComponentHelper
             virtual void SAL_CALL disposing() override;
-            // XInterface
-            virtual void SAL_CALL release() throw() override;
 
             // XConnection
             virtual css::uno::Reference< css::sdbc::XStatement > SAL_CALL createStatement(  ) override;
@@ -137,7 +129,6 @@ namespace connectivity
                                sal_Int32 _nScale,
                                bool& _brForceToType);
         };
-    }
 }
 #endif // INCLUDED_CONNECTIVITY_SOURCE_INC_ADO_ACONNECTION_HXX
 

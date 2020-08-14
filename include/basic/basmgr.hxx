@@ -19,14 +19,18 @@
 #ifndef INCLUDED_BASIC_BASMGR_HXX
 #define INCLUDED_BASIC_BASMGR_HXX
 
-#include <vcl/errinf.hxx>
+#include <vcl/errcode.hxx>
 #include <svl/SfxBroadcaster.hxx>
 #include <basic/sbstar.hxx>
-#include <com/sun/star/script/XPersistentLibraryContainer.hpp>
-#include <com/sun/star/script/XStarBasicAccess.hpp>
 #include <basic/basicdllapi.h>
 #include <memory>
 #include <vector>
+
+namespace com::sun::star::script { class XLibraryContainer; }
+namespace com::sun::star::script { class XPersistentLibraryContainer; }
+namespace com::sun::star::script { class XStarBasicAccess; }
+
+class BasicManager;
 
 // Basic XML Import/Export
 BASIC_DLLPUBLIC css::uno::Reference< css::script::XStarBasicAccess >
@@ -45,7 +49,7 @@ enum class BasicErrorReason
     STDLIB           = 0x0100
 };
 
-class BASIC_DLLPUBLIC BasicError
+class BasicError
 {
 private:
     ErrCode nErrorId;
@@ -55,10 +59,9 @@ public:
             BasicError( const BasicError& rErr );
             BasicError( ErrCode nId, BasicErrorReason nR );
 
-    ErrCode GetErrorId() const                  { return nErrorId; }
+    ErrCode const & GetErrorId() const                  { return nErrorId; }
 };
 
-class ErrorManager;
 class BasicLibInfo;
 
 namespace basic { class ImplRepository; }
@@ -128,22 +131,13 @@ protected:
     void            LoadOldBasicManager( SotStorage& rStorage );
     bool            ImplLoadBasic( SvStream& rStrm, StarBASICRef& rOldBasic ) const;
     static bool     ImplEncryptStream( SvStream& rStream );
-    BasicLibInfo*   FindLibInfo( StarBASIC* pBasic );
+    BasicLibInfo*   FindLibInfo( StarBASIC const * pBasic );
     static void     CheckModules( StarBASIC* pBasic, bool bReference );
-    virtual ~BasicManager() override;
 
 public:
-                    BasicManager( SotStorage& rStorage, const OUString& rBaseURL, StarBASIC* pParentFromStdLib = nullptr, OUString* pLibPath = nullptr, bool bDocMgr = false );
-                    BasicManager( StarBASIC* pStdLib, OUString* pLibPath = nullptr, bool bDocMgr = false );
-
-    /** deletes the given BasicManager instance
-
-        This method is necessary since normally, BasicManager instances are owned by the BasicManagerRepository,
-        and expected to be deleted by the repository only. However, there exists quite some legacy code,
-        which needs to explicitly delete a BasicManager itself. This code must not use the (protected)
-        destructor, but LegacyDeleteBasicManager.
-    */
-    static void     LegacyDeleteBasicManager( BasicManager*& _rpManager );
+                    BasicManager( SotStorage& rStorage, const OUString& rBaseURL, StarBASIC* pParentFromStdLib = nullptr, OUString const * pLibPath = nullptr, bool bDocMgr = false );
+                    BasicManager( StarBASIC* pStdLib, OUString const * pLibPath = nullptr, bool bDocMgr = false );
+    virtual ~BasicManager() override;
 
     void            SetStorageName( const OUString& rName )   { maStorageName = rName; }
     const OUString& GetStorageName() const                  { return maStorageName; }
@@ -188,7 +182,7 @@ public:
 
     /** retrieves a global constant in the basic library, referring to some UNO object, returns true if a value is found ( value is in aOut ) false otherwise. */
                     bool GetGlobalUNOConstant( const OUString& rName, css::uno::Any& aOut );
-    /** determines whether there are password-protected modules whose size exceedes the
+    /** determines whether there are password-protected modules whose size exceeds the
         legacy module size
         @param _out_rModuleNames
             takes the names of modules whose size exceeds the legacy limit

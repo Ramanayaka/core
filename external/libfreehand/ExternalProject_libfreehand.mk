@@ -16,6 +16,7 @@ $(eval $(call gb_ExternalProject_register_targets,libfreehand,\
 ))
 
 $(eval $(call gb_ExternalProject_use_externals,libfreehand,\
+	boost_headers \
 	icu \
 	lcms2 \
 	revenge \
@@ -23,21 +24,25 @@ $(eval $(call gb_ExternalProject_use_externals,libfreehand,\
 ))
 
 $(call gb_ExternalProject_get_state_target,libfreehand,build) :
+	$(call gb_Trace_StartRange,libfreehand,EXTERNAL)
 	$(call gb_ExternalProject_run,build,\
 		export PKG_CONFIG="" \
-		&& export CXXFLAGS="$(CXXFLAGS) $(ICU_UCHAR_TYPE)" \
 		&& MAKE=$(MAKE) ./configure \
 			--with-pic \
 			--enable-static \
 			--disable-shared \
 			--without-docs \
+			--disable-tests \
 			--disable-tools \
 			--disable-debug \
 			--disable-werror \
 			--disable-weffc \
 			$(if $(verbose),--disable-silent-rules,--enable-silent-rules) \
+			CXXFLAGS="$(gb_CXXFLAGS) $(if $(ENABLE_OPTIMIZED),$(gb_COMPILEROPTFLAGS),$(gb_COMPILERNOOPTFLAGS))" \
+			CPPFLAGS="$(CPPFLAGS) $(BOOST_CPPFLAGS)" \
 			$(if $(CROSS_COMPILING),--build=$(BUILD_PLATFORM) --host=$(HOST_PLATFORM)) \
 		&& $(MAKE) \
 	)
+	$(call gb_Trace_EndRange,libfreehand,EXTERNAL)
 
 # vim: set noet sw=4 ts=4:

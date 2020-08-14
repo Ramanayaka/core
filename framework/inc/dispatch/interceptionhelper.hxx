@@ -20,8 +20,6 @@
 #ifndef INCLUDED_FRAMEWORK_INC_DISPATCH_INTERCEPTIONHELPER_HXX
 #define INCLUDED_FRAMEWORK_INC_DISPATCH_INTERCEPTIONHELPER_HXX
 
-#include <general.h>
-
 #include <com/sun/star/frame/XDispatchProviderInterception.hpp>
 #include <com/sun/star/frame/XDispatchProviderInterceptor.hpp>
 #include <com/sun/star/frame/XDispatchProvider.hpp>
@@ -42,10 +40,10 @@ namespace framework{
     @descr      This helper implements the complete XDispatchProviderInterception interface with
                 master/slave functionality AND using of optional features like registration of URL pattern!
 
-    @attention  Don't use this class as direct member - use it dynamicly. Do not derive from this class.
+    @attention  Don't use this class as direct member - use it dynamically. Do not derive from this class.
                 We hold a weakreference to our owner not to our superclass.
  */
-class InterceptionHelper : public  ::cppu::WeakImplHelper<
+class InterceptionHelper final : public  ::cppu::WeakImplHelper<
                                      css::frame::XDispatchProvider,
                                      css::frame::XDispatchProviderInterception,
                                      css::lang::XEventListener >
@@ -88,11 +86,10 @@ class InterceptionHelper : public  ::cppu::WeakImplHelper<
               */
             iterator findByReference(const css::uno::Reference< css::frame::XDispatchProviderInterceptor >& xInterceptor)
             {
-                css::uno::Reference< css::frame::XDispatchProviderInterceptor > xProviderInterface(xInterceptor, css::uno::UNO_QUERY);
                 iterator pIt;
                 for (pIt=begin(); pIt!=end(); ++pIt)
                 {
-                    if (pIt->xInterceptor == xProviderInterface)
+                    if (pIt->xInterceptor == xInterceptor)
                         return pIt;
                 }
                 return end();
@@ -129,7 +126,7 @@ class InterceptionHelper : public  ::cppu::WeakImplHelper<
 
     private:
 
-        /** @short reference to the frame, which uses this instance to implement it's own interception.
+        /** @short reference to the frame, which uses this instance to implement its own interception.
 
             @descr We hold a weak reference only, to make disposing operations easy. */
         css::uno::WeakReference< css::frame::XFrame > m_xOwnerWeak;
@@ -148,7 +145,7 @@ class InterceptionHelper : public  ::cppu::WeakImplHelper<
         /** @short creates a new interception helper instance.
 
             @param xOwner
-                    points to the frame, which use this instances to support it's own interception interfaces.
+                    points to the frame, which use this instances to support its own interception interfaces.
 
             @param xSlave
                     an outside creates dispatch provider, which has to be used here as lowest slave "interceptor".
@@ -156,7 +153,7 @@ class InterceptionHelper : public  ::cppu::WeakImplHelper<
         InterceptionHelper(const css::uno::Reference< css::frame::XFrame >&            xOwner,
                            const css::uno::Reference< css::frame::XDispatchProvider >& xSlave);
 
-    protected:
+    private:
 
         /** @short standard destructor.
 
@@ -200,7 +197,7 @@ class InterceptionHelper : public  ::cppu::WeakImplHelper<
 
         /** @short implements an optimized queryDispatch() for remote.
 
-            @descr It capsulate more than one queryDispatch() requests and return a lits of dispatch objects
+            @descr It capsulate more than one queryDispatch() requests and return a list of dispatch objects
                    as result. Because both lists (in and out) correspond together, it's not allowed to
                    pack it - means suppress NULL references!
 
@@ -222,7 +219,7 @@ class InterceptionHelper : public  ::cppu::WeakImplHelper<
             @attention  We don't check for double registrations here!
 
             @param      xInterceptor
-                        reference to interceptor, which wish to be registered here.
+                        reference to interceptor, which wishes to be registered here.
 
             @throw      A RuntimeException if the given reference is NULL!
          */
@@ -236,7 +233,7 @@ class InterceptionHelper : public  ::cppu::WeakImplHelper<
                         and delete all special information about it.
 
             @param      xInterceptor
-                        reference to the interceptor, which wish to be deregistered.
+                        reference to the interceptor, which wishes to be deregistered.
 
             @throw      A RuntimeException if the given reference is NULL!
          */

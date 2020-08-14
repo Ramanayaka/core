@@ -26,21 +26,16 @@
 #include <com/sun/star/awt/XView.hpp>
 #include <com/sun/star/beans/XPropertiesChangeListener.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/lang/XTypeProvider.hpp>
-#include <com/sun/star/lang/XUnoTunnel.hpp>
 #include <com/sun/star/awt/XUnitConversion.hpp>
 #include <com/sun/star/awt/XStyleSettingsSupplier.hpp>
 #include <com/sun/star/accessibility/XAccessible.hpp>
-#include <cppuhelper/weakagg.hxx>
 #include <osl/mutex.hxx>
-#include <toolkit/helper/mutexandbroadcasthelper.hxx>
 #include <toolkit/helper/listenermultiplexer.hxx>
-#include <cppuhelper/propshlp.hxx>
-#include <cppuhelper/interfacecontainer.hxx>
 #include <cppuhelper/weakref.hxx>
 #include <cppuhelper/implbase9.hxx>
 #include <com/sun/star/util/XModeChangeBroadcaster.hpp>
 #include <com/sun/star/awt/XVclWindowPeer.hpp>
+#include <memory>
 
 
 struct UnoControlComponentInfos
@@ -63,7 +58,6 @@ struct UnoControlComponentInfos
 
 struct UnoControl_Data;
 
-//  class UnoControl
 
 typedef ::cppu::WeakAggImplHelper9  <   css::awt::XControl
                                     ,   css::awt::XWindow2
@@ -102,13 +96,13 @@ protected:
                                         maAccessibleContext;    /// our most recent XAccessibleContext instance
 
     bool                            mbDisposePeer;
-    bool                            mbRefeshingPeer;
+    bool                            mbRefreshingPeer;
     bool                            mbCreatingPeer;
     bool                            mbCreatingCompatiblePeer;
     bool                            mbDesignMode;
 
     UnoControlComponentInfos            maComponentInfos;
-    UnoControl_Data*                    mpData;
+    std::unique_ptr<UnoControl_Data>    mpData;
 
     ::osl::Mutex&                                                               GetMutex() { return maMutex; }
 
@@ -224,7 +218,7 @@ public:
     // XStyleSettingsSupplier
     virtual css::uno::Reference< css::awt::XStyleSettings > SAL_CALL getStyleSettings() override;
 
-private:
+protected:
     // css::beans::XPropertiesChangeListener
     void SAL_CALL propertiesChange( const css::uno::Sequence< css::beans::PropertyChangeEvent >& evt ) override;
 };

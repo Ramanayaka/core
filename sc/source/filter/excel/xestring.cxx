@@ -20,11 +20,14 @@
 #include <algorithm>
 #include <cassert>
 
+#include <o3tl/safeint.hxx>
 #include <osl/diagnose.h>
-#include "xlstyle.hxx"
-#include "xestyle.hxx"
-#include "xestream.hxx"
-#include "xestring.hxx"
+#include <tools/solar.h>
+#include <xlstyle.hxx>
+#include <xestyle.hxx>
+#include <xestream.hxx>
+#include <xestring.hxx>
+#include <oox/token/tokens.hxx>
 
 using namespace ::oox;
 
@@ -41,13 +44,11 @@ int lclCompareVectors( const ::std::vector< Type >& rLeft, const ::std::vector< 
     int nResult = 0;
 
     // 1st: compare all elements of the vectors
-    typedef typename ::std::vector< Type >::const_iterator CIT;
-    CIT aEndL = rLeft.end(), aEndR = rRight.end();
-    for( CIT aItL = rLeft.begin(), aItR = rRight.begin(); !nResult && (aItL != aEndL) && (aItR != aEndR); ++aItL, ++aItR )
+    auto [aItL, aItR] = std::mismatch(rLeft.begin(), rLeft.end(), rRight.begin(), rRight.end());
+    if ((aItL != rLeft.end()) && (aItR != rRight.end()))
         nResult = static_cast< int >( *aItL ) - static_cast< int >( *aItR );
-
-    // 2nd: no differences found so far -> compare the vector sizes. Shorter vector is less
-    if( !nResult )
+    else
+        // 2nd: compare the vector sizes. Shorter vector is less
         nResult = static_cast< int >( rLeft.size() ) - static_cast< int >( rRight.size() );
 
     return nResult;
@@ -79,15 +80,14 @@ template< typename Type, typename ValueHasher >
 sal_uInt16 lclHashVector( const ::std::vector< Type >& rVec, const ValueHasher& rHasher )
 {
     sal_uInt32 nHash = rVec.size();
-    typedef typename ::std::vector< Type >::const_iterator CIT;
-    for( CIT aIt = rVec.begin(), aEnd = rVec.end(); aIt != aEnd; ++aIt )
-        (nHash *= 31) += rHasher( *aIt );
+    for( const auto& rItem : rVec )
+        nHash = (nHash * 31) + rHasher( rItem );
     return static_cast< sal_uInt16 >( nHash ^ (nHash >> 16) );
 }
 
 /** Calculates a hash value from a vector. Uses XclDirectHasher to hash the vector elements. */
 template< typename Type >
-inline sal_uInt16 lclHashVector( const ::std::vector< Type >& rVec )
+sal_uInt16 lclHashVector( const ::std::vector< Type >& rVec )
 {
     return lclHashVector( rVec, XclDirectHasher< Type >() );
 }
@@ -115,7 +115,7 @@ void XclExpString::Assign( const OUString& rString, XclStrFlags nFlags, sal_uInt
 
 void XclExpString::Assign( sal_Unicode cChar )
 {
-    Build( &cChar, 1, EXC_STR_DEFAULT, EXC_STR_MAXLEN );
+    Build( &cChar, 1, XclStrFlags::NONE, EXC_STR_MAXLEN );
 }
 
 void XclExpString::AssignByte(
@@ -147,7 +147,7 @@ void XclExpString::AppendByte( sal_Unicode cChar, rtl_TextEncoding eTextEnc )
 {
     if( !cChar )
     {
-        sal_Char cByteChar = 0;
+        char cByteChar = 0;
         BuildAppend( &cByteChar, 1 );
     }
     else
@@ -164,7 +164,7 @@ void XclExpString::AppendFormat( sal_uInt16 nChar, sal_uInt16 nFontIdx, bool bDr
     OSL_ENSURE( maFormats.empty() || (maFormats.back().mnChar < nChar), "XclExpString::AppendFormat - invalid char index" );
     size_t nMaxSize = static_cast< size_t >( mbIsBiff8 ? EXC_STR_MAXLEN : EXC_STR_MAXLEN_8BIT );
     if( maFormats.empty() || ((maFormats.size() < nMaxSize) && (!bDropDuplicate || (maFormats.back().mnFontIdx != nFontIdx))) )
-        maFormats.push_back( XclFormatRun( nChar, nFontIdx ) );
+        maFormats.emplace_back( nChar, nFontIdx );
 }
 
 void XclExpString::AppendTrailingFormat( sal_uInt16 nFontIdx )
@@ -237,7 +237,7 @@ sal_uInt16 XclExpString::GetHeaderSize() const
     return
         (mb8BitLen ? 1 : 2) +           // length field
         (IsWriteFlags() ? 1 : 0) +      // flag field
-        (IsWriteFormats() ? 2 : 0);     // richtext formattting count
+        (IsWriteFormats() ? 2 : 0);     // richtext formatting count
 }
 
 std::size_t XclExpString::GetBufferSize() const
@@ -250,7 +250,7 @@ std::size_t XclExpString::GetSize() const
     return
         GetHeaderSize() +                                   // header
         GetBufferSize() +                                   // character buffer
-        (IsWriteFormats() ? (4 * GetFormatsCount()) : 0);   // richtext formattting
+        (IsWriteFormats() ? (4 * GetFormatsCount()) : 0);   // richtext formatting
 }
 
 sal_uInt16 XclExpString::GetChar( sal_uInt16 nCharIdx ) const
@@ -311,27 +311,26 @@ void XclExpString::WriteBuffer( XclExpStream& rStrm ) const
 
 void XclExpString::WriteFormats( XclExpStream& rStrm, bool bWriteSize ) const
 {
-    if( IsRich() )
+    if( !IsRich() )
+        return;
+
+    if( mbIsBiff8 )
     {
-        XclFormatRunVec::const_iterator aIt = maFormats.begin(), aEnd = maFormats.end();
-        if( mbIsBiff8 )
-        {
-            if( bWriteSize )
-                rStrm << GetFormatsCount();
-            rStrm.SetSliceSize( 4 );
-            for( ; aIt != aEnd; ++aIt )
-                rStrm << aIt->mnChar << aIt->mnFontIdx;
-        }
-        else
-        {
-            if( bWriteSize )
-                rStrm << static_cast< sal_uInt8 >( GetFormatsCount() );
-            rStrm.SetSliceSize( 2 );
-            for( ; aIt != aEnd; ++aIt )
-                rStrm << static_cast< sal_uInt8 >( aIt->mnChar ) << static_cast< sal_uInt8 >( aIt->mnFontIdx );
-        }
-        rStrm.SetSliceSize( 0 );
+        if( bWriteSize )
+            rStrm << GetFormatsCount();
+        rStrm.SetSliceSize( 4 );
+        for( const auto& rFormat : maFormats )
+            rStrm << rFormat.mnChar << rFormat.mnFontIdx;
     }
+    else
+    {
+        if( bWriteSize )
+            rStrm << static_cast< sal_uInt8 >( GetFormatsCount() );
+        rStrm.SetSliceSize( 2 );
+        for( const auto& rFormat : maFormats )
+            rStrm << static_cast< sal_uInt8 >( rFormat.mnChar ) << static_cast< sal_uInt8 >( rFormat.mnFontIdx );
+    }
+    rStrm.SetSliceSize( 0 );
 }
 
 void XclExpString::Write( XclExpStream& rStrm ) const
@@ -367,25 +366,24 @@ void XclExpString::WriteHeaderToMem( sal_uInt8* pnMem ) const
 void XclExpString::WriteBufferToMem( sal_uInt8* pnMem ) const
 {
     assert(pnMem);
-    if( !IsEmpty() )
+    if( IsEmpty() )
+        return;
+
+    if( mbIsBiff8 )
     {
-        if( mbIsBiff8 )
+        for( const sal_uInt16 nChar : maUniBuffer )
         {
-            for( ScfUInt16Vec::const_iterator aIt = maUniBuffer.begin(), aEnd = maUniBuffer.end(); aIt != aEnd; ++aIt )
+            *pnMem = static_cast< sal_uInt8 >( nChar );
+            ++pnMem;
+            if( mbIsUnicode )
             {
-                sal_uInt16 nChar = *aIt;
-                *pnMem = static_cast< sal_uInt8 >( nChar );
+                *pnMem = static_cast< sal_uInt8 >( nChar >> 8 );
                 ++pnMem;
-                if( mbIsUnicode )
-                {
-                    *pnMem = static_cast< sal_uInt8 >( nChar >> 8 );
-                    ++pnMem;
-                }
             }
         }
-        else
-            memcpy( pnMem, &maCharBuffer[ 0 ], mnLen );
     }
+    else
+        memcpy( pnMem, maCharBuffer.data(), mnLen );
 }
 
 void XclExpString::WriteToMem( sal_uInt8* pnMem ) const
@@ -401,16 +399,15 @@ static sal_uInt16 lcl_WriteRun( XclExpXmlStream& rStrm, const ScfUInt16Vec& rBuf
 
     sax_fastparser::FSHelperPtr& rWorksheet = rStrm.GetCurrentStream();
 
-    rWorksheet->startElement( XML_r, FSEND );
+    rWorksheet->startElement(XML_r);
     if( pFont )
     {
         const XclFontData& rFontData = pFont->GetFontData();
-        rWorksheet->startElement( XML_rPr, FSEND );
+        rWorksheet->startElement(XML_rPr);
         XclXmlUtils::WriteFontData( rWorksheet, rFontData, XML_rFont );
         rWorksheet->endElement( XML_rPr );
     }
-    rWorksheet->startElement( XML_t,
-                FSNS(XML_xml, XML_space), "preserve", FSEND );
+    rWorksheet->startElement(XML_t, FSNS(XML_xml, XML_space), "preserve");
     rWorksheet->writeEscaped( XclXmlUtils::ToOUString( rBuffer, nStart, nLength ) );
     rWorksheet->endElement( XML_t );
     rWorksheet->endElement( XML_r );
@@ -423,23 +420,21 @@ void XclExpString::WriteXml( XclExpXmlStream& rStrm ) const
 
     if( !IsWriteFormats() )
     {
-        rWorksheet->startElement( XML_t,
-                FSNS(XML_xml, XML_space), "preserve", FSEND );
+        rWorksheet->startElement(XML_t, FSNS(XML_xml, XML_space), "preserve");
         rWorksheet->writeEscaped( XclXmlUtils::ToOUString( *this ) );
         rWorksheet->endElement( XML_t );
     }
     else
     {
         XclExpFontBuffer& rFonts = rStrm.GetRoot().GetFontBuffer();
-        XclFormatRunVec::const_iterator aIt = maFormats.begin(), aEnd = maFormats.end();
 
         sal_uInt16  nStart = 0;
         const XclExpFont* pFont = nullptr;
-        for ( ; aIt != aEnd; ++aIt )
+        for ( const auto& rFormat : maFormats )
         {
             nStart = lcl_WriteRun( rStrm, GetUnicodeBuffer(),
-                    nStart, aIt->mnChar-nStart, pFont );
-            pFont = rFonts.GetFont( aIt->mnFontIdx );
+                    nStart, rFormat.mnChar-nStart, pFont );
+            pFont = rFonts.GetFont( rFormat.mnFontIdx );
         }
         lcl_WriteRun( rStrm, GetUnicodeBuffer(),
                 nStart, GetUnicodeBuffer().size() - nStart, pFont );
@@ -464,7 +459,7 @@ void XclExpString::SetStrLen( sal_Int32 nNewLen )
 
 void XclExpString::CharsToBuffer( const sal_Unicode* pcSource, sal_Int32 nBegin, sal_Int32 nLen )
 {
-    OSL_ENSURE( maUniBuffer.size() >= static_cast< size_t >( nBegin + nLen ),
+    OSL_ENSURE( maUniBuffer.size() >= o3tl::make_unsigned( nBegin + nLen ),
         "XclExpString::CharsToBuffer - char buffer invalid" );
     ScfUInt16Vec::iterator aBeg = maUniBuffer.begin() + nBegin;
     ScfUInt16Vec::iterator aEnd = aBeg + nLen;
@@ -479,13 +474,13 @@ void XclExpString::CharsToBuffer( const sal_Unicode* pcSource, sal_Int32 nBegin,
         mbWrapped = ::std::find( aBeg, aEnd, EXC_LF ) != aEnd;
 }
 
-void XclExpString::CharsToBuffer( const sal_Char* pcSource, sal_Int32 nBegin, sal_Int32 nLen )
+void XclExpString::CharsToBuffer( const char* pcSource, sal_Int32 nBegin, sal_Int32 nLen )
 {
-    OSL_ENSURE( maCharBuffer.size() >= static_cast< size_t >( nBegin + nLen ),
+    OSL_ENSURE( maCharBuffer.size() >= o3tl::make_unsigned( nBegin + nLen ),
         "XclExpString::CharsToBuffer - char buffer invalid" );
     ScfUInt8Vec::iterator aBeg = maCharBuffer.begin() + nBegin;
     ScfUInt8Vec::iterator aEnd = aBeg + nLen;
-    const sal_Char* pcSrcChar = pcSource;
+    const char* pcSrcChar = pcSource;
     for( ScfUInt8Vec::iterator aIt = aBeg; aIt != aEnd; ++aIt, ++pcSrcChar )
         *aIt = static_cast< sal_uInt8 >( *pcSrcChar );
     mbIsUnicode = false;
@@ -496,12 +491,12 @@ void XclExpString::CharsToBuffer( const sal_Char* pcSource, sal_Int32 nBegin, sa
 void XclExpString::Init( sal_Int32 nCurrLen, XclStrFlags nFlags, sal_uInt16 nMaxLen, bool bBiff8 )
 {
     mbIsBiff8 = bBiff8;
-    mbIsUnicode = bBiff8 && ::get_flag( nFlags, EXC_STR_FORCEUNICODE );
-    mb8BitLen = ::get_flag( nFlags, EXC_STR_8BITLENGTH );
-    mbSmartFlags = bBiff8 && ::get_flag( nFlags, EXC_STR_SMARTFLAGS );
-    mbSkipFormats = ::get_flag( nFlags, EXC_STR_SEPARATEFORMATS );
+    mbIsUnicode = bBiff8 && ( nFlags & XclStrFlags::ForceUnicode );
+    mb8BitLen = bool( nFlags & XclStrFlags::EightBitLength );
+    mbSmartFlags = bBiff8 && ( nFlags & XclStrFlags::SmartFlags );
+    mbSkipFormats = bool( nFlags & XclStrFlags::SeparateFormats );
     mbWrapped = false;
-    mbSkipHeader = ::get_flag( nFlags, EXC_STR_NOHEADER );
+    mbSkipHeader = bool( nFlags & XclStrFlags::NoHeader );
     mnMaxLen = nMaxLen;
     SetStrLen( nCurrLen );
 
@@ -524,7 +519,7 @@ void XclExpString::Build( const sal_Unicode* pcSource, sal_Int32 nCurrLen, XclSt
     CharsToBuffer( pcSource, 0, mnLen );
 }
 
-void XclExpString::Build( const sal_Char* pcSource, sal_Int32 nCurrLen, XclStrFlags nFlags, sal_uInt16 nMaxLen )
+void XclExpString::Build( const char* pcSource, sal_Int32 nCurrLen, XclStrFlags nFlags, sal_uInt16 nMaxLen )
 {
     Init( nCurrLen, nFlags, nMaxLen, false );
     CharsToBuffer( pcSource, 0, mnLen );
@@ -550,7 +545,7 @@ void XclExpString::BuildAppend( const sal_Unicode* pcSource, sal_Int32 nAddLen )
     }
 }
 
-void XclExpString::BuildAppend( const sal_Char* pcSource, sal_Int32 nAddLen )
+void XclExpString::BuildAppend( const char* pcSource, sal_Int32 nAddLen )
 {
     OSL_ENSURE( !mbIsBiff8, "XclExpString::BuildAppend - must not be called at unicode strings" );
     if( !mbIsBiff8 )

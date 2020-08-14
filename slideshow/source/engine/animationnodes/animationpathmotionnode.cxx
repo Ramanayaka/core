@@ -19,10 +19,9 @@
 
 
 #include "animationpathmotionnode.hxx"
-#include "animationfactory.hxx"
+#include <animationfactory.hxx>
 
-namespace slideshow {
-namespace internal {
+namespace slideshow::internal {
 
 void AnimationPathMotionNode::dispose()
 {
@@ -44,11 +43,11 @@ AnimationActivitySharedPtr AnimationPathMotionNode::createActivity() const
             mxPathMotionNode->getAdditive(),
             getShape(),
             getContext().mpSubsettableShapeManager,
-            getSlideSize(), 0 ),
+            getSlideSize(),
+            getContext().mpBox2DWorld, 0 ),
         true );
 }
 
-} // namespace internal
-} // namespace slideshow
+} // namespace slideshow::internal
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

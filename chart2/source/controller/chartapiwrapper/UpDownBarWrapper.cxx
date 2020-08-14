@@ -18,18 +18,18 @@
  */
 
 #include "UpDownBarWrapper.hxx"
-#include "macros.hxx"
 #include "Chart2ModelContact.hxx"
-#include "DiagramHelper.hxx"
-#include "servicenames_charttypes.hxx"
+#include <DiagramHelper.hxx>
+#include <servicenames_charttypes.hxx>
 #include <cppuhelper/supportsservice.hxx>
+#include <cppuhelper/propshlp.hxx>
 #include <com/sun/star/chart2/XChartType.hpp>
-#include <com/sun/star/chart2/XDataSeriesContainer.hpp>
 #include <comphelper/sequence.hxx>
 
-#include "LinePropertiesHelper.hxx"
-#include "FillProperties.hxx"
-#include "UserDefinedProperties.hxx"
+#include <LinePropertiesHelper.hxx>
+#include <FillProperties.hxx>
+#include <UserDefinedProperties.hxx>
+#include <tools/diagnose_ex.h>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::chart2;
@@ -119,9 +119,7 @@ struct StaticUpDownBarWrapperDefaults : public rtl::StaticAggregate< ::chart::tP
 
 } // anonymous namespace
 
-namespace chart
-{
-namespace wrapper
+namespace chart::wrapper
 {
 
 UpDownBarWrapper::UpDownBarWrapper(
@@ -162,16 +160,15 @@ uno::Reference< beans::XPropertySetInfo > SAL_CALL UpDownBarWrapper::getProperty
 }
 void SAL_CALL UpDownBarWrapper::setPropertyValue( const OUString& rPropertyName, const uno::Any& rValue )
 {
-    Reference< beans::XPropertySet > xPropSet(nullptr);
+    Reference< beans::XPropertySet > xPropSet;
 
-    Sequence< Reference< chart2::XChartType > > aTypes(
+    const Sequence< Reference< chart2::XChartType > > aTypes(
             ::chart::DiagramHelper::getChartTypesFromDiagram( m_spChart2ModelContact->getChart2Diagram() ) );
-    for( sal_Int32 nN = 0; nN < aTypes.getLength(); nN++ )
+    for( Reference< chart2::XChartType > const & xType : aTypes )
     {
-        Reference< chart2::XChartType > xType( aTypes[nN] );
         if( xType->getChartType() == CHART2_SERVICE_NAME_CHARTTYPE_CANDLESTICK )
         {
-            Reference< beans::XPropertySet > xTypeProps( aTypes[nN], uno::UNO_QUERY );
+            Reference< beans::XPropertySet > xTypeProps( xType, uno::UNO_QUERY );
             if(xTypeProps.is())
             {
                 xTypeProps->getPropertyValue( m_aPropertySetName ) >>= xPropSet;
@@ -185,16 +182,15 @@ uno::Any SAL_CALL UpDownBarWrapper::getPropertyValue( const OUString& rPropertyN
 {
     Any aRet;
 
-    Reference< beans::XPropertySet > xPropSet(nullptr);
+    Reference< beans::XPropertySet > xPropSet;
 
-    Sequence< Reference< chart2::XChartType > > aTypes(
+    const Sequence< Reference< chart2::XChartType > > aTypes(
             ::chart::DiagramHelper::getChartTypesFromDiagram( m_spChart2ModelContact->getChart2Diagram() ) );
-    for( sal_Int32 nN = 0; nN < aTypes.getLength(); nN++ )
+    for( Reference< chart2::XChartType > const & xType : aTypes )
     {
-        Reference< chart2::XChartType > xType( aTypes[nN] );
         if( xType->getChartType() == CHART2_SERVICE_NAME_CHARTTYPE_CANDLESTICK )
         {
-            Reference< beans::XPropertySet > xTypeProps( aTypes[nN], uno::UNO_QUERY );
+            Reference< beans::XPropertySet > xTypeProps( xType, uno::UNO_QUERY );
             if(xTypeProps.is())
             {
                 xTypeProps->getPropertyValue( m_aPropertySetName ) >>= xPropSet;
@@ -233,11 +229,11 @@ void SAL_CALL UpDownBarWrapper::setPropertyValues( const uno::Sequence< OUString
         OUString aPropertyName( rNameSeq[nN] );
         try
         {
-            this->setPropertyValue( aPropertyName, rValueSeq[nN] );
+            setPropertyValue( aPropertyName, rValueSeq[nN] );
         }
-        catch( const beans::UnknownPropertyException& ex )
+        catch( const beans::UnknownPropertyException& )
         {
-            ASSERT_EXCEPTION( ex );
+            DBG_UNHANDLED_EXCEPTION("chart2");
         }
     }
     //todo: store unknown properties elsewhere
@@ -245,13 +241,13 @@ void SAL_CALL UpDownBarWrapper::setPropertyValues( const uno::Sequence< OUString
 uno::Sequence< uno::Any > SAL_CALL UpDownBarWrapper::getPropertyValues( const uno::Sequence< OUString >& rNameSeq )
 {
     Sequence< Any > aRetSeq;
-    if( rNameSeq.getLength() )
+    if( rNameSeq.hasElements() )
     {
         aRetSeq.realloc( rNameSeq.getLength() );
         for(sal_Int32 nN=0; nN<rNameSeq.getLength(); nN++)
         {
             OUString aPropertyName( rNameSeq[nN] );
-            aRetSeq[nN] = this->getPropertyValue( aPropertyName );
+            aRetSeq[nN] = getPropertyValue( aPropertyName );
         }
     }
     return aRetSeq;
@@ -272,8 +268,8 @@ void SAL_CALL UpDownBarWrapper::firePropertiesChangeEvent( const uno::Sequence< 
 //XPropertyState
 beans::PropertyState SAL_CALL UpDownBarWrapper::getPropertyState( const OUString& rPropertyName )
 {
-    uno::Any aDefault( this->getPropertyDefault( rPropertyName ) );
-    uno::Any aValue( this->getPropertyValue( rPropertyName ) );
+    uno::Any aDefault( getPropertyDefault( rPropertyName ) );
+    uno::Any aValue( getPropertyValue( rPropertyName ) );
 
     if( aDefault == aValue )
         return beans::PropertyState_DEFAULT_VALUE;
@@ -283,20 +279,20 @@ beans::PropertyState SAL_CALL UpDownBarWrapper::getPropertyState( const OUString
 uno::Sequence< beans::PropertyState > SAL_CALL UpDownBarWrapper::getPropertyStates( const uno::Sequence< OUString >& rNameSeq )
 {
     Sequence< beans::PropertyState > aRetSeq;
-    if( rNameSeq.getLength() )
+    if( rNameSeq.hasElements() )
     {
         aRetSeq.realloc( rNameSeq.getLength() );
         for(sal_Int32 nN=0; nN<rNameSeq.getLength(); nN++)
         {
             OUString aPropertyName( rNameSeq[nN] );
-            aRetSeq[nN] = this->getPropertyState( aPropertyName );
+            aRetSeq[nN] = getPropertyState( aPropertyName );
         }
     }
     return aRetSeq;
 }
 void SAL_CALL UpDownBarWrapper::setPropertyToDefault( const OUString& rPropertyName )
 {
-    this->setPropertyValue( rPropertyName, this->getPropertyDefault(rPropertyName) );
+    setPropertyValue( rPropertyName, getPropertyDefault(rPropertyName) );
 }
 
 uno::Any SAL_CALL UpDownBarWrapper::getPropertyDefault( const OUString& rPropertyName )
@@ -313,30 +309,28 @@ uno::Any SAL_CALL UpDownBarWrapper::getPropertyDefault( const OUString& rPropert
 void SAL_CALL UpDownBarWrapper::setAllPropertiesToDefault(  )
 {
     const Sequence< beans::Property >& rPropSeq = *StaticUpDownBarWrapperPropertyArray::get();
-    for(sal_Int32 nN=0; nN<rPropSeq.getLength(); nN++)
+    for(beans::Property const & prop : rPropSeq)
     {
-        OUString aPropertyName( rPropSeq[nN].Name );
-        this->setPropertyToDefault( aPropertyName );
+        setPropertyToDefault( prop.Name );
     }
 }
 void SAL_CALL UpDownBarWrapper::setPropertiesToDefault( const uno::Sequence< OUString >& rNameSeq )
 {
-    for(sal_Int32 nN=0; nN<rNameSeq.getLength(); nN++)
+    for(OUString const & s : rNameSeq)
     {
-        OUString aPropertyName( rNameSeq[nN] );
-        this->setPropertyToDefault( aPropertyName );
+        setPropertyToDefault( s );
     }
 }
 uno::Sequence< uno::Any > SAL_CALL UpDownBarWrapper::getPropertyDefaults( const uno::Sequence< OUString >& rNameSeq )
 {
     Sequence< Any > aRetSeq;
-    if( rNameSeq.getLength() )
+    if( rNameSeq.hasElements() )
     {
         aRetSeq.realloc( rNameSeq.getLength() );
         for(sal_Int32 nN=0; nN<rNameSeq.getLength(); nN++)
         {
             OUString aPropertyName( rNameSeq[nN] );
-            aRetSeq[nN] = this->getPropertyDefault( aPropertyName );
+            aRetSeq[nN] = getPropertyDefault( aPropertyName );
         }
     }
     return aRetSeq;
@@ -344,7 +338,7 @@ uno::Sequence< uno::Any > SAL_CALL UpDownBarWrapper::getPropertyDefaults( const 
 
 OUString SAL_CALL UpDownBarWrapper::getImplementationName()
 {
-    return OUString("com.sun.star.comp.chart.ChartArea");
+    return "com.sun.star.comp.chart.ChartArea";
 }
 
 sal_Bool SAL_CALL UpDownBarWrapper::supportsService( const OUString& rServiceName )
@@ -362,7 +356,6 @@ css::uno::Sequence< OUString > SAL_CALL UpDownBarWrapper::getSupportedServiceNam
     };
 }
 
-} //  namespace wrapper
-} //  namespace chart
+} //  namespace chart::wrapper
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

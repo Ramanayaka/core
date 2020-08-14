@@ -18,13 +18,10 @@
  */
 
 #include <connectivity/sdbcx/VTable.hxx>
-#include <com/sun/star/lang/DisposedException.hpp>
-#include <connectivity/sdbcx/VIndex.hxx>
+#include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <comphelper/sequence.hxx>
 #include <connectivity/sdbcx/VCollection.hxx>
-#include "TConnection.hxx"
-#include <connectivity/sdbcx/VColumn.hxx>
-#include <connectivity/sdbcx/VKey.hxx>
+#include <TConnection.hxx>
 #include <connectivity/dbtools.hxx>
 #include <connectivity/dbexception.hxx>
 #include <cppuhelper/supportsservice.hxx>
@@ -43,20 +40,14 @@ using namespace ::com::sun::star::lang;
 OUString SAL_CALL OTable::getImplementationName(  )
 {
     if(isNew())
-        return OUString("com.sun.star.sdbcx.VTableDescriptor");
-    return OUString("com.sun.star.sdbcx.Table");
+        return "com.sun.star.sdbcx.VTableDescriptor";
+    return "com.sun.star.sdbcx.Table";
 }
 
 
 css::uno::Sequence< OUString > SAL_CALL OTable::getSupportedServiceNames(  )
 {
-    css::uno::Sequence< OUString > aSupported(1);
-    if(isNew())
-        aSupported[0] = "com.sun.star.sdbcx.TableDescriptor";
-    else
-        aSupported[0] = "com.sun.star.sdbcx.Table";
-
-    return aSupported;
+    return { isNew()?OUString("com.sun.star.sdbcx.TableDescriptor"):OUString("com.sun.star.sdbcx.Table") };
 }
 
 sal_Bool SAL_CALL OTable::supportsService( const OUString& _rServiceName )
@@ -68,9 +59,6 @@ OTable::OTable(OCollection* _pTables,
                bool _bCase)
                : OTableDescriptor_BASE(m_aMutex)
                 ,ODescriptor(OTableDescriptor_BASE::rBHelper,_bCase,true)
-                ,m_pKeys(nullptr)
-                ,m_pColumns(nullptr)
-                ,m_pIndexes(nullptr)
                 ,m_pTables(_pTables)
 {
 }
@@ -85,9 +73,6 @@ OTable::OTable( OCollection*    _pTables,
                 ,m_SchemaName(SchemaName)
                 ,m_Description(Description)
                 ,m_Type(Type)
-                ,m_pKeys(nullptr)
-                ,m_pColumns(nullptr)
-                ,m_pIndexes(nullptr)
                 ,m_pTables(_pTables)
 {
     m_Name = Name;
@@ -95,9 +80,6 @@ OTable::OTable( OCollection*    _pTables,
 
 OTable::~OTable()
 {
-    delete m_pKeys;
-    delete m_pColumns;
-    delete m_pIndexes;
 }
 
 void OTable::construct()
@@ -151,12 +133,12 @@ void SAL_CALL OTable::disposing()
 
     ::osl::MutexGuard aGuard(m_aMutex);
 
-    if(m_pKeys)
-        m_pKeys->disposing();
-    if(m_pColumns)
-        m_pColumns->disposing();
-    if(m_pIndexes)
-        m_pIndexes->disposing();
+    if(m_xKeys)
+        m_xKeys->disposing();
+    if(m_xColumns)
+        m_xColumns->disposing();
+    if(m_xIndexes)
+        m_xIndexes->disposing();
 
     m_pTables = nullptr;
 }
@@ -169,7 +151,7 @@ Reference< XNameAccess > SAL_CALL OTable::getColumns(  )
 
     try
     {
-        if ( !m_pColumns )
+        if ( !m_xColumns )
             refreshColumns();
     }
     catch( const RuntimeException& )
@@ -182,7 +164,7 @@ Reference< XNameAccess > SAL_CALL OTable::getColumns(  )
         // allowed
     }
 
-    return m_pColumns;
+    return m_xColumns.get();
 }
 
 
@@ -196,9 +178,9 @@ Reference< XIndexAccess > SAL_CALL OTable::getKeys(  )
 
     try
     {
-        if ( !m_pKeys )
+        if ( !m_xKeys )
             refreshKeys();
-        xKeys = m_pKeys;
+        xKeys = m_xKeys.get();
     }
     catch( const RuntimeException& )
     {
@@ -241,7 +223,7 @@ Reference< XNameAccess > SAL_CALL OTable::getIndexes(  )
 
     try
     {
-        if ( !m_pIndexes )
+        if ( !m_xIndexes )
             refreshIndexes();
     }
     catch( const RuntimeException& )
@@ -254,7 +236,7 @@ Reference< XNameAccess > SAL_CALL OTable::getIndexes(  )
         // allowed
     }
 
-    return m_pIndexes;
+    return m_xIndexes.get();
 }
 
 // XRename

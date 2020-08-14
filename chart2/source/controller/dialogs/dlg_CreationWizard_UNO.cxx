@@ -17,49 +17,45 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "dlg_CreationWizard_UNO.hxx"
-#include "dlg_CreationWizard.hxx"
-#include "macros.hxx"
-#include "servicenames.hxx"
-#include "TimerTriggeredControllerLock.hxx"
-#include <osl/mutex.hxx>
+#include <dlg_CreationWizard_UNO.hxx>
+#include <dlg_CreationWizard.hxx>
+#include <servicenames.hxx>
+#include <TimerTriggeredControllerLock.hxx>
 #include <vcl/svapp.hxx>
-#include <toolkit/awt/vclxwindow.hxx>
-#include <vcl/msgbox.hxx>
-#include <cppuhelper/typeprovider.hxx>
 #include <cppuhelper/supportsservice.hxx>
-#include <comphelper/servicehelper.hxx>
 #include <com/sun/star/awt/Point.hpp>
 #include <com/sun/star/awt/Size.hpp>
 #include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/frame/Desktop.hpp>
-#include <comphelper/sequence.hxx>
+#include <com/sun/star/ui/dialogs/ExecutableDialogResults.hpp>
+#include <tools/diagnose_ex.h>
+#include <comphelper/lok.hxx>
+#include <sfx2/viewsh.hxx>
 
 namespace chart
 {
 using namespace ::com::sun::star;
 
-CreationWizardUnoDlg::CreationWizardUnoDlg( const uno::Reference< uno::XComponentContext >& xContext )
-                    : OComponentHelper( m_aMutex )
-                    , m_xChartModel( nullptr )
-                    , m_xCC( xContext )
-                    , m_xParentWindow( nullptr )
-                    , m_pDialog( nullptr )
-                    , m_bUnlockControllersOnExecute(false)
+CreationWizardUnoDlg::CreationWizardUnoDlg(const uno::Reference<uno::XComponentContext>& xContext)
+    : OComponentHelper(m_aMutex)
+    , m_xCC(xContext)
+    , m_bUnlockControllersOnExecute(false)
 {
     uno::Reference< frame::XDesktop2 > xDesktop = frame::Desktop::create(m_xCC);
     uno::Reference< frame::XTerminateListener > xListener( this );
     xDesktop->addTerminateListener( xListener );
 }
+
 CreationWizardUnoDlg::~CreationWizardUnoDlg()
 {
     SolarMutexGuard aSolarGuard;
-    m_pDialog.disposeAndClear();
+    m_xDialog.reset();
 }
+
 // lang::XServiceInfo
 OUString SAL_CALL CreationWizardUnoDlg::getImplementationName()
 {
-    return OUString(CHART_WIZARD_DIALOG_SERVICE_IMPLEMENTATION_NAME);
+    return CHART_WIZARD_DIALOG_SERVICE_IMPLEMENTATION_NAME;
 }
 
 sal_Bool SAL_CALL CreationWizardUnoDlg::supportsService( const OUString& rServiceName )
@@ -87,9 +83,9 @@ void SAL_CALL CreationWizardUnoDlg::release() throw ()
 }
 uno::Any SAL_CALL CreationWizardUnoDlg::queryAggregation( uno::Type const & rType )
 {
-    if (rType == cppu::UnoType<ui::dialogs::XExecutableDialog>::get())
+    if (rType == cppu::UnoType<ui::dialogs::XAsynchronousExecutableDialog>::get())
     {
-        void * p = static_cast< ui::dialogs::XExecutableDialog * >( this );
+        void * p = static_cast< ui::dialogs::XAsynchronousExecutableDialog * >( this );
         return uno::Any( &p, rType );
     }
     else if (rType == cppu::UnoType<lang::XServiceInfo>::get())
@@ -117,24 +113,15 @@ uno::Any SAL_CALL CreationWizardUnoDlg::queryAggregation( uno::Type const & rTyp
 
 uno::Sequence< uno::Type > CreationWizardUnoDlg::getTypes()
 {
-    static uno::Sequence< uno::Type > aTypeList;
-
-    ::osl::MutexGuard aGuard( ::osl::Mutex::getGlobalMutex() );
-    if( !aTypeList.getLength() )
-    {
-        std::vector< uno::Type > aTypes;
-        aTypes.push_back( cppu::UnoType<lang::XComponent>::get() );
-        aTypes.push_back( cppu::UnoType<lang::XTypeProvider>::get() );
-        aTypes.push_back( cppu::UnoType<uno::XAggregation>::get() );
-        aTypes.push_back( cppu::UnoType<uno::XWeak>::get() );
-        aTypes.push_back( cppu::UnoType<lang::XServiceInfo>::get() );
-        aTypes.push_back( cppu::UnoType<lang::XInitialization>::get() );
-        aTypes.push_back( cppu::UnoType<frame::XTerminateListener>::get() );
-        aTypes.push_back( cppu::UnoType<ui::dialogs::XExecutableDialog>::get() );
-        aTypes.push_back( cppu::UnoType<beans::XPropertySet>::get() );
-        aTypeList = comphelper::containerToSequence( aTypes );
-    }
-
+    static uno::Sequence<uno::Type> aTypeList{ cppu::UnoType<lang::XComponent>::get(),
+                                               cppu::UnoType<lang::XTypeProvider>::get(),
+                                               cppu::UnoType<uno::XAggregation>::get(),
+                                               cppu::UnoType<uno::XWeak>::get(),
+                                               cppu::UnoType<lang::XServiceInfo>::get(),
+                                               cppu::UnoType<lang::XInitialization>::get(),
+                                               cppu::UnoType<frame::XTerminateListener>::get(),
+                                               cppu::UnoType<ui::dialogs::XAsynchronousExecutableDialog>::get(),
+                                               cppu::UnoType<beans::XPropertySet>::get() };
     return aTypeList;
 }
 
@@ -159,70 +146,73 @@ void SAL_CALL CreationWizardUnoDlg::disposing( const lang::EventObject& /*Source
     //Listener should deregister himself and release all references to the closing object.
 }
 
-void SAL_CALL CreationWizardUnoDlg::setTitle( const OUString& /*rTitle*/ )
+void SAL_CALL CreationWizardUnoDlg::setDialogTitle( const OUString& /*rTitle*/ )
 {
 }
 void CreationWizardUnoDlg::createDialogOnDemand()
 {
     SolarMutexGuard aSolarGuard;
-    if( !m_pDialog )
+    if (m_xDialog)
+        return;
+
+    if( !m_xParentWindow.is() && m_xChartModel.is() )
     {
-        vcl::Window* pParent = nullptr;
-        if( !m_xParentWindow.is() && m_xChartModel.is() )
+        uno::Reference< frame::XController > xController(
+            m_xChartModel->getCurrentController() );
+        if( xController.is() )
         {
-            uno::Reference< frame::XController > xController(
-                m_xChartModel->getCurrentController() );
-            if( xController.is() )
-            {
-                uno::Reference< frame::XFrame > xFrame(
-                    xController->getFrame() );
-                if(xFrame.is())
-                    m_xParentWindow = xFrame->getContainerWindow();
-            }
-        }
-        if( m_xParentWindow.is() )
-        {
-            VCLXWindow* pImplementation = VCLXWindow::GetImplementation(m_xParentWindow);
-            if (pImplementation)
-                pParent = pImplementation->GetWindow().get();
-        }
-        uno::Reference< XComponent > xComp( this );
-        if( m_xChartModel.is() )
-        {
-            m_pDialog = VclPtr<CreationWizard>::Create( pParent, m_xChartModel, m_xCC );
-            m_pDialog->AddEventListener( LINK( this, CreationWizardUnoDlg, DialogEventHdl ) );
+            uno::Reference< frame::XFrame > xFrame(
+                xController->getFrame() );
+            if(xFrame.is())
+                m_xParentWindow = xFrame->getContainerWindow();
         }
     }
-}
-IMPL_LINK( CreationWizardUnoDlg, DialogEventHdl, VclWindowEvent&, rEvent, void )
-{
-    if(rEvent.GetId() == VclEventId::ObjectDying)
-        m_pDialog = nullptr;//avoid duplicate destruction of m_pDialog
+    uno::Reference< XComponent > xKeepAlive( this );
+    if( m_xChartModel.is() )
+    {
+        m_xDialog = std::make_shared<CreationWizard>(Application::GetFrameWeld(m_xParentWindow), m_xChartModel, m_xCC);
+    }
 }
 
-sal_Int16 SAL_CALL CreationWizardUnoDlg::execute(  )
+IMPL_STATIC_LINK_NOARG(CreationWizardUnoDlg, InstallLOKNotifierHdl, void*, vcl::ILibreOfficeKitNotifier*)
 {
-    sal_Int16 nRet = RET_CANCEL;
-    {
-        SolarMutexGuard aSolarGuard;
-        createDialogOnDemand();
-        if( !m_pDialog )
-            return nRet;
-        TimerTriggeredControllerLock aTimerTriggeredControllerLock( m_xChartModel );
-        if( m_bUnlockControllersOnExecute && m_xChartModel.is() )
-            m_xChartModel->unlockControllers();
-        nRet = m_pDialog->Execute();
-    }
-    return nRet;
+    return SfxViewShell::Current();
+}
+
+void SAL_CALL CreationWizardUnoDlg::startExecuteModal( const css::uno::Reference<css::ui::dialogs::XDialogClosedListener>& xListener )
+{
+    SolarMutexGuard aSolarGuard;
+    createDialogOnDemand();
+
+    if( !m_xDialog )
+        return;
+
+    m_xDialog->getDialog()->SetInstallLOKNotifierHdl(
+                                LINK(this, CreationWizardUnoDlg, InstallLOKNotifierHdl));
+
+    TimerTriggeredControllerLock aTimerTriggeredControllerLock( m_xChartModel );
+    if( m_bUnlockControllersOnExecute && m_xChartModel.is() )
+        m_xChartModel->unlockControllers();
+
+    CreationWizardUnoDlg* xThat = this;
+    weld::DialogController::runAsync(m_xDialog, [xListener, xThat](sal_Int32 nResult){
+            if( xListener.is() )
+            {
+                ::css::uno::Reference< ::css::uno::XInterface > xSource;
+                // Notify UNO listener to perform correct action depending on the result
+                css::ui::dialogs::DialogClosedEvent aEvent( xSource, nResult );
+                xListener->dialogClosed( aEvent );
+            }
+            xThat->m_xDialog.reset();
+        });
 }
 
 void SAL_CALL CreationWizardUnoDlg::initialize( const uno::Sequence< uno::Any >& aArguments )
 {
-    const uno::Any* pArguments = aArguments.getConstArray();
-    for(sal_Int32 i=0; i<aArguments.getLength(); ++i, ++pArguments)
+    for(const uno::Any& rArgument : aArguments)
     {
         beans::PropertyValue aProperty;
-        if(*pArguments >>= aProperty)
+        if(rArgument >>= aProperty)
         {
             if( aProperty.Name == "ParentWindow" )
             {
@@ -244,7 +234,7 @@ void SAL_CALL CreationWizardUnoDlg::disposing()
     m_xParentWindow.clear();
 
     SolarMutexGuard aSolarGuard;
-    m_pDialog.disposeAndClear();
+    m_xDialog.reset();
 
     try
     {
@@ -252,9 +242,9 @@ void SAL_CALL CreationWizardUnoDlg::disposing()
         uno::Reference< frame::XTerminateListener > xListener( this );
         xDesktop->removeTerminateListener( xListener );
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 }
 
@@ -265,27 +255,15 @@ uno::Reference< beans::XPropertySetInfo > SAL_CALL CreationWizardUnoDlg::getProp
     return nullptr;
 }
 
-void SAL_CALL CreationWizardUnoDlg::setPropertyValue( const OUString& rPropertyName
-                                                     , const uno::Any& rValue )
+void SAL_CALL CreationWizardUnoDlg::setPropertyValue(const OUString& rPropertyName,
+                                                     const uno::Any& rValue)
 {
     if( rPropertyName == "Position" )
     {
-        awt::Point aPos;
-        if( ! (rValue >>= aPos) )
-            throw lang::IllegalArgumentException( "Property 'Position' requires value of type awt::Point", nullptr, 0 );
-
-        //set left upper outer corner relative to screen
-        //pixels, screen position
         SolarMutexGuard aSolarGuard;
         createDialogOnDemand();
-        if( m_pDialog )
-        {
-            m_pDialog->SetPosPixel( Point(0,0) );
-            tools::Rectangle aRect( m_pDialog->GetWindowExtentsRelative( nullptr ) );
 
-            Point aNewOuterPos = Point( aPos.X - aRect.Left(), aPos.Y - aRect.Top() );
-            m_pDialog->SetPosPixel( aNewOuterPos );
-        }
+        //read only property, do nothing else
     }
     else if( rPropertyName == "Size")
     {
@@ -309,10 +287,10 @@ uno::Any SAL_CALL CreationWizardUnoDlg::getPropertyValue( const OUString& rPrope
         //pixels, screen position
         SolarMutexGuard aSolarGuard;
         createDialogOnDemand();
-        if( m_pDialog )
+        if (m_xDialog)
         {
-            tools::Rectangle aRect( m_pDialog->GetWindowExtentsRelative( nullptr ) );
-            awt::Point aPoint(aRect.Left(),aRect.Top());
+            Point aPos(m_xDialog->getDialog()->get_position());
+            awt::Point aPoint(aPos.X(), aPos.Y());
             aRet <<= aPoint;
         }
     }
@@ -322,10 +300,10 @@ uno::Any SAL_CALL CreationWizardUnoDlg::getPropertyValue( const OUString& rPrope
         //pixels, screen position
         SolarMutexGuard aSolarGuard;
         createDialogOnDemand();
-        if( m_pDialog )
+        if (m_xDialog)
         {
-            tools::Rectangle aRect( m_pDialog->GetWindowExtentsRelative( nullptr ) );
-            awt::Size aSize(aRect.GetWidth(),aRect.GetHeight());
+            Size aRect(m_xDialog->getDialog()->get_size());
+            awt::Size aSize(aRect.Width(), aRect.Height());
             aRet <<= aSize;
         }
     }
@@ -361,7 +339,7 @@ void SAL_CALL CreationWizardUnoDlg::removeVetoableChangeListener( const OUString
 
 } //namespace chart
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_chart2_WizardDialog_get_implementation(css::uno::XComponentContext *context,
                                                          css::uno::Sequence<css::uno::Any> const &)
 {

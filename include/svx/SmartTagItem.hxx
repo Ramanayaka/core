@@ -25,21 +25,18 @@
 #include <com/sun/star/smarttags/XSmartTagAction.hpp>
 #include <svx/svxdllapi.h>
 
-namespace com { namespace sun { namespace star { namespace container {
+namespace com::sun::star::container {
     class XStringKeyMap;
-} } } }
+}
 
-namespace com { namespace sun { namespace star { namespace text {
+namespace com::sun::star::text {
     class XTextRange;
-} } } }
+}
 
-namespace com { namespace sun { namespace star { namespace frame {
+namespace com::sun::star::frame {
     class XController;
-} } } }
-
-// class SvxSmartTagItem -----------------------------------------------------
-
-class SVX_DLLPUBLIC SvxSmartTagItem : public SfxPoolItem
+}
+class SVX_DLLPUBLIC SvxSmartTagItem final : public SfxPoolItem
 {
     const css::uno::Sequence < css::uno::Sequence< css::uno::Reference< css::smarttags::XSmartTagAction > > > maActionComponentsSequence;
     const css::uno::Sequence < css::uno::Sequence< sal_Int32 > > maActionIndicesSequence;
@@ -65,9 +62,7 @@ public:
 
     // "purely virtual methods" from the SfxPoolItem
     virtual bool             operator==( const SfxPoolItem& ) const override;
-    virtual SfxPoolItem*     Clone( SfxItemPool *pPool = nullptr ) const override;
-    virtual SfxPoolItem*     Create(SvStream &, sal_uInt16) const override; // leer
-    virtual SvStream&        Store(SvStream &, sal_uInt16 nItemVersion) const override; // leer
+    virtual SvxSmartTagItem* Clone( SfxItemPool *pPool = nullptr ) const override;
     virtual bool             QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool             PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
 

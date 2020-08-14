@@ -159,6 +159,8 @@ service MediaDescriptor
         invalid names are ignored. If a name is specified on loading,
         it still will be verified by a filter detection, but in case of doubt
         it will be preferred.
+
+        See this page for a list of internal filter names: https://help.libreoffice.org/latest/en-US/text/shared/guide/convertfilters.html
         </p>
      */
     [optional,property] string FilterName;
@@ -324,7 +326,7 @@ service MediaDescriptor
      */
     [optional,property] boolean Overwrite;
 
-    /** password for loading storing documents
+    /** password for loading or storing documents
 
         <p>
         It contains a password for loading or storing a component (if necessary).
@@ -345,6 +347,17 @@ service MediaDescriptor
         </p>
      */
     [optional,property] sequence< byte > PostData;
+
+    /** add loaded document to recent document list
+
+        <p>
+        Setting this to `FALSE` prevents the loaded document to be added to the recent documents list.
+        Default is `TRUE`.
+        </p>
+
+        @since LibreOffice 5.1
+     */
+    [optional,property] boolean PickListEntry;
 
     /** use MediaDescriptor::PostData instead of this
 
@@ -479,7 +492,7 @@ service MediaDescriptor
     /** URL of the document
 
         <p>
-        The location of the component in URL syntax. It must be the full qualified URL and
+        The location of the component in URL syntax. It must be a fully qualified URL.
         </p>
      */
     [optional,property] string URL;
@@ -549,6 +562,53 @@ service MediaDescriptor
     /** specifies the frame containing the document. May be empty.
      */
     [optional,property] com::sun::star::frame::XFrame Frame;
+
+    /** Setting this option will prevent copying/dragging any content anywhere.
+        The commands 'Copy' and 'Cut' will be disabled; selection clipboard won't work,
+        and dragging with mouse will also be disabled.
+
+        @since LibreOffice 6.4
+     */
+    [optional,property] boolean LockContentExtraction;
+
+    /** Setting this option will prevent exporting document content to any file.
+        Export, Send, save as, etc will be disabled,
+        as well as individual graphic/chart export and mail merge.
+
+        @since LibreOffice 6.4
+     */
+    [optional,property] boolean LockExport;
+
+    /** Setting this option will disable all print functions (including Printer setup)
+
+        @since LibreOffice 6.4
+     */
+    [optional,property] boolean LockPrint;
+
+    /** Setting this option will disable the save function.
+     *
+        @since LibreOffice 6.4
+     */
+    [optional,property] boolean LockSave;
+
+    /** Setting this option will disable switching to edit mode from read-only mode.
+     *
+        @since LibreOffice 6.4
+     */
+    [optional,property] boolean LockEditDoc;
+
+    /** Mark the document as replaceable / a placeholder
+
+        <p>Normally a document is always opened in a new frame. If this property is
+        set to true, this document just acts as a placeholder while it's unmodified.
+        I.e. the next opened document from its frame will close and replace it.</p>
+
+        <p>This defaults to false, except for the default template of a LibreOffice
+        module, referenced as "private:factory/&lt;module&gt;".</p>
+
+        @since LibreOffice 7.0
+     */
+    [optional,property] boolean Replaceable;
 };
 
 

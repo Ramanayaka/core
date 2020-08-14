@@ -26,8 +26,6 @@
 
 #include <osl/diagnose.h>
 
-#include <memory.h>
-
 namespace comphelper
 {
 using namespace ::com::sun::star::lang;
@@ -36,7 +34,6 @@ using namespace ::com::sun::star::uno;
 using namespace ::osl;
 
 
-// class SequenceInputStream
 
 
 SequenceInputStream::SequenceInputStream(
@@ -121,7 +118,7 @@ void SAL_CALL SequenceInputStream::seek( sal_Int64 location )
 {
     if ( location > m_aData.getLength() || location < 0 || location > SAL_MAX_INT32 )
         throw IllegalArgumentException();
-    m_nPos = (sal_Int32) location;
+    m_nPos = static_cast<sal_Int32>(location);
 }
 
 sal_Int64 SAL_CALL SequenceInputStream::getPosition()
@@ -167,7 +164,7 @@ void SAL_CALL OSequenceOutputStream::writeBytes( const Sequence< sal_Int8 >& _rD
             nNewLength = nCurrentLength + m_nMinimumResize;
 
         if (nNewLength < m_nSize + _rData.getLength())
-        {   // it's not enough .... the data would not fit
+        {   // it's not enough... the data would not fit
 
             // let's take the double amount of the length of the data to be written, as the next write
             // request could be as large as this one
@@ -175,7 +172,7 @@ void SAL_CALL OSequenceOutputStream::writeBytes( const Sequence< sal_Int8 >& _rD
             nNewLength = nCurrentLength + nNewGrowth;
         }
 
-        // round it off to the next multiple of 4 ...
+        // round it off to the next multiple of 4...
         nNewLength = (nNewLength + 3) / 4 * 4;
 
         m_rSequence.realloc(nNewLength);

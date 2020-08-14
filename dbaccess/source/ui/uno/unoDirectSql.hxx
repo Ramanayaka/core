@@ -21,12 +21,10 @@
 #define INCLUDED_DBACCESS_SOURCE_UI_UNO_UNODIRECTSQL_HXX
 
 #include <svtools/genericunodialog.hxx>
-#include "apitools.hxx"
-#include <com/sun/star/sdb/XSQLQueryComposer.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/sdbc/XRowSet.hpp>
-#include "moduledbu.hxx"
+#include <apitools.hxx>
 #include <com/sun/star/sdbc/XConnection.hpp>
+#include <comphelper/proparrhlp.hxx>
+#include <connectivity/CommonTools.hxx>
 
 namespace dbaui
 {
@@ -40,29 +38,21 @@ namespace dbaui
             :public ODirectSQLDialog_BASE
             ,public ODirectSQLDialog_PBASE
     {
-        OModuleClient m_aModuleClient;
         OUString      m_sInitialSelection;
         css::uno::Reference< css::sdbc::XConnection > m_xActiveConnection;
-    protected:
+    public:
         explicit ODirectSQLDialog(const css::uno::Reference< css::uno::XComponentContext >& _rxORB);
         virtual ~ODirectSQLDialog() override;
 
-    public:
         virtual css::uno::Sequence<sal_Int8> SAL_CALL getImplementationId() override;
 
         DECLARE_SERVICE_INFO();
-        /// @throws css::uno::RuntimeException
-        static OUString SAL_CALL getImplementationName_Static(  );
-        /// @throws css::uno::RuntimeException
-        static css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames_Static(  );
-        static css::uno::Reference< css::uno::XInterface >
-        SAL_CALL Create(const css::uno::Reference< css::lang::XMultiServiceFactory >&);
 
         DECLARE_PROPERTYCONTAINER_DEFAULTS( );
 
     protected:
         // OGenericUnoDialog overridables
-        virtual VclPtr<Dialog> createDialog(vcl::Window* _pParent) override;
+        virtual std::unique_ptr<weld::DialogController> createDialog(const css::uno::Reference<css::awt::XWindow>& rParent) override;
         virtual void implInitialize(const css::uno::Any& _rValue) override;
     };
 

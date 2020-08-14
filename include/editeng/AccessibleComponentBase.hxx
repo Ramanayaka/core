@@ -22,15 +22,15 @@
 #define INCLUDED_EDITENG_ACCESSIBLECOMPONENTBASE_HXX
 
 
-#include <com/sun/star/accessibility/XAccessible.hpp>
 #include <com/sun/star/accessibility/XAccessibleExtendedComponent.hpp>
-#include <com/sun/star/awt/XFocusListener.hpp>
 #include <editeng/editengdllapi.h>
+
+namespace com::sun::star::accessibility { class XAccessible; }
 
 namespace accessibility {
 
 /** @descr
-        This base class provides (will provice) a base implementation of the
+        This base class provides (will provide) a base implementation of the
         XAccessibleComponent and the
         XAccessibleExtendedComponent for all shapes.  For
         more detailed documentation about the methods refer to the interface

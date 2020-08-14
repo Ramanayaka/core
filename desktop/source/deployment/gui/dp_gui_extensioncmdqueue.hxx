@@ -31,10 +31,10 @@
 
 /// @HTML
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace task { class XInteractionRequest; }
     namespace uno { class XComponentContext; }
-} } }
+}
 
 namespace dp_gui {
 
@@ -85,8 +85,8 @@ public:
 
     bool isBusy();
 private:
-    ExtensionCmdQueue(ExtensionCmdQueue &) = delete;
-    void operator =(ExtensionCmdQueue &) = delete;
+    ExtensionCmdQueue(ExtensionCmdQueue const &) = delete;
+    ExtensionCmdQueue& operator =(ExtensionCmdQueue const &) = delete;
 
     class Thread;
 

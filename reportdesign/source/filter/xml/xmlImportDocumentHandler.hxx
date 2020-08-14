@@ -41,14 +41,6 @@ typedef ::cppu::WeakAggImplHelper3< css::xml::sax::XDocumentHandler
 class ImportDocumentHandler : public ImportDocumentHandler_BASE
 {
 public:
-    // XServiceInfo - static versions
-    /// @throws css::uno::RuntimeException
-    static OUString getImplementationName_Static(  );
-    /// @throws css::uno::RuntimeException
-    static css::uno::Sequence< OUString > getSupportedServiceNames_static(  );
-    static css::uno::Reference< css::uno::XInterface > SAL_CALL
-                    create(const css::uno::Reference< css::uno::XComponentContext >&);
-public:
     explicit ImportDocumentHandler(css::uno::Reference< css::uno::XComponentContext > const & context);
 
 private:
@@ -74,8 +66,8 @@ private:
     virtual void SAL_CALL initialize( const css::uno::Sequence< css::uno::Any >& aArguments ) override;
 
 private:
-    ImportDocumentHandler(ImportDocumentHandler &) = delete;
-    void operator =(ImportDocumentHandler &) = delete;
+    ImportDocumentHandler(ImportDocumentHandler const &) = delete;
+    void operator =(ImportDocumentHandler const &) = delete;
 
     virtual ~ImportDocumentHandler() override;
 

@@ -21,25 +21,19 @@
 
 #include <svx/svddef.hxx>
 #include <svl/eitem.hxx>
-
-enum SdrCircKind {SDRCIRC_FULL,
-                  SDRCIRC_SECT,
-                  SDRCIRC_CUT,
-                  SDRCIRC_ARC};
+#include <svx/svdocirc.hxx>
 
 class SdrCircKindItem: public SfxEnumItem<SdrCircKind> {
 public:
-    SdrCircKindItem(SdrCircKind eKind=SDRCIRC_FULL): SfxEnumItem(SDRATTR_CIRCKIND, eKind) {}
-    SdrCircKindItem(SvStream& rIn)                 : SfxEnumItem(SDRATTR_CIRCKIND,rIn)   {}
-    virtual SfxPoolItem* Clone(SfxItemPool* pPool=nullptr) const override;
-    virtual SfxPoolItem* Create(SvStream& rIn, sal_uInt16 nVer) const override;
+    SdrCircKindItem(SdrCircKind eKind=SdrCircKind::Full): SfxEnumItem(SDRATTR_CIRCKIND, eKind) {}
+    virtual SdrCircKindItem* Clone(SfxItemPool* pPool=nullptr) const override;
     virtual sal_uInt16   GetValueCount() const override; // { return 4; }
 
     virtual bool QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
 
-    virtual OUString GetValueTextByPos(sal_uInt16 nPos) const override;
-    virtual bool GetPresentation(SfxItemPresentation ePres, MapUnit eCoreMetric, MapUnit ePresMetric, OUString& rText, const IntlWrapper * = nullptr) const override;
+    static OUString GetValueTextByPos(sal_uInt16 nPos);
+    virtual bool GetPresentation(SfxItemPresentation ePres, MapUnit eCoreMetric, MapUnit ePresMetric, OUString& rText, const IntlWrapper&) const override;
 };
 
 #endif

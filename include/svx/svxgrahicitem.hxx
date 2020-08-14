@@ -25,17 +25,15 @@
 
 #include <vcl/graph.hxx>
 
-class SVX_DLLPUBLIC SvxGraphicItem: public SfxPoolItem
+class SVX_DLLPUBLIC SvxGraphicItem final : public SfxPoolItem
 {
     Graphic         aGraphic;
 
 public:
                             SvxGraphicItem( const Graphic& rGraphic);
-                            SvxGraphicItem( const SvxGraphicItem& );
-
 
     virtual bool            operator==( const SfxPoolItem& ) const override;
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
+    virtual SvxGraphicItem* Clone( SfxItemPool *pPool = nullptr ) const override;
 
     const Graphic&        GetGraphic() const { return aGraphic; }
 

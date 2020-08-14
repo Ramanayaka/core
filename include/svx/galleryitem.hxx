@@ -23,8 +23,9 @@
 #include <svl/poolitem.hxx>
 
 #include <com/sun/star/uno/Reference.hxx>
-#include <com/sun/star/graphic/XGraphic.hpp>
-#include <com/sun/star/lang/XComponent.hpp>
+
+namespace com::sun::star::graphic { class XGraphic; }
+namespace com::sun::star::lang { class XComponent; }
 
 // property names map those from css::gallery::GalleryItem
 // with exception of "AsLink" and "FilterName"
@@ -36,11 +37,10 @@
 #define SVXGALLERYITEM_PARAMS   5
 #define SVXGALLERYITEM_ARGNAME  "GalleryItem"
 
-class SVX_DLLPUBLIC SvxGalleryItem : public SfxPoolItem
+class SVXCORE_DLLPUBLIC SvxGalleryItem final : public SfxPoolItem
 {
     sal_Int8 m_nType;
-    rtl::OUString m_aURL;
-    rtl::OUString m_aFilterName;
+    OUString m_aURL;
     css::uno::Reference< css::lang::XComponent > m_xDrawing;
     css::uno::Reference< css::graphic::XGraphic > m_xGraphic;
 
@@ -52,18 +52,15 @@ public:
     virtual ~SvxGalleryItem() override;
 
     sal_Int8 GetType() const { return m_nType; }
-    const rtl::OUString& GetURL() const { return m_aURL; }
+    const OUString& GetURL() const { return m_aURL; }
     const css::uno::Reference< css::graphic::XGraphic >& GetGraphic() const { return m_xGraphic; }
 
     // pure virtual methods from SfxPoolItem
     virtual bool         operator==( const SfxPoolItem& ) const override;
-    virtual SfxPoolItem* Clone( SfxItemPool *pPool = nullptr ) const override;
+    virtual SvxGalleryItem* Clone( SfxItemPool *pPool = nullptr ) const override;
     // bridge to UNO
     virtual bool         QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool         PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
-    // not implemented
-    virtual SfxPoolItem* Create(SvStream &, sal_uInt16) const override;
-    virtual SvStream&    Store(SvStream &, sal_uInt16 nItemVersion) const override;
 };
 
 #endif

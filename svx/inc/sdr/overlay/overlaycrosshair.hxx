@@ -23,13 +23,10 @@
 #include <svx/sdr/overlay/overlayobject.hxx>
 
 
-namespace sdr
-{
-    namespace overlay
+namespace sdr::overlay
     {
-        class OverlayCrosshairStriped : public OverlayObjectWithBasePosition
+        class OverlayCrosshairStriped final : public OverlayObjectWithBasePosition
         {
-        protected:
             // geometry creation for OverlayObject
             virtual drawinglayer::primitive2d::Primitive2DContainer createOverlayObjectPrimitive2DSequence() override;
 
@@ -40,8 +37,7 @@ namespace sdr
             // react on stripe definition change
             virtual void stripeDefinitionHasChanged() override;
         };
-    } // end of namespace overlay
-} // end of namespace sdr
+} // end of namespace sdr::overlay
 
 
 #endif // INCLUDED_SVX_INC_SDR_OVERLAY_OVERLAYCROSSHAIR_HXX

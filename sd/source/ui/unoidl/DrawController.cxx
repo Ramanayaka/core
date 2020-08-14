@@ -17,35 +17,37 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "DrawController.hxx"
-#include "DrawDocShell.hxx"
+#include <DrawController.hxx>
+#include <DrawDocShell.hxx>
 
-#include "DrawSubController.hxx"
-#include "sdpage.hxx"
-#include "ViewShellBase.hxx"
-#include "ViewShellManager.hxx"
-#include "FormShellManager.hxx"
-#include "Window.hxx"
+#include <sdpage.hxx>
+#include <ViewShell.hxx>
+#include <ViewShellBase.hxx>
+#include <ViewShellManager.hxx>
+#include <FormShellManager.hxx>
+#include <Window.hxx>
 
-#include <comphelper/anytostring.hxx>
 #include <comphelper/processfactory.hxx>
 #include <comphelper/sequence.hxx>
 #include <comphelper/servicehelper.hxx>
-#include <cppuhelper/exc_hlp.hxx>
-#include <cppuhelper/bootstrap.hxx>
 #include <cppuhelper/supportsservice.hxx>
+#include <cppuhelper/typeprovider.hxx>
 
 #include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <com/sun/star/drawing/framework/ConfigurationController.hpp>
 #include <com/sun/star/drawing/framework/ModuleController.hpp>
+#include <com/sun/star/drawing/XDrawSubController.hpp>
+#include <com/sun/star/drawing/XLayer.hpp>
 #include <com/sun/star/lang/XInitialization.hpp>
 
-#include "slideshow.hxx"
+#include <slideshow.hxx>
 
+#include <sal/log.hxx>
 #include <svx/fmshell.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/EnumContext.hxx>
 #include <svx/sidebar/ContextChangeEventMultiplexer.hxx>
+#include <tools/diagnose_ex.h>
 
 #include <memory>
 
@@ -124,42 +126,42 @@ IMPLEMENT_GET_IMPLEMENTATION_ID(DrawController);
 
 void SAL_CALL DrawController::dispose()
 {
-    if( !mbDisposing )
+    if( mbDisposing )
+        return;
+
+    SolarMutexGuard aGuard;
+
+    if( mbDisposing )
+        return;
+
+    mbDisposing = true;
+
+    std::shared_ptr<ViewShell> pViewShell;
+    if (mpBase)
+        pViewShell = mpBase->GetMainViewShell();
+    if ( pViewShell )
     {
-        SolarMutexGuard aGuard;
-
-        if( !mbDisposing )
-        {
-            mbDisposing = true;
-
-            std::shared_ptr<ViewShell> pViewShell;
-            if (mpBase)
-                pViewShell = mpBase->GetMainViewShell();
-            if ( pViewShell )
-            {
-                pViewShell->DeactivateCurrentFunction();
-                DrawDocShell* pDocShell = pViewShell->GetDocSh();
-                if ( pDocShell != nullptr )
-                    pDocShell->SetDocShellFunction(nullptr);
-            }
-            pViewShell.reset();
-
-            // When the controller has not been detached from its view
-            // shell, i.e. mpViewShell is not NULL, then tell PaneManager
-            // and ViewShellManager to clear the shell stack.
-            if (mxSubController.is() && mpBase!=nullptr)
-            {
-                mpBase->DisconnectAllClients();
-                mpBase->GetViewShellManager()->Shutdown();
-            }
-
-            OPropertySetHelper::disposing();
-
-            DisposeFrameworkControllers();
-
-            SfxBaseController::dispose();
-        }
+        pViewShell->DeactivateCurrentFunction();
+        DrawDocShell* pDocShell = pViewShell->GetDocSh();
+        if ( pDocShell != nullptr )
+            pDocShell->SetDocShellFunction(nullptr);
     }
+    pViewShell.reset();
+
+    // When the controller has not been detached from its view
+    // shell, i.e. mpViewShell is not NULL, then tell PaneManager
+    // and ViewShellManager to clear the shell stack.
+    if (mxSubController.is() && mpBase!=nullptr)
+    {
+        mpBase->DisconnectAllClients();
+        mpBase->GetViewShellManager()->Shutdown();
+    }
+
+    OPropertySetHelper::disposing();
+
+    DisposeFrameworkControllers();
+
+    SfxBaseController::dispose();
 }
 
 void SAL_CALL DrawController::addEventListener(
@@ -200,10 +202,10 @@ OUString SAL_CALL DrawController::getImplementationName(  )
     // Do not throw an exception at the moment.  This leads to a crash
     // under Solaris on reload.  See issue i70929 for details.
     //    ThrowIfDisposed();
-    return OUString("DrawController") ;
+    return "DrawController" ;
 }
 
-static const char ssServiceName[] = "com.sun.star.drawing.DrawingDocumentDrawView";
+const char ssServiceName[] = "com.sun.star.drawing.DrawingDocumentDrawView";
 
 sal_Bool SAL_CALL DrawController::supportsService (const OUString& rsServiceName)
 {
@@ -274,23 +276,23 @@ void  SAL_CALL
     // Have to forward the event to our selection change listeners.
     OInterfaceContainerHelper* pListeners = BroadcastHelperOwner::maBroadcastHelper.getContainer(
         cppu::UnoType<view::XSelectionChangeListener>::get());
-    if (pListeners)
+    if (!pListeners)
+        return;
+
+    // Re-send the event to all of our listeners.
+    OInterfaceIteratorHelper aIterator (*pListeners);
+    while (aIterator.hasMoreElements())
     {
-        // Re-send the event to all of our listeners.
-        OInterfaceIteratorHelper aIterator (*pListeners);
-        while (aIterator.hasMoreElements())
+        try
         {
-            try
-            {
-                view::XSelectionChangeListener* pListener =
-                    static_cast<view::XSelectionChangeListener*>(
-                        aIterator.next());
-                if (pListener != nullptr)
-                    pListener->selectionChanged (rEvent);
-            }
-            catch (const RuntimeException&)
-            {
-            }
+            view::XSelectionChangeListener* pListener =
+                static_cast<view::XSelectionChangeListener*>(
+                    aIterator.next());
+            if (pListener != nullptr)
+                pListener->selectionChanged (rEvent);
+        }
+        catch (const RuntimeException&)
+        {
         }
     }
 }
@@ -326,51 +328,51 @@ Reference< drawing::XDrawPage > SAL_CALL DrawController::getCurrentPage()
 
 void DrawController::FireVisAreaChanged (const ::tools::Rectangle& rVisArea) throw()
 {
-    if( maLastVisArea != rVisArea )
-    {
-        Any aNewValue;
-        aNewValue <<= awt::Rectangle(
-            rVisArea.Left(),
-            rVisArea.Top(),
-            rVisArea.GetWidth(),
-            rVisArea.GetHeight() );
+    if( maLastVisArea == rVisArea )
+        return;
 
-        Any aOldValue;
-        aOldValue <<= awt::Rectangle(
-            maLastVisArea.Left(),
-            maLastVisArea.Top(),
-            maLastVisArea.GetWidth(),
-            maLastVisArea.GetHeight() );
+    Any aNewValue;
+    aNewValue <<= awt::Rectangle(
+        rVisArea.Left(),
+        rVisArea.Top(),
+        rVisArea.GetWidth(),
+        rVisArea.GetHeight() );
 
-        FirePropertyChange (PROPERTY_WORKAREA, aNewValue, aOldValue);
+    Any aOldValue;
+    aOldValue <<= awt::Rectangle(
+        maLastVisArea.Left(),
+        maLastVisArea.Top(),
+        maLastVisArea.GetWidth(),
+        maLastVisArea.GetHeight() );
 
-        maLastVisArea = rVisArea;
-    }
+    FirePropertyChange (PROPERTY_WORKAREA, aNewValue, aOldValue);
+
+    maLastVisArea = rVisArea;
 }
 
 void DrawController::FireSelectionChangeListener() throw()
 {
     OInterfaceContainerHelper * pLC = BroadcastHelperOwner::maBroadcastHelper.getContainer(
         m_aSelectionTypeIdentifier);
-    if( pLC )
-    {
-        Reference< XInterface > xSource( static_cast<XWeak*>(this) );
-        const lang::EventObject aEvent( xSource );
+    if( !pLC )
+        return;
 
-        // iterate over all listeners and send events
-        OInterfaceIteratorHelper aIt( *pLC);
-        while( aIt.hasMoreElements() )
+    Reference< XInterface > xSource( static_cast<XWeak*>(this) );
+    const lang::EventObject aEvent( xSource );
+
+    // iterate over all listeners and send events
+    OInterfaceIteratorHelper aIt( *pLC);
+    while( aIt.hasMoreElements() )
+    {
+        try
         {
-            try
-            {
-                view::XSelectionChangeListener * pL =
-                    static_cast<view::XSelectionChangeListener*>(aIt.next());
-                if (pL != nullptr)
-                    pL->selectionChanged( aEvent );
-            }
-            catch (const RuntimeException&)
-            {
-            }
+            view::XSelectionChangeListener * pL =
+                static_cast<view::XSelectionChangeListener*>(aIt.next());
+            if (pL != nullptr)
+                pL->selectionChanged( aEvent );
+        }
+        catch (const RuntimeException&)
+        {
         }
     }
 }
@@ -404,28 +406,28 @@ void DrawController::FireChangeLayerMode (bool bLayerMode) throw()
 void DrawController::FireSwitchCurrentPage (SdPage* pNewCurrentPage) throw()
 {
     SdrPage* pCurrentPage  = mpCurrentPage.get();
-    if (pNewCurrentPage != pCurrentPage)
+    if (pNewCurrentPage == pCurrentPage)
+        return;
+
+    try
     {
-        try
+        Any aNewValue (
+            makeAny(Reference<drawing::XDrawPage>(pNewCurrentPage->getUnoPage(), UNO_QUERY)));
+
+        Any aOldValue;
+        if (pCurrentPage != nullptr)
         {
-            Any aNewValue (
-                makeAny(Reference<drawing::XDrawPage>(pNewCurrentPage->getUnoPage(), UNO_QUERY)));
-
-            Any aOldValue;
-            if (pCurrentPage != nullptr)
-            {
-                Reference<drawing::XDrawPage> xOldPage (pCurrentPage->getUnoPage(), UNO_QUERY);
-                aOldValue <<= xOldPage;
-            }
-
-            FirePropertyChange(PROPERTY_CURRENTPAGE, aNewValue, aOldValue);
-
-            mpCurrentPage.reset(pNewCurrentPage);
+            Reference<drawing::XDrawPage> xOldPage (pCurrentPage->getUnoPage(), UNO_QUERY);
+            aOldValue <<= xOldPage;
         }
-        catch (const uno::Exception& e)
-        {
-            SAL_WARN("sd", "sd::SdUnoDrawView::FireSwitchCurrentPage(), exception caught:  " << e.Message);
-        }
+
+        FirePropertyChange(PROPERTY_CURRENTPAGE, aNewValue, aOldValue);
+
+        mpCurrentPage.reset(pNewCurrentPage);
+    }
+    catch (const uno::Exception&)
+    {
+        TOOLS_WARN_EXCEPTION("sd", "sd::SdUnoDrawView::FireSwitchCurrentPage()");
     }
 }
 
@@ -569,8 +571,7 @@ sal_Int64 SAL_CALL DrawController::getSomething (const Sequence<sal_Int8>& rId)
 {
     sal_Int64 nResult = 0;
 
-    if (rId.getLength() == 16
-        && memcmp(getUnoTunnelId().getConstArray(), rId.getConstArray(), 16) == 0)
+    if (isUnoTunnelId<DrawController>(rId))
     {
         nResult = sal::static_int_cast<sal_Int64>(reinterpret_cast<sal_IntPtr>(this));
     }
@@ -583,83 +584,71 @@ sal_Int64 SAL_CALL DrawController::getSomething (const Sequence<sal_Int8>& rId)
 void DrawController::FillPropertyTable (
     ::std::vector<beans::Property>& rProperties)
 {
-    rProperties.push_back(
-        beans::Property("VisibleArea",
+    rProperties.emplace_back("VisibleArea",
             PROPERTY_WORKAREA,
             ::cppu::UnoType< css::awt::Rectangle>::get(),
-            beans::PropertyAttribute::BOUND | beans::PropertyAttribute::READONLY));
-    rProperties.push_back(
-        beans::Property(
+            beans::PropertyAttribute::BOUND | beans::PropertyAttribute::READONLY);
+    rProperties.emplace_back(
             "SubController",
             PROPERTY_SUB_CONTROLLER,
             cppu::UnoType<drawing::XDrawSubController>::get(),
-            beans::PropertyAttribute::BOUND));
-    rProperties.push_back(
-        beans::Property(
+            beans::PropertyAttribute::BOUND);
+    rProperties.emplace_back(
             "CurrentPage",
             PROPERTY_CURRENTPAGE,
             cppu::UnoType<drawing::XDrawPage>::get(),
-            beans::PropertyAttribute::BOUND ));
-    rProperties.push_back(
-        beans::Property("IsLayerMode",
+            beans::PropertyAttribute::BOUND );
+    rProperties.emplace_back("IsLayerMode",
             PROPERTY_LAYERMODE,
             cppu::UnoType<bool>::get(),
-            beans::PropertyAttribute::BOUND ));
-    rProperties.push_back(
-        beans::Property("IsMasterPageMode",
+            beans::PropertyAttribute::BOUND );
+    rProperties.emplace_back("IsMasterPageMode",
             PROPERTY_MASTERPAGEMODE,
             cppu::UnoType<bool>::get(),
-            beans::PropertyAttribute::BOUND ));
-    rProperties.push_back(
-        beans::Property("ActiveLayer",
+            beans::PropertyAttribute::BOUND );
+    rProperties.emplace_back("ActiveLayer",
             PROPERTY_ACTIVE_LAYER,
             cppu::UnoType<drawing::XLayer>::get(),
-            beans::PropertyAttribute::BOUND ));
-    rProperties.push_back(
-        beans::Property("ZoomValue",
+            beans::PropertyAttribute::BOUND );
+    rProperties.emplace_back("ZoomValue",
             PROPERTY_ZOOMVALUE,
             ::cppu::UnoType<sal_Int16>::get(),
-            beans::PropertyAttribute::BOUND ));
-    rProperties.push_back(
-        beans::Property("ZoomType",
+            beans::PropertyAttribute::BOUND );
+    rProperties.emplace_back("ZoomType",
             PROPERTY_ZOOMTYPE,
             ::cppu::UnoType<sal_Int16>::get(),
-            beans::PropertyAttribute::BOUND ));
-    rProperties.push_back(
-        beans::Property("ViewOffset",
+            beans::PropertyAttribute::BOUND );
+    rProperties.emplace_back("ViewOffset",
             PROPERTY_VIEWOFFSET,
             ::cppu::UnoType< css::awt::Point>::get(),
-            beans::PropertyAttribute::BOUND ));
-    rProperties.push_back(
-        beans::Property("DrawViewMode",
+            beans::PropertyAttribute::BOUND );
+    rProperties.emplace_back("DrawViewMode",
             PROPERTY_DRAWVIEWMODE,
             ::cppu::UnoType< css::awt::Point>::get(),
-            beans::PropertyAttribute::BOUND|beans::PropertyAttribute::READONLY|beans::PropertyAttribute::MAYBEVOID ));
+            beans::PropertyAttribute::BOUND|beans::PropertyAttribute::READONLY|beans::PropertyAttribute::MAYBEVOID );
     // add new property to update current page's acc information
-    rProperties.push_back(
-        beans::Property( "UpdateAcc",
+    rProperties.emplace_back( "UpdateAcc",
             PROPERTY_UPDATEACC,
             ::cppu::UnoType<sal_Int16>::get(),
-            beans::PropertyAttribute::BOUND ));
-    rProperties.push_back(
-        beans::Property( "PageChange",
+            beans::PropertyAttribute::BOUND );
+    rProperties.emplace_back( "PageChange",
             PROPERTY_PAGE_CHANGE,
             ::cppu::UnoType<sal_Int16>::get(),
-            beans::PropertyAttribute::BOUND ));
+            beans::PropertyAttribute::BOUND );
 }
 
 IPropertyArrayHelper & DrawController::getInfoHelper()
 {
     SolarMutexGuard aGuard;
 
-    if (mpPropertyArrayHelper.get() == nullptr)
+    if (mpPropertyArrayHelper == nullptr)
     {
         ::std::vector<beans::Property> aProperties;
         FillPropertyTable(aProperties);
         mpPropertyArrayHelper.reset(new OPropertyArrayHelper(comphelper::containerToSequence(aProperties), false));
     }
 
-    return *mpPropertyArrayHelper.get();
+    return *mpPropertyArrayHelper;
 }
 
 Reference < beans::XPropertySetInfo >  DrawController::getPropertySetInfo()
@@ -679,7 +668,7 @@ uno::Reference< form::runtime::XFormController > SAL_CALL DrawController::getFor
     std::shared_ptr<ViewShell> pViewShell = mpBase->GetMainViewShell();
     ::sd::Window* pWindow = pViewShell ? pViewShell->GetActiveWindow() : nullptr;
 
-    uno::Reference< form::runtime::XFormController > xController( nullptr );
+    uno::Reference< form::runtime::XFormController > xController;
     if ( pFormShell && pSdrView && pWindow )
         xController = FmFormShell::GetFormController( Form, *pSdrView, *pWindow );
     return xController;
@@ -716,7 +705,7 @@ uno::Reference< awt::XControl > SAL_CALL DrawController::getControl( const uno::
     std::shared_ptr<ViewShell> pViewShell = mpBase->GetMainViewShell();
     ::sd::Window* pWindow = pViewShell ? pViewShell->GetActiveWindow() : nullptr;
 
-    uno::Reference< awt::XControl > xControl( nullptr );
+    uno::Reference< awt::XControl > xControl;
     if ( pFormShell && pSdrView && pWindow )
         pFormShell->GetFormControl( xModel, *pSdrView, *pWindow, xControl );
     return xControl;

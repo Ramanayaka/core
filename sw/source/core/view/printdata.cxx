@@ -19,7 +19,7 @@
 
 #include <printdata.hxx>
 
-#include <globals.hrc>
+#include <strings.hrc>
 #include <doc.hxx>
 #include <IDocumentDeviceAccess.hxx>
 #include <unotxdoc.hxx>
@@ -29,9 +29,9 @@
 
 #include <svl/languageoptions.hxx>
 #include <toolkit/awt/vclxdevice.hxx>
-#include <tools/resary.hxx>
 #include <unotools/moduleoptions.hxx>
 #include <vcl/outdev.hxx>
+#include <osl/diagnose.h>
 
 using namespace ::com::sun::star;
 
@@ -66,7 +66,10 @@ void SwRenderData::DeletePostItData()
     {
         // printer needs to remain at the real document
         m_pPostItShell->GetDoc()->getIDocumentDeviceAccess().setPrinter( nullptr, false, false );
-        m_pPostItShell.reset();
+        {   // avoid destroying layout from SwDoc dtor
+            rtl::Reference<SwDoc> const xKeepAlive(m_pPostItShell->GetDoc());
+            m_pPostItShell.reset();
+        }
         m_pPostItFields.reset();
     }
 }
@@ -159,7 +162,7 @@ SwPrintUIOptions::SwPrintUIOptions(
     m_rDefaultPrintData( rDefaultPrintData )
 {
     // printing HTML sources does not have any valid UI options.
-    // Its just the source code that gets printed ...
+    // It's just the source code that gets printed...
     if (bSwSrcView)
     {
         m_aUIProperties.clear();
@@ -173,8 +176,8 @@ SwPrintUIOptions::SwPrintUIOptions(
     // create sequence of print UI options
     // (5 options are not available for Writer-Web)
     const int nRTLOpts = bRTL ? 1 : 0;
-    const int nNumProps = nRTLOpts + (bWeb ? 15 : 21);
-    m_aUIProperties.resize( nNumProps );
+    const int nNumProps = nRTLOpts + (bWeb ? 15 : 19);
+    m_aUIProperties.resize( nNumProps);
     int nIdx = 0;
 
     // load the writer PrinterOptions into the custom tab
@@ -264,9 +267,10 @@ SwPrintUIOptions::SwPrintUIOptions(
     vcl::PrinterOptionsHelper::UIControlOptions aPrintRangeOpt;
     aPrintRangeOpt.maGroupHint = "PrintRange";
     aPrintRangeOpt.mbInternalOnly = true;
-    m_aUIProperties[nIdx++].Value = setSubgroupControlOpt("printrange", SwResId( STR_PRINTOPTUI_RANGE_COPIES),
-                                                           OUString(),
-                                                           aPrintRangeOpt);
+    m_aUIProperties[nIdx++].Value = setSubgroupControlOpt( "printrange",
+                                                          SwResId( STR_PRINTOPTUI_PAGES_TEXT ),
+                                                          OUString(),
+                                                          aPrintRangeOpt );
 
     // create a choice for the content to create
     const OUString aPrintRangeName( "PrintContent" );
@@ -274,22 +278,24 @@ SwPrintUIOptions::SwPrintUIOptions(
     uno::Sequence< sal_Bool > aChoicesDisabled( 3 );
     uno::Sequence< OUString > aHelpIds( 3 );
     uno::Sequence< OUString > aWidgetIds( 3 );
-    aChoices[0] = SwResId( STR_PRINTOPTUI_ALLPAGES);
+    aChoices[0] = SwResId( STR_PRINTOPTUI_PRINTALLPAGES );
     aChoicesDisabled[0] = false;
     aHelpIds[0] = ".HelpID:vcl:PrintDialog:PrintContent:RadioButton:0";
-    aWidgetIds[0] = "printallpages";
-    aChoices[1] = SwResId( STR_PRINTOPTUI_SOMEPAGES);
+    aWidgetIds[0] = "rbAllPages";
+    aChoices[1] = SwResId( STR_PRINTOPTUI_PRINTPAGES );
     aChoicesDisabled[1] = false;
     aHelpIds[1] = ".HelpID:vcl:PrintDialog:PrintContent:RadioButton:1";
-    aWidgetIds[1] = "printpages";
-    aChoices[2] = SwResId( STR_PRINTOPTUI_SELECTION);
-    aChoicesDisabled[2] = ! bHasSelection;
+    aWidgetIds[1] = "rbRangePages";
+    aChoices[2] = SwResId( STR_PRINTOPTUI_PRINTSELECTION );
+    aChoicesDisabled[2] = !bHasSelection;
     aHelpIds[2] = ".HelpID:vcl:PrintDialog:PrintContent:RadioButton:2";
-    aWidgetIds[2] = "printselection";
+    aWidgetIds[2] = "rbRangeSelection";
     m_aUIProperties[nIdx++].Value = setChoiceRadiosControlOpt(aWidgetIds, OUString(),
                                                         aHelpIds, aPrintRangeName,
-                                                        aChoices, 0 /* always default to 'All pages' */,
+                                                        aChoices,
+                                                        bHasSelection ? 2 : 0,
                                                         aChoicesDisabled);
+
     // show an Edit dependent on "Pages" selected
     vcl::PrinterOptionsHelper::UIControlOptions aPageRangeOpt( aPrintRangeName, 1, true );
     m_aUIProperties[nIdx++].Value = setEditControlOpt("pagerange", OUString(),
@@ -297,12 +303,17 @@ SwPrintUIOptions::SwPrintUIOptions(
                                                       "PageRange",
                                                       OUString::number( nCurrentPage ) /* set text box to current page number */,
                                                       aPageRangeOpt);
-    // print content selection
-    vcl::PrinterOptionsHelper::UIControlOptions aContentsOpt;
-    aContentsOpt.maGroupHint = "JobPage";
-    m_aUIProperties[nIdx++].Value = setSubgroupControlOpt("extrawriterprintoptions",
-                                                          SwResId( STR_PRINTOPTUI_PRINT),
-                                                          OUString(), aContentsOpt);
+
+    vcl::PrinterOptionsHelper::UIControlOptions aEvenOddOpt(aPrintRangeName, -1, true);
+    m_aUIProperties[ nIdx++ ].Value = setChoiceListControlOpt("evenoddbox",
+                                                           OUString(),
+                                                           uno::Sequence<OUString>(),
+                                                           "EvenOdd",
+                                                           uno::Sequence<OUString>(),
+                                                           0,
+                                                           uno::Sequence< sal_Bool >(),
+                                                           aEvenOddOpt);
+
     // create a list box for notes content
     const SwPostItMode nPrintPostIts = rDefaultPrintData.GetPrintPostIts();
     aChoices.realloc( 5 );
@@ -321,42 +332,13 @@ SwPrintUIOptions::SwPrintUIOptions(
                                                            aHelpIds,
                                                            "PrintAnnotationMode",
                                                            aChoices,
-                                                           static_cast<sal_uInt16>(nPrintPostIts),
+                                                           bHasPostIts ? static_cast<sal_uInt16>(nPrintPostIts) : 0,
                                                            uno::Sequence< sal_Bool >(),
                                                            aAnnotOpt);
 
     // create subsection for Page settings
     vcl::PrinterOptionsHelper::UIControlOptions aPageSetOpt;
     aPageSetOpt.maGroupHint = "LayoutPage";
-
-    if (!bWeb)
-    {
-        m_aUIProperties[nIdx++].Value = setSubgroupControlOpt("pagesides",
-                                                              SwResId( STR_PRINTOPTUI_PAGE_SIDES),
-                                                               OUString(), aPageSetOpt);
-        uno::Sequence< OUString > aRLChoices( 3 );
-        aRLChoices[0] = SwResId( STR_PRINTOPTUI_ALL_PAGES);
-        aRLChoices[1] = SwResId( STR_PRINTOPTUI_BACK_PAGES);
-        aRLChoices[2] = SwResId( STR_PRINTOPTUI_FONT_PAGES);
-        uno::Sequence<OUString> aRLHelp { ".HelpID:vcl:PrintDialog:PrintLeftRightPages:ListBox" };
-        // create a choice option for all/left/right pages
-        // 0 : all pages (left & right)
-        // 1 : left pages
-        // 2 : right pages
-        OSL_ENSURE( rDefaultPrintData.IsPrintLeftPage() || rDefaultPrintData.IsPrintRightPage(),
-                "unexpected value combination" );
-        sal_Int16 nPagesChoice = 0;
-        if (rDefaultPrintData.IsPrintLeftPage() && !rDefaultPrintData.IsPrintRightPage())
-            nPagesChoice = 1;
-        else if (!rDefaultPrintData.IsPrintLeftPage() && rDefaultPrintData.IsPrintRightPage())
-            nPagesChoice = 2;
-        m_aUIProperties[ nIdx++ ].Value = setChoiceListControlOpt("brochureinclude",
-                                                   SwResId( STR_PRINTOPTUI_INCLUDE),
-                                                   aRLHelp,
-                                                   "PrintLeftRightPages",
-                                                   aRLChoices,
-                                                   nPagesChoice);
-    }
 
     // create a bool option for brochure
     bDefaultVal = rDefaultPrintData.IsPrintProspect();
@@ -405,9 +387,9 @@ bool SwPrintUIOptions::IsPrintLeftPages() const
     // 0: left and right pages
     // 1: left pages only
     // 2: right pages only
-    sal_Int64 nLRPages = getIntValue( "PrintLeftRightPages", 0 /* default: all */ );
-    bool bRes = nLRPages == 0 || nLRPages == 1;
-    bRes = getBoolValue( "PrintLeftPages", bRes /* <- default value if property is not found */ );
+    sal_Int64 nEOPages = getIntValue( "EvenOdd", 0 /* default: all */ );
+    bool bRes = nEOPages != 1;
+    bRes = getBoolValue( "EvenOdd", bRes /* <- default value if property is not found */ );
     return bRes;
 }
 
@@ -416,9 +398,9 @@ bool SwPrintUIOptions::IsPrintRightPages() const
     // take care of different property names for the option.
     // for compatibility the old name should win (may still be used for PDF export or via Uno API)
 
-    sal_Int64 nLRPages = getIntValue( "PrintLeftRightPages", 0 /* default: all */ );
-    bool bRes = nLRPages == 0 || nLRPages == 2;
-    bRes = getBoolValue( "PrintRightPages", bRes /* <- default value if property is not found */ );
+    sal_Int64 nEOPages = getIntValue( "EvenOdd", 0 /* default: all */ );
+    bool bRes = nEOPages != 2;
+    bRes = getBoolValue( "EvenOdd", bRes /* <- default value if property is not found */ );
     return bRes;
 }
 
@@ -463,7 +445,7 @@ bool SwPrintUIOptions::processPropertiesAndCheckFormat( const uno::Sequence< bea
     VclPtr< OutputDevice > pOut;
     if (xRenderDevice.is())
     {
-        VCLXDevice*     pDevice = VCLXDevice::GetImplementation( xRenderDevice );
+        VCLXDevice*     pDevice = comphelper::getUnoTunnelImplementation<VCLXDevice>( xRenderDevice );
         if (pDevice)
             pOut = pDevice->GetOutputDevice();
     }

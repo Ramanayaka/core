@@ -21,25 +21,25 @@
 #define INCLUDED_XMLSECURITY_INC_FRAMEWORK_SIGNATUREENGINE_HXX
 
 #include <com/sun/star/xml/crypto/sax/XReferenceResolvedListener.hpp>
-#include <com/sun/star/xml/crypto/sax/XReferenceResolvedBroadcaster.hpp>
 #include <com/sun/star/xml/crypto/sax/XReferenceCollector.hpp>
 #include <com/sun/star/xml/crypto/sax/XKeyCollector.hpp>
 #include <com/sun/star/xml/crypto/sax/XMissionTaker.hpp>
-#include <com/sun/star/xml/crypto/sax/XSAXEventKeeper.hpp>
-#include <com/sun/star/xml/crypto/XXMLSecurityContext.hpp>
-#include <com/sun/star/xml/crypto/XXMLSignature.hpp>
 #include <com/sun/star/xml/crypto/XUriBinding.hpp>
-#include <com/sun/star/io/XInputStream.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
 
 #include <cppuhelper/implbase.hxx>
 
-#include "xsecfwdllapi.h"
-#include "securityengine.hxx"
+#include <xmlsecuritydllapi.h>
+#include <framework/securityengine.hxx>
 
 #include <vector>
 
-class XSECFW_DLLPUBLIC SignatureEngine : public cppu::ImplInheritanceHelper
+namespace com::sun::star::io { class XInputStream; }
+namespace com::sun::star::xml::crypto { class XXMLSignature; }
+namespace rtl { template <class reference_type> class Reference; }
+
+class XMLSignatureTemplateImpl;
+
+class SignatureEngine : public cppu::ImplInheritanceHelper
 <
     SecurityEngine,
     css::xml::crypto::sax::XReferenceCollector,
@@ -77,7 +77,7 @@ protected:
      * a collection of Uri binding.
      *
      * the m_vUris is used to hold the Uri strings, and the m_vXInputStreams is used
-     * to hold corresponding binded XInputStream interface.
+     * to hold corresponding bound XInputStream interface.
      */
     std::vector< OUString > m_vUris;
     std::vector< css::uno::Reference< css::io::XInputStream > > m_vXInputStreams;
@@ -88,7 +88,7 @@ protected:
 
     virtual void tryToPerform( ) override;
     virtual void clearUp( ) const override;
-    virtual bool checkReady() const override;
+    bool checkReady() const;
 
     /*
      * starts the main function. This method will be implemented by any sub-class.
@@ -97,8 +97,7 @@ protected:
      */
     /// @throws css::uno::Exception
     /// @throws css::uno::RuntimeException
-    virtual void startEngine( const css::uno::Reference<
-                              css::xml::crypto::XXMLSignatureTemplate >&)
+    virtual void startEngine( const rtl::Reference<XMLSignatureTemplateImpl>&)
         {};
 
 public:

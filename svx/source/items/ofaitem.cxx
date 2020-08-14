@@ -18,24 +18,21 @@
  */
 
 
-#include "svx/ofaitem.hxx"
+#include <svx/ofaitem.hxx>
 
 OfaPtrItem::OfaPtrItem( sal_uInt16 _nWhich, void *_pPtr )
     : SfxPoolItem( _nWhich ), pPtr( _pPtr )
 {
 
 }
-OfaPtrItem::OfaPtrItem( const OfaPtrItem& rItem)
-    : SfxPoolItem( rItem.Which() ), pPtr( rItem.pPtr )
-{
-}
 
 bool OfaPtrItem::operator==( const SfxPoolItem& rItem) const
 {
-    return static_cast<const OfaPtrItem&>(rItem).pPtr == pPtr;
+    return SfxPoolItem::operator==(rItem) &&
+        static_cast<const OfaPtrItem&>(rItem).pPtr == pPtr;
 }
 
-SfxPoolItem* OfaPtrItem::Clone( SfxItemPool * ) const
+OfaPtrItem* OfaPtrItem::Clone( SfxItemPool * ) const
 {
     return new OfaPtrItem( *this );
 }

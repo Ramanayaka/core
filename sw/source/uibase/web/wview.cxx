@@ -17,24 +17,23 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <config_features.h>
+#include <config_feature_desktop.h>
 
 #include <sfx2/msg.hxx>
-#include <svl/srchitem.hxx>
 #include <sfx2/dispatch.hxx>
 #include <sfx2/infobar.hxx>
-#include <sfx2/templdlg.hxx>
+#include <sfx2/viewfrm.hxx>
 #include <svx/srchdlg.hxx>
-#include <basic/sbxobj.hxx>
 #include <uivwimp.hxx>
 #include <svx/fmshell.hxx>
+#include <svx/fmview.hxx>
 #include <svx/extrusionbar.hxx>
 #include <svx/fontworkbar.hxx>
+#include <vcl/inputctx.hxx>
 
 #include <sfx2/objface.hxx>
 #include <swmodule.hxx>
 #include <unotxvw.hxx>
-#include <swtypes.hxx>
 #include <cmdid.h>
 #include <globals.hrc>
 #include <wrtsh.hxx>
@@ -57,14 +56,12 @@
 
 #include <wview.hxx>
 #include <wdocsh.hxx>
-#include <web.hrc>
-#include <shells.hrc>
 
-#include <sfx2/request.hxx>
     // needed for -fsanitize=function visibility of typeinfo for functions of
     // type void(SfxShell*,SfxRequest&) defined in swslots.hxx
-#define SwWebView
-#define Text
+#include <sfx2/viewfac.hxx>
+#define ShellClass_SwWebView
+#define ShellClass_Text
 #include <swslots.hxx>
 
 SFX_IMPL_NAMED_VIEWFACTORY(SwWebView, "Default")
@@ -105,8 +102,8 @@ void SwWebView::SelectShell()
     }
     SetLastTableFrameFormat(pCurTableFormat);
     //SEL_TBL and SEL_TBL_CELLS can be ored!
-    SelectionType nNewSelectionType = (GetWrtShell().GetSelectionType()
-                                & ~SelectionType::TableCell);
+    SelectionType nNewSelectionType = GetWrtShell().GetSelectionType()
+                                & ~SelectionType::TableCell;
 
     SelectionType _nSelectionType = GetSelectionType();
     if ( nNewSelectionType == _nSelectionType )

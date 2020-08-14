@@ -24,7 +24,6 @@
 #include <com/sun/star/uno/Any.hxx>
 #include <rtl/ustring.hxx>
 #include <salhelper/simplereferenceobject.hxx>
-#include <osl/diagnose.h>
 #include <rtl/ref.hxx>
 #include <connectivity/dbtoolsdllapi.hxx>
 #include <connectivity/CommonTools.hxx>
@@ -32,8 +31,9 @@
 #include <com/sun/star/util/Date.hpp>
 #include <com/sun/star/util/Time.hpp>
 #include <com/sun/star/uno/Sequence.hxx>
-#include <com/sun/star/sdbc/XRow.hpp>
-#include <com/sun/star/sdb/XColumn.hpp>
+
+namespace com::sun::star::sdb { class XColumn; }
+namespace com::sun::star::sdbc { class XRow; }
 
 namespace connectivity
 {
@@ -74,7 +74,7 @@ namespace connectivity
         bool                m_bModified : 1;    // value was changed
         bool                m_bSigned   : 1;    // value is signed
 
-        void free();
+        void free() noexcept;
 
     public:
         ORowSetValue()
@@ -98,7 +98,7 @@ namespace connectivity
             operator=(_rRH);
         }
 
-        ORowSetValue(ORowSetValue&& _rRH)
+        ORowSetValue(ORowSetValue&& _rRH) noexcept
             :m_eTypeKind(css::sdbc::DataType::VARCHAR)
             ,m_bNull(true)
             ,m_bBound(true)
@@ -106,7 +106,7 @@ namespace connectivity
             ,m_bSigned(true)
         {
             m_aValue.m_pString = nullptr;
-            operator=(_rRH);
+            operator=(std::move(_rRH));
         }
 
         ORowSetValue(const OUString& _rRH)
@@ -278,17 +278,8 @@ namespace connectivity
             free();
         }
 
-        static void * SAL_CALL operator new( size_t nSize )
-            { return ::rtl_allocateMemory( nSize ); }
-        static void * SAL_CALL operator new( size_t,void* _pHint )
-            { return _pHint; }
-        static void SAL_CALL operator delete( void * pMem )
-            { ::rtl_freeMemory( pMem ); }
-        static void SAL_CALL operator delete( void *,void* )
-            {  }
-
         ORowSetValue& operator=(const ORowSetValue& _rRH);
-        ORowSetValue& operator=(ORowSetValue&& _rRH);
+        ORowSetValue& operator=(ORowSetValue&& _rRH) noexcept;
 
         // simple types
         ORowSetValue& operator=(bool _rRH);
@@ -316,7 +307,7 @@ namespace connectivity
         ORowSetValue& operator=(const OUString& _rRH);
         // the type isn't set it will be set to VARCHAR if the type is different change it
         ORowSetValue& operator=(const css::uno::Sequence<sal_Int8>& _rRH);
-        // we the possibility to save a any for bookmarks
+        // with the possibility to save an any for bookmarks
         ORowSetValue& operator=(const css::uno::Any& _rAny);
 
         operator bool() const   {   return !isNull() && getBool();    }
@@ -332,7 +323,7 @@ namespace connectivity
         operator sal_Int64() const  {   return isNull() ? 0         : getLong();    }
         operator sal_uInt64() const {   return isNull() ? 0         : getULong();   }
 
-        operator float() const      {   return isNull() ? (float)0.0: getFloat();   }
+        operator float() const      {   return isNull() ? float(0.0): getFloat();   }
         operator double() const     {   return isNull() ? 0.0       : getDouble();  }
 
         operator OUString() const
@@ -381,10 +372,10 @@ namespace connectivity
         void        setBound(bool _bBound)              { m_bBound = _bBound; }
 
         bool        isModified() const                  { return m_bModified;   }
-        void        setModified(bool _bMod=true)        { m_bModified = _bMod;  }
+        void        setModified(bool _bMod)             { m_bModified = _bMod;  }
 
         bool        isSigned() const                    { return m_bSigned; }
-        void        setSigned(bool _bSig=true);
+        void        setSigned(bool _bSig);
 
         sal_Int32   getTypeKind() const                 { return m_eTypeKind;   }
         void        setTypeKind(sal_Int32 _eType);
@@ -407,7 +398,7 @@ namespace connectivity
         double          getDouble() const;
         float           getFloat()  const;
 
-        OUString getString() const;      // makes a automatic conversion if type isn't a string
+        OUString getString() const;      // makes an automatic conversion if type isn't a string
         css::util::Date                getDate()       const;
         css::util::Time                getTime()       const;
         css::util::DateTime            getDateTime()   const;
@@ -447,8 +438,8 @@ namespace connectivity
         void impl_fill( const sal_Int32 _nType, bool _bNullable, const detail::IValueSource& _rValueSource );
     };
 
-    /// ORowSetValueDecorator decorates a ORowSetValue so the value is "refcounted"
-    class OOO_DLLPUBLIC_DBTOOLS ORowSetValueDecorator : public ::salhelper::SimpleReferenceObject
+    /// ORowSetValueDecorator decorates an ORowSetValue so the value is "refcounted"
+    class OOO_DLLPUBLIC_DBTOOLS ORowSetValueDecorator final : public ::salhelper::SimpleReferenceObject
     {
         ORowSetValue    m_aValue;   // my own value
     public:
@@ -486,7 +477,7 @@ namespace connectivity
     {
         bool m_bBound;
         TSetRefBound(bool _bBound) : m_bBound(_bBound){}
-        void operator()(ORowSetValueDecoratorRef& _rValue) const { _rValue->setBound(m_bBound); }
+        void operator()(ORowSetValueDecoratorRef const & _rValue) const { _rValue->setBound(m_bBound); }
 
     };
 
@@ -512,17 +503,17 @@ namespace connectivity
         OValueRefVector(){}
         OValueRefVector(size_t _st) : ODeleteVector< ORowSetValueDecoratorRef >(_st)
         {
-            for(OValueRefVector::Vector::iterator aIter = get().begin() ; aIter != get().end() ;++aIter)
-                *aIter = new ORowSetValueDecorator;
+            for (auto & elem : *this)
+                elem = new ORowSetValueDecorator;
         }
     };
 
 #define SQL_NO_PARAMETER (SAL_MAX_UINT32)
-    class OAssignValues : public OValueRefVector
+    class OAssignValues final : public OValueRefVector
     {
         ::std::vector<sal_Int32> m_nParameterIndexes;
     public:
-        OAssignValues(Vector::size_type n) : OValueRefVector(n),m_nParameterIndexes(n+1,SQL_NO_PARAMETER){}
+        OAssignValues(size_type n) : OValueRefVector(n),m_nParameterIndexes(n+1,SQL_NO_PARAMETER){}
 
         void setParameterIndex(sal_Int32 _nId,sal_Int32 _nParameterIndex) { m_nParameterIndexes[_nId] = _nParameterIndex;}
         sal_Int32 getParameterIndex(sal_Int32 _nId) const { return m_nParameterIndexes[_nId]; }

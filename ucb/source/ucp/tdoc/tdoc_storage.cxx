@@ -17,17 +17,15 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <memory>
-
-#include "com/sun/star/beans/XPropertySet.hpp"
-#include "com/sun/star/embed/ElementModes.hpp"
-#include "com/sun/star/embed/InvalidStorageException.hpp"
-#include "com/sun/star/embed/StorageFactory.hpp"
-#include "com/sun/star/embed/StorageWrappedTargetException.hpp"
-#include "com/sun/star/io/IOException.hpp"
-#include "com/sun/star/packages/NoEncryptionException.hpp"
+#include <com/sun/star/beans/XPropertySet.hpp>
+#include <com/sun/star/embed/ElementModes.hpp>
+#include <com/sun/star/embed/InvalidStorageException.hpp>
+#include <com/sun/star/embed/StorageFactory.hpp>
+#include <com/sun/star/embed/StorageWrappedTargetException.hpp>
+#include <com/sun/star/io/IOException.hpp>
+#include <com/sun/star/packages/NoEncryptionException.hpp>
+#include <cppuhelper/exc_hlp.hxx>
 #include <osl/diagnose.h>
-#include "comphelper/processfactory.hxx"
 
 #include "tdoc_uri.hxx"
 #include "tdoc_docmgr.hxx"
@@ -172,19 +170,18 @@ StorageElementFactory::createStorage( const OUString & rUri,
         rtl::Reference< Storage > xElement(
             new Storage( m_xContext, this, aUriKey, xParentStorage, xStorage ) );
 
-        aIt = m_aMap.insert(
-            StorageMap::value_type(
+        aIt = m_aMap.emplace(
                 std::pair< OUString, bool >( aUriKey, bWritable ),
-                xElement.get() ) ).first;
+                xElement.get() ).first;
 
         aIt->second->m_aContainerIt = aIt;
         return aIt->second;
     }
     else if ( osl_atomic_increment( &aIt->second->m_refCount ) > 1 )
     {
-        rtl::Reference< Storage > xElement( aIt->second );
+        uno::Reference< embed::XStorage > xElement( aIt->second );
         osl_atomic_decrement( &aIt->second->m_refCount );
-        return aIt->second;
+        return xElement;
     }
     else
     {
@@ -321,7 +318,7 @@ StorageElementFactory::createStream( const OUString & rUri,
 }
 
 
-void StorageElementFactory::releaseElement( Storage * pElement )
+void StorageElementFactory::releaseElement( Storage const * pElement )
 {
     OSL_ASSERT( pElement );
     osl::MutexGuard aGuard( m_aMutex );
@@ -427,23 +424,25 @@ uno::Reference< embed::XStorage > StorageElementFactory::queryStorage(
                         "Bug! Value of property OpenMode has wrong type!" );
             }
         }
-        catch ( beans::UnknownPropertyException const & e )
+        catch ( beans::UnknownPropertyException const & )
         {
+            css::uno::Any anyEx = cppu::getCaughtException();
             OSL_FAIL( "Property OpenMode not supported!" );
 
             throw embed::StorageWrappedTargetException(
                     "Bug! Value of property OpenMode has wrong type!",
                     uno::Reference< uno::XInterface >(),
-                    uno::makeAny( e ) );
+                    anyEx );
         }
-        catch ( lang::WrappedTargetException const & e )
+        catch ( lang::WrappedTargetException const & )
         {
+            css::uno::Any anyEx = cppu::getCaughtException();
             OSL_FAIL( "Caught WrappedTargetException!" );
 
             throw embed::StorageWrappedTargetException(
                     "WrappedTargetException during getPropertyValue!",
                     uno::Reference< uno::XInterface >(),
-                    uno::makeAny( e ) );
+                    anyEx );
         }
     }
     else

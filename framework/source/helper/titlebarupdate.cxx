@@ -19,27 +19,18 @@
 
 #include <helper/titlebarupdate.hxx>
 
-#include <pattern/window.hxx>
-#include <services.h>
 #include <properties.h>
 
 #include <com/sun/star/awt/XWindow.hpp>
-#include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
 #include <com/sun/star/frame/ModuleManager.hpp>
-#include <com/sun/star/container/XNameAccess.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/beans/XMaterialHolder.hpp>
 #include <com/sun/star/frame/XTitle.hpp>
 #include <com/sun/star/frame/XTitleChangeBroadcaster.hpp>
-#include <com/sun/star/beans/NamedValue.hpp>
 
-#include <comphelper/processfactory.hxx>
 #include <comphelper/sequenceashashmap.hxx>
 #include <unotools/configmgr.hxx>
-#include <unotools/bootstrap.hxx>
 #include <vcl/window.hxx>
-#include <vcl/syswin.hxx>
 #include <toolkit/helper/vclunohelper.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/wrkwin.hxx>
@@ -47,8 +38,8 @@
 
 namespace framework{
 
-static const ::sal_Int32 INVALID_ICON_ID = -1;
-static const ::sal_Int32 DEFAULT_ICON_ID =  0;
+const ::sal_Int32 INVALID_ICON_ID = -1;
+const ::sal_Int32 DEFAULT_ICON_ID =  0;
 
 TitleBarUpdate::TitleBarUpdate(const css::uno::Reference< css::uno::XComponentContext >& xContext)
     : m_xContext              (xContext                     )
@@ -64,7 +55,7 @@ void SAL_CALL TitleBarUpdate::initialize(const css::uno::Sequence< css::uno::Any
 {
     // check arguments
     css::uno::Reference< css::frame::XFrame > xFrame;
-    if (lArguments.getLength() < 1)
+    if (!lArguments.hasElements())
         throw css::lang::IllegalArgumentException(
                 "Empty argument list!",
                 static_cast< ::cppu::OWeakObject* >(this),
@@ -124,9 +115,8 @@ void TitleBarUpdate::impl_updateApplicationID(const css::uno::Reference< css::fr
     if ( ! xWindow.is() )
         return;
 
-    OUString sApplicationID;
-
 #if !defined(MACOSX)
+    OUString sApplicationID;
     try
     {
         css::uno::Reference< css::frame::XModuleManager2 > xModuleManager =
@@ -158,16 +148,15 @@ void TitleBarUpdate::impl_updateApplicationID(const css::uno::Reference< css::fr
     catch(const css::uno::Exception&)
     {
     }
+#else
+    OUString const sApplicationID;
 #endif
 
     // VCL SYNCHRONIZED ->
     SolarMutexGuard aSolarGuard;
 
-    VclPtr<vcl::Window> pWindow = (VCLUnoHelper::GetWindow( xWindow ));
-    if (
-        ( pWindow                                 ) &&
-        ( pWindow->GetType() == WindowType::WORKWINDOW )
-       )
+    VclPtr<vcl::Window> pWindow = VCLUnoHelper::GetWindow( xWindow );
+    if ( pWindow && pWindow->GetType() == WindowType::WORKWINDOW )
     {
         WorkWindow* pWorkWindow = static_cast<WorkWindow*>(pWindow.get());
         pWorkWindow->SetApplicationID( sApplicationID );
@@ -189,7 +178,6 @@ bool TitleBarUpdate::implst_getModuleInfo(const css::uno::Reference< css::frame:
         rInfo.sID = xModuleManager->identify(xFrame);
         ::comphelper::SequenceAsHashMap lProps    = xModuleManager->getByName (rInfo.sID);
 
-        rInfo.sUIName = lProps.getUnpackedValueOrDefault (OFFICEFACTORY_PROPNAME_ASCII_UINAME, OUString());
         rInfo.nIcon   = lProps.getUnpackedValueOrDefault (OFFICEFACTORY_PROPNAME_ASCII_ICON  , INVALID_ICON_ID  );
 
         // Note: If we could retrieve a module id ... everything is OK.
@@ -255,7 +243,7 @@ void TitleBarUpdate::impl_updateIcon(const css::uno::Reference< css::frame::XFra
         }
         catch(const css::uno::Exception&)
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("fwk");
         }
     }
 
@@ -280,14 +268,11 @@ void TitleBarUpdate::impl_updateIcon(const css::uno::Reference< css::frame::XFra
     // VCL SYNCHRONIZED ->
     SolarMutexGuard aSolarGuard;
 
-    VclPtr<vcl::Window> pWindow = (VCLUnoHelper::GetWindow( xWindow ));
-    if (
-        ( pWindow                                 ) &&
-        ( pWindow->GetType() == WindowType::WORKWINDOW )
-       )
+    VclPtr<vcl::Window> pWindow = VCLUnoHelper::GetWindow( xWindow );
+    if ( pWindow && ( pWindow->GetType() == WindowType::WORKWINDOW ) )
     {
         WorkWindow* pWorkWindow = static_cast<WorkWindow*>(pWindow.get());
-        pWorkWindow->SetIcon( (sal_uInt16)nIcon );
+        pWorkWindow->SetIcon( static_cast<sal_uInt16>(nIcon) );
 
         css::uno::Reference< css::frame::XModel > xModel = xController->getModel();
         OUString aURL;
@@ -314,11 +299,8 @@ void TitleBarUpdate::impl_updateTitle(const css::uno::Reference< css::frame::XFr
     // VCL SYNCHRONIZED ->
     SolarMutexGuard aSolarGuard;
 
-    VclPtr<vcl::Window> pWindow = (VCLUnoHelper::GetWindow( xWindow ));
-    if (
-        ( pWindow                                 ) &&
-        ( pWindow->GetType() == WindowType::WORKWINDOW )
-       )
+    VclPtr<vcl::Window> pWindow = VCLUnoHelper::GetWindow( xWindow );
+    if ( pWindow && ( pWindow->GetType() == WindowType::WORKWINDOW ) )
     {
         WorkWindow* pWorkWindow = static_cast<WorkWindow*>(pWindow.get());
         pWorkWindow->SetText( sTitle );

@@ -9,9 +9,23 @@
 #ifndef INCLUDED_SW_SOURCE_UIBASE_INC_HEADERFOOTERWIN_HXX
 #define INCLUDED_SW_SOURCE_UIBASE_INC_HEADERFOOTERWIN_HXX
 
-#include <FrameControl.hxx>
+#include "edtwin.hxx"
+#include "FrameControl.hxx"
 #include <vcl/builder.hxx>
-#include <vcl/menubtn.hxx>
+#include <vcl/timer.hxx>
+#include <drawinglayer/primitive2d/baseprimitive2d.hxx>
+
+/**
+ *  Button painter helper class used to paint a runtime button positioned to a writer frame.
+ *  See header/footer button.
+ */
+class SwFrameButtonPainter
+{
+public:
+
+    static void PaintButton(drawinglayer::primitive2d::Primitive2DContainer& rSeq,
+                            const tools::Rectangle& rRect, bool bOnTop);
+};
 
 /** Class for the header and footer separator control window.
 
@@ -43,8 +57,8 @@ public:
     virtual void ShowAll( bool bShow ) override;
     virtual bool Contains( const Point &rDocPt ) const override;
 
-    bool IsHeader() { return m_bIsHeader; };
-    bool IsEmptyHeaderFooter( );
+    bool IsHeader() const { return m_bIsHeader; };
+    bool IsEmptyHeaderFooter( ) const;
 
     void ExecuteCommand(const OString &rIdent);
 

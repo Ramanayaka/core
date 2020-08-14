@@ -20,12 +20,10 @@
 #ifndef INCLUDED_VCL_TABPAGE_HXX
 #define INCLUDED_VCL_TABPAGE_HXX
 
-#include <tools/solar.h>
 #include <vcl/dllapi.h>
 #include <vcl/builder.hxx>
 #include <vcl/window.hxx>
 #include <vcl/IContext.hxx>
-
 
 class VCL_DLLPUBLIC TabPage
     : public vcl::Window
@@ -44,15 +42,10 @@ public:
     virtual void    dispose() override;
 
     virtual void    Paint( vcl::RenderContext& rRenderContext, const tools::Rectangle& rRect ) override;
-    virtual void    Draw( OutputDevice* pDev, const Point& rPos, const Size& rSize, DrawFlags nFlags ) override;
+    virtual void    Draw( OutputDevice* pDev, const Point& rPos, DrawFlags nFlags ) override;
 
     virtual void    StateChanged( StateChangedType nStateChange ) override;
     virtual void    DataChanged( const DataChangedEvent& rDCEvt ) override;
-
-    virtual void    ActivatePage();
-    virtual void    DeactivatePage();
-
-    OString         GetConfigId() const;
 
     //To-Do, consider inheriting from VclContainer
     virtual void    SetPosSizePixel(const Point& rNewPos, const Size& rNewSize) override;

@@ -20,22 +20,20 @@
 #define INCLUDED_SW_INC_DBMGR_HXX
 
 #include <rtl/ustring.hxx>
-#include <tools/link.hxx>
+#include <tools/solar.h>
 #include <i18nlangtag/lang.h>
 #include <com/sun/star/util/Date.hpp>
 #include "swdllapi.h"
-#include <swdbdata.hxx>
+#include "swdbdata.hxx"
 #include <com/sun/star/uno/Reference.h>
 #include <com/sun/star/uno/Sequence.hxx>
 #include <com/sun/star/lang/Locale.hpp>
 #include <com/sun/star/beans/PropertyValue.hpp>
-#include <com/sun/star/frame/XStorable.hpp>
-#include <com/sun/star/embed/XStorage.hpp>
 
 #include <memory>
 #include <vector>
 
-namespace com{namespace sun{namespace star{
+namespace com::sun::star{
     namespace sdbc{
         class XConnection;
         class XStatement;
@@ -45,7 +43,6 @@ namespace com{namespace sun{namespace star{
     namespace beans{
 
         class XPropertySet;
-        struct PropertyValue;
     }
     namespace sdbcx{
         class XColumnsSupplier;
@@ -56,7 +53,9 @@ namespace com{namespace sun{namespace star{
     namespace mail{
         class XSmtpService;
     }
-}}}
+    namespace embed { class XStorage; }
+    namespace frame { class XStorable; }
+}
 namespace svx {
     class ODataAccessDescriptor;
 }
@@ -68,15 +67,14 @@ struct SwDBFormatData
     css::lang::Locale aLocale;
 };
 
-namespace vcl {
+namespace weld {
+    class ComboBox;
     class Window;
 }
 
 class SwView;
 class SwWrtShell;
-class SfxProgress;
 class ListBox;
-class Button;
 class SvNumberFormatter;
 class SwXMailMerge;
 class SwMailMergeConfigItem;
@@ -145,8 +143,8 @@ struct SwMergeDescriptor
     /**
      * Create a single or multiple results
      *
-     * This currently just affects FILE and PRINTER, as EMAIL is always
-     * multiple and SHELL is always single.
+     * This currently just affects FILE, as EMAIL is always
+     * multiple and SHELL and PRINTER are always single.
      */
     bool                                                bCreateSingleFile;
 
@@ -204,6 +202,10 @@ struct SwMergeDescriptor
      */
     OUString                                            sDBcolumn;
 
+    /** DB column to fetch password
+     */
+    OUString                                            sDBPasswordColumn;
+
     /** @} */
 
     /**
@@ -232,39 +234,43 @@ struct SwMergeDescriptor
     }
 };
 
-class AbstractMailMergeDlg;
 class SwDoc;
 
 class SW_DLLPUBLIC SwDBManager
 {
     struct SwDBManager_Impl;
-    class ConnectionDisposedListener_Impl;
+    class SAL_DLLPRIVATE ConnectionDisposedListener_Impl;
     class MailDispatcherListener_Impl;
 
     enum class MergeStatus
     {
-        OK = 0, CANCEL, ERROR
+        Ok = 0, Cancel, Error
     };
 
     MergeStatus     m_aMergeStatus;     ///< current / last merge status
-    bool            bInitDBFields : 1;
-    bool            bInMerge    : 1;    ///< merge process active
-    bool            bMergeSilent : 1;   ///< suppress display of dialogs/boxes (used when called over API)
-    bool            bMergeLock : 1;     /**< prevent update of database fields while document is
-                                             actually printed at the SwViewShell */
+    bool            m_bInitDBFields : 1;
+    bool            m_bInMerge    : 1;    ///< merge process active
+    bool            m_bMergeSilent : 1;   ///< suppress display of dialogs/boxes (used when called over API)
     SwDSParams_t    m_DataSourceParams;
-    std::unique_ptr<SwDBManager_Impl>  pImpl;
-    const SwXMailMerge* pMergeEvtSrc;   ///< != 0 if mail merge events are to be send
+    std::unique_ptr<SwDBManager_Impl>  m_pImpl;
+    const SwXMailMerge* m_pMergeEvtSrc;   ///< != 0 if mail merge events are to be send
     /// Name of the embedded database that's included in the current document.
     OUString     m_sEmbeddedName;
+
+    /// Store last registrations to revoke or commit
+    static std::vector<std::pair<SwDocShell*, OUString>> m_aUncommittedRegistrations;
+
+    /// Not used connections.
+    std::vector<OUString> m_aNotUsedConnections;
+
+    /// Set connection as used.
+    void SetAsUsed(const OUString& rName);
 
     /// The document that owns this manager.
     SwDoc* m_pDoc;
 
     SAL_DLLPRIVATE SwDSParam*          FindDSData(const SwDBData& rData, bool bCreate);
     SAL_DLLPRIVATE SwDSParam*          FindDSConnection(const OUString& rSource, bool bCreate);
-
-    DECL_DLLPRIVATE_LINK( PrtCancelHdl, Button *, void );
 
     /// Insert data record as text into document.
     SAL_DLLPRIVATE void ImportFromConnection( SwWrtShell* pSh);
@@ -284,45 +290,35 @@ class SW_DLLPUBLIC SwDBManager
 
 public:
     SwDBManager(SwDoc* pDoc);
-    ~SwDBManager();
-
-    enum DBConnURITypes {
-        DBCONN_UNKNOWN = 0,
-        DBCONN_ODB,
-        DBCONN_CALC,
-        DBCONN_DBASE,
-        DBCONN_FLAT,
-        DBCONN_MSJET,
-        DBCONN_MSACE
-    };
+    ~SwDBManager() COVERITY_NOEXCEPT_FALSE;
 
     /// MailMergeEvent source
-    const SwXMailMerge *    GetMailMergeEvtSrc() const  { return pMergeEvtSrc; }
-    void SetMailMergeEvtSrc( const SwXMailMerge *pSrc ) { pMergeEvtSrc = pSrc; }
+    const SwXMailMerge *    GetMailMergeEvtSrc() const  { return m_pMergeEvtSrc; }
+    void SetMailMergeEvtSrc( const SwXMailMerge *pSrc ) { m_pMergeEvtSrc = pSrc; }
 
-    bool     IsMergeSilent() const           { return bMergeSilent; }
-    void     SetMergeSilent( bool bVal )     { bMergeSilent = bVal; }
+    bool     IsMergeSilent() const           { return m_bMergeSilent; }
+    void     SetMergeSilent( bool bVal )     { m_bMergeSilent = bVal; }
 
     /// Merging of data records into fields.
     bool            Merge( const SwMergeDescriptor& rMergeDesc );
     void            MergeCancel();
 
-    bool     IsMergeOk()     { return MergeStatus::OK     == m_aMergeStatus; };
-    bool     IsMergeError()  { return MergeStatus::ERROR  <= m_aMergeStatus; };
+    bool     IsMergeOk() const     { return MergeStatus::Ok     == m_aMergeStatus; }
+    bool     IsMergeError() const  { return MergeStatus::Error  <= m_aMergeStatus; }
 
-    static std::shared_ptr<SwMailMergeConfigItem> PerformMailMerge(SwView* pView);
+    static std::shared_ptr<SwMailMergeConfigItem> PerformMailMerge(SwView const * pView);
 
     /// Initialize data fields that lack name of database.
-    bool     IsInitDBFields() const  { return bInitDBFields; }
-    void     SetInitDBFields(bool b) { bInitDBFields = b;    }
+    bool     IsInitDBFields() const  { return m_bInitDBFields; }
+    void     SetInitDBFields(bool b) { m_bInitDBFields = b;    }
 
     /// Fill listbox with all table names of a database.
-    bool            GetTableNames(ListBox* pListBox, const OUString& rDBName );
+    bool            GetTableNames(weld::ComboBox& rBox, const OUString& rDBName);
 
     /// Fill listbox with all column names of a database table.
-    void            GetColumnNames(ListBox* pListBox,
+    void            GetColumnNames(weld::ComboBox& rBox,
                             const OUString& rDBName, const OUString& rTableName);
-    static void GetColumnNames(ListBox* pListBox,
+    static void GetColumnNames(weld::ComboBox& rBox,
                             css::uno::Reference< css::sdbc::XConnection> const & xConnection,
                             const OUString& rTableName);
 
@@ -341,7 +337,7 @@ public:
                           const OUString& rTableName,
                           const OUString& rColNm );
 
-    bool     IsInMerge() const   { return bInMerge; }
+    bool     IsInMerge() const   { return m_bInMerge; }
 
     void            ExecuteFormLetter(SwWrtShell& rSh,
                         const css::uno::Sequence< css::beans::PropertyValue>& rProperties);
@@ -375,7 +371,7 @@ public:
                                       OUString &rResult, double *pNumber);
     bool            FillCalcWithMergeData(SvNumberFormatter *pDocFormatter,
                                           LanguageType nLanguage, SwCalc &aCalc);
-    bool            ToNextRecord(const OUString& rDataSource, const OUString& rTableOrQuery);
+    void            ToNextRecord(const OUString& rDataSource, const OUString& rTableOrQuery);
 
     sal_uInt32      GetSelectedRecordId();
     bool            ToRecordId(sal_Int32 nSet);
@@ -389,7 +385,8 @@ public:
 
     static css::uno::Reference< css::sdbc::XConnection>
             GetConnection(const OUString& rDataSource,
-                css::uno::Reference< css::sdbc::XDataSource>& rxSource);
+                css::uno::Reference< css::sdbc::XDataSource>& rxSource,
+                const SwView* pView);
 
     static css::uno::Reference< css::sdbcx::XColumnsSupplier>
             GetColumnSupplier(css::uno::Reference< css::sdbc::XConnection> const & xConnection,
@@ -398,8 +395,6 @@ public:
 
     static css::uno::Sequence<OUString> GetExistingDatabaseNames();
 
-    static DBConnURITypes GetDBunoURI(const OUString &rURI, css::uno::Any &aURLAny);
-
     /**
      Loads a data source from file and registers it.
 
@@ -407,26 +402,15 @@ public:
      the filename returned by a file picker and additional settings dialog.
      In case of success it returns the registered name, otherwise an empty string.
      */
-    static OUString            LoadAndRegisterDataSource(SwDocShell* pDocShell = nullptr);
+    static OUString            LoadAndRegisterDataSource(weld::Window* pParent, SwDocShell* pDocShell = nullptr);
 
-    /**
-     Loads a data source from file and registers it.
-
-     In case of success it returns the registered name, otherwise an empty string.
-     Optionally add a prefix to the registered DB name.
-     */
-    static OUString            LoadAndRegisterDataSource(const DBConnURITypes type, const css::uno::Any &rUnoURI,
-                                                         const css::uno::Reference < css::beans::XPropertySet > *pSettings,
-                                                         const OUString &rURI, const OUString *pPrefix, const OUString *pDestDir,
-                                                         SwDocShell* pDocShell = nullptr);
     /**
      Loads a data source from file and registers it.
 
      Convenience function, which calls GetDBunoURI and has just one mandatory parameter.
      In case of success it returns the registered name, otherwise an empty string.
      */
-    static OUString            LoadAndRegisterDataSource(const OUString& rURI, const OUString *pPrefix, const OUString *pDestDir,
-                                                         const css::uno::Reference < css::beans::XPropertySet > *pSettings = nullptr);
+    static OUString            LoadAndRegisterDataSource(const OUString& rURI, const OUString *pDestDir);
 
     /// Load the embedded data source of the document and also register it.
     void LoadAndRegisterEmbeddedDataSource(const SwDBData& rData, const SwDocShell& rDocShell);
@@ -460,24 +444,51 @@ public:
 
     */
     static css::uno::Reference< css::sdbc::XResultSet>
-            createCursor(   const OUString& _sDataSourceName,
-                            const OUString& _sCommand,
-                            sal_Int32 _nCommandType,
-                            const css::uno::Reference< css::sdbc::XConnection>& _xConnection
-                            );
+            createCursor(const OUString& _sDataSourceName,
+                         const OUString& _sCommand,
+                         sal_Int32 _nCommandType,
+                         const css::uno::Reference< css::sdbc::XConnection>& _xConnection,
+                         const SwView* pView);
 
     void setEmbeddedName(const OUString& rEmbeddedName, SwDocShell& rDocShell);
     const OUString& getEmbeddedName() const;
 
+    // rOwnURL should be taken using INetURLObject::GetMainURL(INetURLObject::DecodeMechanism::NONE)
     static void StoreEmbeddedDataSource(const css::uno::Reference<css::frame::XStorable>& xStorable,
                                         const css::uno::Reference<css::embed::XStorage>& xStorage,
                                         const OUString& rStreamRelPath,
-                                        const OUString& rOwnURL);
+                                        const OUString& rOwnURL, bool bCopyTo = false);
 
     SwDoc* getDoc() const;
     /// Stop reacting to removed database registrations.
     void releaseRevokeListener();
+
+    /// Revoke not committed registrations in case of mail merge cancel
+    void RevokeLastRegistrations();
+
+    /// Accept not committed registrations
+    void CommitLastRegistrations();
+
+    /// Remove not used connections.
+    void RevokeNotUsedConnections();
 };
+
+namespace sw
+{
+enum class DBConnURIType
+{
+    UNKNOWN = 0,
+    ODB,
+    CALC,
+    DBASE,
+    FLAT,
+    MSJET,
+    MSACE,
+    WRITER
+};
+
+DBConnURIType SW_DLLPUBLIC GetDBunoType(const INetURLObject &rURL);
+}
 
 #endif
 

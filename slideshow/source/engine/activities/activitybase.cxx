@@ -17,17 +17,17 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <sal/config.h>
+
+#include <algorithm>
 
 #include <tools/diagnose_ex.h>
-#include <canvas/canvastools.hxx>
 
-#include <activitybase.hxx>
+#include "activitybase.hxx"
 
 
-namespace slideshow
+namespace slideshow::internal
 {
-    namespace internal
-    {
         // TODO(P1): Elide some virtual function calls, by templifying this
         // static hierarchy
 
@@ -132,7 +132,7 @@ namespace slideshow
             if (mbFirstPerformCall) {
                 mbFirstPerformCall = false;
                 // notify derived classes that we're starting now
-                this->startAnimation();
+                startAnimation();
             }
 
             performEnd(); // calling private virtual
@@ -146,7 +146,7 @@ namespace slideshow
             // ================================
 
             // clamp nT to permissible [0,1] range
-            nT = ::basegfx::clamp( nT, 0.0, 1.0 );
+            nT = std::clamp( nT, 0.0, 1.0 );
 
             // take acceleration/deceleration into account. if the sum
             // of mnAccelerationFraction and mnDecelerationFraction
@@ -229,7 +229,6 @@ namespace slideshow
 
             return nT;
         }
-    }
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

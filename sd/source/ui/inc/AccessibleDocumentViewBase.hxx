@@ -24,31 +24,27 @@
 #include <editeng/AccessibleComponentBase.hxx>
 #include <editeng/AccessibleSelectionBase.hxx>
 #include "AccessibleViewForwarder.hxx"
-#include "AccessiblePageShape.hxx"
-#include <svx/ChildrenManager.hxx>
-#include <com/sun/star/frame/XModel.hpp>
+#include <svx/AccessibleShapeTreeInfo.hxx>
+#include <svx/IAccessibleViewForwarderListener.hxx>
+
 #include <com/sun/star/awt/XWindowListener.hpp>
 #include <com/sun/star/awt/XFocusListener.hpp>
 #include <com/sun/star/beans/XPropertyChangeListener.hpp>
-#include <com/sun/star/accessibility/XAccessible.hpp>
-#include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 #include <tools/link.hxx>
 
 #include <com/sun/star/accessibility/XAccessibleExtendedAttributes.hpp>
-#include "DrawViewShell.hxx"
-#include "sdpage.hxx"
-#include "drawdoc.hxx"
-#include "FrameView.hxx"
-#include "PresentationViewShell.hxx"
-#include <editeng/outlobj.hxx>
-#include <com/sun/star/accessibility/XAccessibleGetAccFlowTo.hpp>
-class SdViewShell;
+
+#include "Window.hxx"
+
+namespace com::sun::star::accessibility { class XAccessible; }
+namespace com::sun::star::frame { class XModel; }
+namespace com::sun::star::awt { class XWindow; }
+
+class VclWindowEvent;
+
 namespace sd {
 class ViewShell;
-class Window;
 }
-
-class VclSimpleEvent;
 
 namespace accessibility {
 
@@ -57,7 +53,7 @@ namespace accessibility {
 
     <p>The different view modes of the Draw and Impress applications
     are made accessible by derived classes.  When the view mode is
-    changed than the object representing the document view is
+    changed then the object representing the document view is
     disposed and replaced by a new instance of the then appropriate
     derived class.</p>
 
@@ -90,8 +86,7 @@ class AccessibleDocumentViewBase
         public css::beans::XPropertyChangeListener,
         public css::awt::XWindowListener,
         public css::awt::XFocusListener,
-        public css::accessibility::XAccessibleExtendedAttributes,
-        public css::accessibility::XAccessibleGetAccFlowTo
+        public css::accessibility::XAccessibleExtendedAttributes
 {
 public:
     //=====  internal  ========================================================
@@ -286,16 +281,6 @@ protected:
     virtual OUString
         CreateAccessibleName () override;
 
-    /** Create a description string.  The current description is not
-        modified and, therefore, no events are send.  This method is usually
-        called once by the <member>getAccessibleDescription</member> method
-        of the base class.
-        @return
-           A description string.
-    */
-    virtual OUString
-        CreateAccessibleDescription () override;
-
     /** This method is called when (after) the frame containing this
         document has been activated.  Can be used to send FOCUSED state
         changes for the currently selected element.
@@ -326,9 +311,6 @@ protected:
     */
     void SetAccessibleOLEObject (
         const css::uno::Reference<css::accessibility::XAccessible>& xOLEObject);
-    //=====  XAccessibleGetAccFromXShape  ============================================
-    css::uno::Sequence< css::uno::Any >
-        SAL_CALL getAccFlowTo(const css::uno::Any& rAny, sal_Int32 nType) override;
 
 public:
     void SwitchViewActivated() { Activated(); }

@@ -17,53 +17,29 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "fuconcs.hxx"
-#include <svx/svdpagv.hxx>
+#include <fuconcs.hxx>
+#include <rtl/ustring.hxx>
 
 #include <svx/svxids.hrc>
-#include <svx/dialogs.hrc>
-#include <svx/dialmgr.hxx>
 
-#include "app.hrc"
-#include <svl/aeitem.hxx>
-#include <svx/xlnstwit.hxx>
-#include <svx/xlnedwit.hxx>
-#include <svx/xlnedit.hxx>
-#include <svx/xlnstit.hxx>
-#include <svx/xlnwtit.hxx>
 #include <sfx2/viewfrm.hxx>
-#include <svx/sdtmfitm.hxx>
-#include <svx/sxekitm.hxx>
-#include <svx/sderitm.hxx>
 #include <sfx2/dispatch.hxx>
-#include <svx/svdopath.hxx>
-#include <svx/svdocirc.hxx>
-#include <svl/intitem.hxx>
 #include <sfx2/request.hxx>
 #include <editeng/adjustitem.hxx>
-#include <svx/xtable.hxx>
-#include <svx/sdasitm.hxx>
+#include <editeng/eeitem.hxx>
 #include <svx/svdoashp.hxx>
 #include <svx/sdtagitm.hxx>
 
-#include <svx/svdocapt.hxx>
-
-#include <svx/svdomeas.hxx>
-#include "ViewShell.hxx"
-#include "ViewShellBase.hxx"
-#include "ToolBarManager.hxx"
-#include <editeng/writingmodeitem.hxx>
+#include <ViewShell.hxx>
+#include <ViewShellBase.hxx>
+#include <ToolBarManager.hxx>
 #include <svx/gallery.hxx>
 #include <svl/itempool.hxx>
+#include <svl/stritem.hxx>
 
-#include "sdresid.hxx"
-#include "View.hxx"
-#include "sdpage.hxx"
-#include "Window.hxx"
-#include "stlpool.hxx"
-#include "drawdoc.hxx"
-#include "res_bmp.hrc"
-#include "glob.hrc"
+#include <View.hxx>
+#include <Window.hxx>
+#include <drawdoc.hxx>
 
 namespace sd {
 
@@ -179,8 +155,9 @@ void FuConstructCustomShape::SetAttributes( SdrObject* pObj )
                 if ( aObjList[ i ].equalsIgnoreAsciiCase( aCustomShape ) )
                 {
                     FmFormModel aFormModel;
-                    SfxItemPool& rPool = aFormModel.GetItemPool();
+                    SfxItemPool& rPool(aFormModel.GetItemPool());
                     rPool.FreezeIdRanges();
+
                     if ( GalleryExplorer::GetSdrObj( GALLERY_THEME_POWERPOINT, i, &aFormModel ) )
                     {
                         const SdrPage* pPage = aFormModel.GetPage( 0 );
@@ -191,7 +168,7 @@ void FuConstructCustomShape::SetAttributes( SdrObject* pObj )
                             {
                                 const SfxItemSet& rSource = pSourceObj->GetMergedItemSet();
                                 SfxItemSet aDest(
-                                    pObj->GetModel()->GetItemPool(),
+                                    pObj->getSdrModelFromSdrObject().GetItemPool(),
                                     svl::Items<
                                         // Ranges from SdrAttrObj:
                                         SDRATTR_START, SDRATTR_SHADOW_LAST,
@@ -236,11 +213,12 @@ const OUString& FuConstructCustomShape::GetShapeType() const
     return aCustomShape;
 }
 
-SdrObject* FuConstructCustomShape::CreateDefaultObject(const sal_uInt16, const ::tools::Rectangle& rRectangle)
+SdrObjectUniquePtr FuConstructCustomShape::CreateDefaultObject(const sal_uInt16, const ::tools::Rectangle& rRectangle)
 {
-    SdrObject* pObj = SdrObjFactory::MakeNewObject(
-        mpView->GetCurrentObjInventor(), mpView->GetCurrentObjIdentifier(),
-        nullptr, mpDoc);
+    SdrObjectUniquePtr pObj(SdrObjFactory::MakeNewObject(
+        mpView->getSdrModelFromSdrView(),
+        mpView->GetCurrentObjInventor(),
+        mpView->GetCurrentObjIdentifier()));
 
     if( pObj )
     {
@@ -248,9 +226,9 @@ SdrObject* FuConstructCustomShape::CreateDefaultObject(const sal_uInt16, const :
         if ( doConstructOrthogonal() )
             ImpForceQuadratic( aRect );
         pObj->SetLogicRect( aRect );
-        SetAttributes( pObj );
+        SetAttributes( pObj.get() );
         SfxItemSet aAttr(mpDoc->GetPool());
-        SetStyleSheet(aAttr, pObj);
+        SetStyleSheet(aAttr, pObj.get());
         pObj->SetMergedItemSet(aAttr);
     }
     return pObj;

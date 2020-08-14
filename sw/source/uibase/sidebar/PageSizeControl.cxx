@@ -21,31 +21,36 @@
 #include "PageSizeControl.hxx"
 
 #include <cmdid.h>
-#include <swtypes.hxx>
-#include <svx/svxids.hrc>
 #include <svx/pageitem.hxx>
 #include <svx/sidebar/ValueSetWithTextControl.hxx>
 
+#include <unotools/localedatawrapper.hxx>
 #include <rtl/character.hxx>
 #include <editeng/paperinf.hxx>
+#include <sfx2/app.hxx>
 #include <sfx2/bindings.hxx>
 #include <sfx2/dispatch.hxx>
+#include <sfx2/module.hxx>
+#include <sfx2/viewfrm.hxx>
 
 #include <vcl/settings.hxx>
 #include <svl/itempool.hxx>
 #include <svl/intitem.hxx>
+#include <svtools/unitconv.hxx>
 #include <editeng/sizeitem.hxx>
+
+#include <PageSizePopup.hxx>
 
 namespace
 {
     FieldUnit lcl_GetFieldUnit()
     {
-        FieldUnit eUnit = FUNIT_INCH;
+        FieldUnit eUnit = FieldUnit::INCH;
         const SfxPoolItem* pItem = nullptr;
         SfxItemState eState = SfxViewFrame::Current()->GetBindings().GetDispatcher()->QueryState( SID_ATTR_METRIC, pItem );
         if ( pItem && eState >= SfxItemState::DEFAULT )
         {
-            eUnit = (FieldUnit)static_cast<const SfxUInt16Item*>(pItem)->GetValue();
+            eUnit = static_cast<FieldUnit>(static_cast<const SfxUInt16Item*>(pItem)->GetValue());
         }
         else
         {
@@ -63,23 +68,22 @@ namespace
     }
 }
 
-namespace sw { namespace sidebar {
+namespace sw::sidebar {
 
-PageSizeControl::PageSizeControl( sal_uInt16 nId )
-    : SfxPopupWindow( nId, "PageSizeControl", "modules/swriter/ui/pagesizecontrol.ui" )
+PageSizeControl::PageSizeControl(PageSizePopup* pControl, weld::Widget* pParent)
+    : WeldToolbarPopup(pControl->getFrameInterface(), pParent, "modules/swriter/ui/pagesizecontrol.ui", "PageSizeControl")
+    , mxMoreButton(m_xBuilder->weld_button("moreoptions"))
+    , mxWidthHeightField(m_xBuilder->weld_metric_spin_button("metric", FieldUnit::CM))
+    , mxSizeValueSet(new svx::sidebar::ValueSetWithTextControl)
+    , mxSizeValueSetWin(new weld::CustomWeld(*m_xBuilder, "valueset", *mxSizeValueSet))
+    , mxControl(pControl)
     , maPaperList()
 {
-    get(maMoreButton, "moreoptions");
-    get(maContainer, "container");
-    mpSizeValueSet = VclPtr<svx::sidebar::ValueSetWithTextControl>::Create( maContainer.get(), WB_BORDER );
-    maWidthHeightField = VclPtr<MetricField>::Create( maContainer.get(), 0 );
-    maWidthHeightField->Hide();
-    maWidthHeightField->SetUnit(FUNIT_CM);
-    maWidthHeightField->SetMax(9999);
-    maWidthHeightField->SetDecimalDigits(2);
-    maWidthHeightField->SetSpinSize(10);
-    maWidthHeightField->SetLast(9999);
-    SetFieldUnit( *maWidthHeightField.get(), lcl_GetFieldUnit() );
+    mxWidthHeightField->set_unit(FieldUnit::CM);
+    mxWidthHeightField->set_range(0, 9999, FieldUnit::NONE);
+    mxWidthHeightField->set_digits(2);
+    mxWidthHeightField->set_increments(10, 100, FieldUnit::NONE);
+    SetFieldUnit( *mxWidthHeightField, lcl_GetFieldUnit() );
 
     maPaperList.push_back( PAPER_A3 );
     maPaperList.push_back( PAPER_A4 );
@@ -90,20 +94,20 @@ PageSizeControl::PageSizeControl( sal_uInt16 nId )
     maPaperList.push_back( PAPER_LETTER );
     maPaperList.push_back( PAPER_LEGAL );
 
-    mpSizeValueSet->SetStyle( mpSizeValueSet->GetStyle() | WB_3DLOOK | WB_NO_DIRECTSELECT );
-    mpSizeValueSet->SetColor( GetSettings().GetStyleSettings().GetMenuColor() );
+    mxSizeValueSet->SetStyle( mxSizeValueSet->GetStyle() | WB_3DLOOK | WB_NO_DIRECTSELECT );
+    mxSizeValueSet->SetColor( Application::GetSettings().GetStyleSettings().GetMenuColor() );
 
     sal_uInt16 nSelectedItem = 0;
     {
         OUString aMetricStr;
         {
-            const OUString aText = maWidthHeightField->GetText();
+            const OUString aText = mxWidthHeightField->get_text();
             for (short i = aText.getLength() - 1; i >= 0; i--)
             {
                 sal_Unicode c = aText[i];
                 if ( rtl::isAsciiAlpha(c) || (c == '\'') || (c == '\"') || (c == '%') )
                 {
-                    aMetricStr = OUStringLiteral1(c) + aMetricStr;
+                    aMetricStr = OUStringChar(c) + aMetricStr;
                 }
                 else
                 {
@@ -126,7 +130,7 @@ PageSizeControl::PageSizeControl( sal_uInt16 nId )
             pSize = static_cast<const SvxSizeItem*>(pItem);
         }
 
-        const LocaleDataWrapper& localeDataWrapper = maWidthHeightField->GetLocaleDataWrapper();
+        const LocaleDataWrapper& localeDataWrapper = Application::GetSettings().GetLocaleDataWrapper();
         OUString aWidthStr;
         OUString aHeightStr;
         OUString aItemText2;
@@ -140,23 +144,23 @@ PageSizeControl::PageSizeControl( sal_uInt16 nId )
                 Swap( aPaperSize );
             }
 
-                maWidthHeightField->SetValue( maWidthHeightField->Normalize( aPaperSize.Width() ), FUNIT_TWIP );
+            mxWidthHeightField->set_value( mxWidthHeightField->normalize( aPaperSize.Width() ), FieldUnit::TWIP );
             aWidthStr = localeDataWrapper.getNum(
-                maWidthHeightField->GetValue(),
-                maWidthHeightField->GetDecimalDigits(),
-                maWidthHeightField->IsUseThousandSep(),
-                maWidthHeightField->IsShowTrailingZeros() );
+                mxWidthHeightField->get_value(FieldUnit::NONE),
+                mxWidthHeightField->get_digits(),
+                true,
+                true );
 
-            maWidthHeightField->SetValue( maWidthHeightField->Normalize( aPaperSize.Height() ), FUNIT_TWIP);
+            mxWidthHeightField->set_value( mxWidthHeightField->normalize( aPaperSize.Height() ), FieldUnit::TWIP);
             aHeightStr = localeDataWrapper.getNum(
-                maWidthHeightField->GetValue(),
-                maWidthHeightField->GetDecimalDigits(),
-                maWidthHeightField->IsUseThousandSep(),
-                maWidthHeightField->IsShowTrailingZeros() );
+                mxWidthHeightField->get_value(FieldUnit::NONE),
+                mxWidthHeightField->get_digits(),
+                true,
+                true );
 
             aItemText2 = aWidthStr + " x " + aHeightStr + " " + aMetricStr;
 
-            mpSizeValueSet->AddItem(
+            mxSizeValueSet->AddItem(
                 SvxPaperInfo::GetName( maPaperList[ nPaperIdx ] ),
                 aItemText2 );
 
@@ -166,32 +170,26 @@ PageSizeControl::PageSizeControl( sal_uInt16 nId )
             }
         }
     }
-    mpSizeValueSet->SetNoSelection();
-    mpSizeValueSet->SetSelectHdl( LINK(this, PageSizeControl, ImplSizeHdl ) );
-    mpSizeValueSet->Show();
-    mpSizeValueSet->Resize();
+    mxSizeValueSet->SetNoSelection();
+    mxSizeValueSet->SetSelectHdl( LINK(this, PageSizeControl, ImplSizeHdl ) );
+    mxSizeValueSet->Show();
+    mxSizeValueSet->Resize();
 
-    mpSizeValueSet->SelectItem( nSelectedItem );
-    mpSizeValueSet->SetFormat();
-    mpSizeValueSet->Invalidate();
-    mpSizeValueSet->StartSelection();
+    mxSizeValueSet->SelectItem( nSelectedItem );
+    mxSizeValueSet->SetFormat();
+    mxSizeValueSet->Invalidate();
 
-    maMoreButton->SetClickHdl( LINK( this, PageSizeControl, MoreButtonClickHdl_Impl ) );
-    maMoreButton->GrabFocus();
+    mxMoreButton->connect_clicked( LINK( this, PageSizeControl, MoreButtonClickHdl_Impl ) );
+    mxMoreButton->grab_focus();
+}
+
+void PageSizeControl::GrabFocus()
+{
+    mxSizeValueSet->GrabFocus();
 }
 
 PageSizeControl::~PageSizeControl()
 {
-    disposeOnce();
-}
-
-void PageSizeControl::dispose()
-{
-    mpSizeValueSet.disposeAndClear();
-    maMoreButton.disposeAndClear();
-    maWidthHeightField.disposeAndClear();
-    maContainer.disposeAndClear();
-    SfxPopupWindow::dispose();
 }
 
 void PageSizeControl::ExecuteSizeChange( const Paper ePaper )
@@ -199,45 +197,42 @@ void PageSizeControl::ExecuteSizeChange( const Paper ePaper )
     bool bLandscape = false;
     const SfxPoolItem *pItem;
     MapUnit eUnit = lcl_GetUnit();
-    if ( SfxViewFrame::Current() )
+    if ( !SfxViewFrame::Current() )
+        return;
+
+    SfxViewFrame::Current()->GetBindings().GetDispatcher()->QueryState( SID_ATTR_PAGE, pItem );
+    bLandscape = static_cast<const SvxPageItem*>(pItem)->IsLandscape();
+
+    std::unique_ptr<SvxSizeItem> pPageSizeItem( new SvxSizeItem(SID_ATTR_PAGE_SIZE) );
+    Size aPageSize = SvxPaperInfo::GetPaperSize( ePaper, eUnit );
+    if ( bLandscape )
     {
-        SfxViewFrame::Current()->GetBindings().GetDispatcher()->QueryState( SID_ATTR_PAGE, pItem );
-        bLandscape = static_cast<const SvxPageItem*>(pItem)->IsLandscape();
-
-        std::unique_ptr<SvxSizeItem> pPageSizeItem( new SvxSizeItem(SID_ATTR_PAGE_SIZE) );
-        Size aPageSize = SvxPaperInfo::GetPaperSize( ePaper, eUnit );
-        if ( bLandscape )
-        {
-            Swap( aPageSize );
-        }
-        pPageSizeItem->SetSize( aPageSize );
-
-        SfxViewFrame::Current()->GetDispatcher()->ExecuteList(SID_ATTR_PAGE_SIZE,
-            SfxCallMode::RECORD, { pPageSizeItem.get() });
+        Swap( aPageSize );
     }
+    pPageSizeItem->SetSize( aPageSize );
+
+    SfxViewFrame::Current()->GetDispatcher()->ExecuteList(SID_ATTR_PAGE_SIZE,
+        SfxCallMode::RECORD, { pPageSizeItem.get() });
 }
 
 
-IMPL_LINK(PageSizeControl, ImplSizeHdl, ValueSet*, pControl, void)
+IMPL_LINK_NOARG(PageSizeControl, ImplSizeHdl, ValueSet*, void)
 {
-    mpSizeValueSet->SetNoSelection();
-    if ( pControl == mpSizeValueSet )
-    {
-        const sal_uInt16 nSelectedPaper = mpSizeValueSet->GetSelectItemId();
-        const Paper ePaper = maPaperList[nSelectedPaper - 1];
-        ExecuteSizeChange( ePaper );
-    }
+    mxSizeValueSet->SetNoSelection();
+    const sal_uInt16 nSelectedPaper = mxSizeValueSet->GetSelectedItemId();
+    const Paper ePaper = maPaperList[nSelectedPaper - 1];
+    ExecuteSizeChange( ePaper );
 
-    EndPopupMode();
+    mxControl->EndPopupMode();
 }
 
-IMPL_LINK_NOARG(PageSizeControl, MoreButtonClickHdl_Impl, Button*, void)
+IMPL_LINK_NOARG(PageSizeControl, MoreButtonClickHdl_Impl, weld::Button&, void)
 {
     if ( SfxViewFrame::Current() )
         SfxViewFrame::Current()->GetDispatcher()->Execute( FN_FORMAT_PAGE_SETTING_DLG, SfxCallMode::ASYNCHRON );
-    EndPopupMode();
+    mxControl->EndPopupMode();
 }
 
-} } // end of namespace sw::sidebar
+} // end of namespace sw::sidebar
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

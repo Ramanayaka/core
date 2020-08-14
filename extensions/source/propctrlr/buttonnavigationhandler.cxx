@@ -20,16 +20,9 @@
 #include "buttonnavigationhandler.hxx"
 #include "formstrings.hxx"
 #include "formmetadata.hxx"
-#include "pcrservices.hxx"
 #include "pushbuttonnavigation.hxx"
 
 #include <com/sun/star/form/inspection/FormComponentPropertyHandler.hpp>
-
-extern "C" void SAL_CALL createRegistryInfo_ButtonNavigationHandler()
-{
-    ::pcr::ButtonNavigationHandler::registerImplementation();
-}
-
 
 namespace pcr
 {
@@ -43,7 +36,7 @@ namespace pcr
     using namespace ::com::sun::star::inspection;
 
     ButtonNavigationHandler::ButtonNavigationHandler( const Reference< XComponentContext >& _rxContext )
-        :ButtonNavigationHandler_Base( _rxContext )
+        :PropertyHandlerComponent( _rxContext )
     {
 
         m_xSlaveHandler = css::form::inspection::FormComponentPropertyHandler::create( m_xContext );
@@ -55,22 +48,21 @@ namespace pcr
     }
 
 
-    OUString SAL_CALL ButtonNavigationHandler::getImplementationName_static(  )
+    OUString ButtonNavigationHandler::getImplementationName(  )
     {
-        return OUString( "com.sun.star.comp.extensions.ButtonNavigationHandler" );
+        return "com.sun.star.comp.extensions.ButtonNavigationHandler";
     }
 
 
-    Sequence< OUString > SAL_CALL ButtonNavigationHandler::getSupportedServiceNames_static(  )
+    Sequence< OUString > ButtonNavigationHandler::getSupportedServiceNames(  )
     {
-        Sequence<OUString> aSupported { "com.sun.star.form.inspection.ButtonNavigationHandler" };
-        return aSupported;
+        return { "com.sun.star.form.inspection.ButtonNavigationHandler" };
     }
 
 
     void SAL_CALL ButtonNavigationHandler::inspect( const Reference< XInterface >& _rxIntrospectee )
     {
-        ButtonNavigationHandler_Base::inspect( _rxIntrospectee );
+        PropertyHandlerComponent::inspect( _rxIntrospectee );
         m_xSlaveHandler->inspect( _rxIntrospectee );
     }
 
@@ -173,7 +165,7 @@ namespace pcr
     }
 
 
-    Sequence< Property > SAL_CALL ButtonNavigationHandler::doDescribeSupportedProperties() const
+    Sequence< Property > ButtonNavigationHandler::doDescribeSupportedProperties() const
     {
         std::vector< Property > aProperties;
 
@@ -185,7 +177,7 @@ namespace pcr
 
         if ( aProperties.empty() )
             return Sequence< Property >();
-        return Sequence< Property >( &(*aProperties.begin()), aProperties.size() );
+        return comphelper::containerToSequence(aProperties);
     }
 
 
@@ -211,7 +203,7 @@ namespace pcr
             eReturn = m_xSlaveHandler->onInteractivePropertySelection( _rPropertyName, _bPrimary, _rData, _rxInspectorUI );
             break;
         default:
-            eReturn = ButtonNavigationHandler_Base::onInteractivePropertySelection( _rPropertyName, _bPrimary, _rData, _rxInspectorUI );
+            eReturn = PropertyHandlerComponent::onInteractivePropertySelection( _rPropertyName, _bPrimary, _rData, _rxInspectorUI );
             break;
         }
 
@@ -258,7 +250,7 @@ namespace pcr
             aReturn = m_xSlaveHandler->describePropertyLine( _rPropertyName, _rxControlFactory );
             break;
         default:
-            aReturn = ButtonNavigationHandler_Base::describePropertyLine( _rPropertyName, _rxControlFactory );
+            aReturn = PropertyHandlerComponent::describePropertyLine( _rPropertyName, _rxControlFactory );
             break;
         }
 
@@ -268,5 +260,11 @@ namespace pcr
 
 }   // namespace pcr
 
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+extensions_propctrlr_ButtonNavigationHandler_get_implementation(
+    css::uno::XComponentContext* context , css::uno::Sequence<css::uno::Any> const&)
+{
+    return cppu::acquire(new pcr::ButtonNavigationHandler(context));
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

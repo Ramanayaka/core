@@ -17,56 +17,36 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <osl/diagnose.h>
 #include <svx/dialmgr.hxx>
-#include <svx/dialogs.hrc>
+#include <svx/strings.hrc>
 #include <i18nlangtag/mslangid.hxx>
 #include <svtools/valueset.hxx>
-#include <svl/languageoptions.hxx>
-#include <helpid.hrc>
 #include <editeng/numitem.hxx>
-#include <svl/eitem.hxx>
-#include <vcl/svapp.hxx>
 #include <svx/gallery.hxx>
-#include <svl/urihelper.hxx>
-#include <editeng/brushitem.hxx>
-#include <svl/intitem.hxx>
-#include <sfx2/objsh.hxx>
+#include <vcl/event.hxx>
 #include <vcl/graph.hxx>
-#include <vcl/msgbox.hxx>
-#include <vcl/settings.hxx>
-#include <vcl/builderfactory.hxx>
-#include <editeng/flstitem.hxx>
-#include <svx/dlgutil.hxx>
-#include <svx/xtable.hxx>
-#include <svx/drawitem.hxx>
+#include <vcl/virdev.hxx>
 #include <svx/numvset.hxx>
-#include <sfx2/htmlmode.hxx>
-#include <unotools/pathoptions.hxx>
-#include <svtools/ctrltool.hxx>
-#include <editeng/unolingu.hxx>
 #include <com/sun/star/style/NumberingType.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/container/XIndexAccess.hpp>
-#include <com/sun/star/text/XDefaultNumberingProvider.hpp>
 #include <com/sun/star/text/XNumberingFormatter.hpp>
 #include <com/sun/star/beans/PropertyValue.hpp>
-#include <comphelper/processfactory.hxx>
-#include <com/sun/star/text/XNumberingTypeInfo.hpp>
 
 #include <algorithm>
-#include <sfx2/opengrf.hxx>
+
+#include <uiobject.hxx>
 
 using namespace com::sun::star::uno;
 using namespace com::sun::star::beans;
 using namespace com::sun::star::lang;
-using namespace com::sun::star::i18n;
 using namespace com::sun::star::text;
 using namespace com::sun::star::container;
 using namespace com::sun::star::style;
 
 
 // The selection of bullets from the star symbol
-static const sal_Unicode aBulletTypes[] =
+const sal_Unicode aBulletTypes[] =
 {
     0x2022,
     0x25cf,
@@ -80,17 +60,16 @@ static const sal_Unicode aBulletTypes[] =
 
 static vcl::Font& lcl_GetDefaultBulletFont()
 {
-    static bool bInit = false;
-    static vcl::Font aDefBulletFont("OpenSymbol", "", Size(0, 14));
-    if(!bInit)
+    static vcl::Font aDefBulletFont = [&]()
     {
-        aDefBulletFont.SetCharSet( RTL_TEXTENCODING_SYMBOL );
-        aDefBulletFont.SetFamily( FAMILY_DONTKNOW );
-        aDefBulletFont.SetPitch( PITCH_DONTKNOW );
-        aDefBulletFont.SetWeight( WEIGHT_DONTKNOW );
-        aDefBulletFont.SetTransparent( true );
-        bInit = true;
-    }
+        static vcl::Font tmp("OpenSymbol", "", Size(0, 14));
+        tmp.SetCharSet( RTL_TEXTENCODING_SYMBOL );
+        tmp.SetFamily( FAMILY_DONTKNOW );
+        tmp.SetPitch( PITCH_DONTKNOW );
+        tmp.SetWeight( WEIGHT_DONTKNOW );
+        tmp.SetTransparent( true );
+        return tmp;
+    }();
     return aDefBulletFont;
 }
 
@@ -104,16 +83,53 @@ static void lcl_PaintLevel(OutputDevice* pVDev, sal_Int16 nNumberingType,
         rRuleFont.SetStyleName(rFontName);
         pVDev->SetFont(rRuleFont);
         pVDev->DrawText(rLeft, rBulletChar);
-        rLeft.X() += pVDev->GetTextWidth(rBulletChar);
+        rLeft.AdjustX(pVDev->GetTextWidth(rBulletChar) );
     }
     else
     {
         pVDev->SetFont(rTextFont);
         pVDev->DrawText(rLeft, rText);
-        rLeft.X() += pVDev->GetTextWidth(rText);
+        rLeft.AdjustX(pVDev->GetTextWidth(rText) );
     }
 }
-void  SvxNumValueSet::UserDraw( const UserDrawEvent& rUDEvt )
+
+static const char* RID_SVXSTR_BULLET_DESCRIPTIONS[] =
+{
+    RID_SVXSTR_BULLET_DESCRIPTION_0,
+    RID_SVXSTR_BULLET_DESCRIPTION_1,
+    RID_SVXSTR_BULLET_DESCRIPTION_2,
+    RID_SVXSTR_BULLET_DESCRIPTION_3,
+    RID_SVXSTR_BULLET_DESCRIPTION_4,
+    RID_SVXSTR_BULLET_DESCRIPTION_5,
+    RID_SVXSTR_BULLET_DESCRIPTION_6,
+    RID_SVXSTR_BULLET_DESCRIPTION_7
+};
+
+static const char* RID_SVXSTR_SINGLENUM_DESCRIPTIONS[] =
+{
+    RID_SVXSTR_SINGLENUM_DESCRIPTION_0,
+    RID_SVXSTR_SINGLENUM_DESCRIPTION_1,
+    RID_SVXSTR_SINGLENUM_DESCRIPTION_2,
+    RID_SVXSTR_SINGLENUM_DESCRIPTION_3,
+    RID_SVXSTR_SINGLENUM_DESCRIPTION_4,
+    RID_SVXSTR_SINGLENUM_DESCRIPTION_5,
+    RID_SVXSTR_SINGLENUM_DESCRIPTION_6,
+    RID_SVXSTR_SINGLENUM_DESCRIPTION_7
+};
+
+static const char* RID_SVXSTR_OUTLINENUM_DESCRIPTIONS[] =
+{
+    RID_SVXSTR_OUTLINENUM_DESCRIPTION_0,
+    RID_SVXSTR_OUTLINENUM_DESCRIPTION_1,
+    RID_SVXSTR_OUTLINENUM_DESCRIPTION_2,
+    RID_SVXSTR_OUTLINENUM_DESCRIPTION_3,
+    RID_SVXSTR_OUTLINENUM_DESCRIPTION_4,
+    RID_SVXSTR_OUTLINENUM_DESCRIPTION_5,
+    RID_SVXSTR_OUTLINENUM_DESCRIPTION_6,
+    RID_SVXSTR_OUTLINENUM_DESCRIPTION_7
+};
+
+void SvxNumValueSet::UserDraw( const UserDrawEvent& rUDEvt )
 {
     static const sal_uInt16 aLinesArr[] =
     {
@@ -149,7 +165,7 @@ void  SvxNumValueSet::UserDraw( const UserDrawEvent& rUDEvt )
     Size aSize = aFont.GetFontSize();
 
     vcl::Font aRuleFont( lcl_GetDefaultBulletFont() );
-    aSize.Height() = nRectHeight/6;
+    aSize.setHeight( nRectHeight/6 );
     aRuleFont.SetFontSize(aSize);
     aRuleFont.SetColor(aTextColor);
     aRuleFont.SetFillColor(aBackColor);
@@ -157,7 +173,7 @@ void  SvxNumValueSet::UserDraw( const UserDrawEvent& rUDEvt )
         aFont = aRuleFont;
     else if(ePageType == NumberingPageType::OUTLINE)
     {
-        aSize.Height() = nRectHeight/8;
+        aSize.setHeight( nRectHeight/8 );
     }
     aFont.SetColor(aTextColor);
     aFont.SetFillColor(aBackColor);
@@ -171,7 +187,7 @@ void  SvxNumValueSet::UserDraw( const UserDrawEvent& rUDEvt )
         pVDev = VclPtr<VirtualDevice>::Create(*pDev);
         pVDev->SetMapMode(pDev->GetMapMode());
         pVDev->EnableRTL( IsRTLEnabled() );
-         pVDev->SetOutputSize( aRectSize );
+        pVDev->SetOutputSize( aRectSize );
         aOrgRect = aRect;
         pVDev->SetFillColor( aBackColor );
         pVDev->SetLineColor(COL_LIGHTGRAY);
@@ -182,9 +198,11 @@ void  SvxNumValueSet::UserDraw( const UserDrawEvent& rUDEvt )
             Point aEnd(aBLPos.X() + nRectWidth * 9 / 10,0);
             for( sal_uInt16 i = 11; i < 100; i += 33)
             {
-                aStart.Y() = aEnd.Y() = aBLPos.Y() + nRectHeight  * i / 100;
+                aStart.setY( aBLPos.Y() + nRectHeight  * i / 100 );
+                aEnd.setY( aStart.Y() );
                 pVDev->DrawLine(aStart, aEnd);
-                aStart.Y() = aEnd.Y() = aBLPos.Y() + nRectHeight  * (i + 11) / 100;
+                aStart.setY( aBLPos.Y() + nRectHeight  * (i + 11) / 100 );
+                aEnd.setY( aStart.Y() );
                 pVDev->DrawLine(aStart, aEnd);
             }
         }
@@ -201,13 +219,13 @@ void  SvxNumValueSet::UserDraw( const UserDrawEvent& rUDEvt )
         for( sal_uInt16 i = 0; i < 3; i++ )
         {
             sal_uInt16 nY = 11 + i * 33;
-            aStart.Y() = aBLPos.Y() + nRectHeight  * nY / 100;
+            aStart.setY( aBLPos.Y() + nRectHeight  * nY / 100 );
             OUString sText;
             if(ePageType == NumberingPageType::BULLET)
             {
                 sText = OUString( aBulletTypes[nItemId - 1] );
-                aStart.Y() -= pDev->GetTextHeight()/2;
-                aStart.X() = aBLPos.X() + 5;
+                aStart.AdjustY( -(pDev->GetTextHeight()/2) );
+                aStart.setX( aBLPos.X() + 5 );
             }
             else
             {
@@ -219,7 +237,7 @@ void  SvxNumValueSet::UserDraw( const UserDrawEvent& rUDEvt )
                         aLevel.realloc(aLevel.getLength() + 1);
                         PropertyValue& rValue = aLevel.getArray()[aLevel.getLength() - 1];
                         rValue.Name = sValue;
-                        rValue.Value <<= (sal_Int32)(i + 1);
+                        rValue.Value <<= static_cast<sal_Int32>(i + 1);
                         sText = xFormatter->makeNumberingString( aLevel, aLocale );
                     }
                     catch(Exception&)
@@ -228,8 +246,8 @@ void  SvxNumValueSet::UserDraw( const UserDrawEvent& rUDEvt )
                     }
                 }
                 // start just next to the left edge
-                aStart.X() = aBLPos.X() + 2;
-                aStart.Y() -= pDev->GetTextHeight()/2;
+                aStart.setX( aBLPos.X() + 2 );
+                aStart.AdjustY( -(pDev->GetTextHeight()/2) );
             }
             pDev->DrawText(aStart, sText);
         }
@@ -260,7 +278,7 @@ void  SvxNumValueSet::UserDraw( const UserDrawEvent& rUDEvt )
                 sal_Int32 nLevelCount = xLevel->getCount();
                 if(nLevelCount > 5)
                     nLevelCount = 5;
-                for( sal_Int32 i = 0; i < nLevelCount && i < 5; i++)
+                for( sal_Int32 i = 0; i < nLevelCount; i++)
                 {
                     long nTop = nStartY + nRectHeight * (aLinesArr[2 * i + 11])/100 ;
                     Point aLeft(nStartX + nRectWidth *  (aLinesArr[2 * i + 10])/ 100, nTop );
@@ -268,30 +286,29 @@ void  SvxNumValueSet::UserDraw( const UserDrawEvent& rUDEvt )
                     Any aLevelAny = xLevel->getByIndex(i);
                     Sequence<PropertyValue> aLevel;
                     aLevelAny >>= aLevel;
-                    const PropertyValue* pValues = aLevel.getConstArray();
                     aNumberingTypes[i] = 0;
                     aParentNumberings[i] = 0;
-                    for(sal_Int32 nProperty = 0; nProperty < aLevel.getLength() - 1; nProperty++)
+                    for(const PropertyValue& rProp : std::as_const(aLevel))
                     {
-                        if ( pValues[nProperty].Name == "NumberingType" )
-                            pValues[nProperty].Value >>= aNumberingTypes[i];
-                        else if ( pValues[nProperty].Name == "BulletFontName" )
-                            pValues[nProperty].Value >>= sFontNames[i];
-                        else if ( pValues[nProperty].Name == "BulletChar" )
-                            pValues[nProperty].Value >>= sBulletChars[i];
-                        else if ( pValues[nProperty].Name == "Prefix" )
-                            pValues[nProperty].Value >>= sPrefixes[i];
-                        else if ( pValues[nProperty].Name == "Suffix" )
-                            pValues[nProperty].Value >>= sSuffixes[i];
-                        else if ( pValues[nProperty].Name == "ParentNumbering" )
-                            pValues[nProperty].Value >>= aParentNumberings[i];
+                        if ( rProp.Name == "NumberingType" )
+                            rProp.Value >>= aNumberingTypes[i];
+                        else if ( rProp.Name == "BulletFontName" )
+                            rProp.Value >>= sFontNames[i];
+                        else if ( rProp.Name == "BulletChar" )
+                            rProp.Value >>= sBulletChars[i];
+                        else if ( rProp.Name == "Prefix" )
+                            rProp.Value >>= sPrefixes[i];
+                        else if ( rProp.Name == "Suffix" )
+                            rProp.Value >>= sSuffixes[i];
+                        else if ( rProp.Name == "ParentNumbering" )
+                            rProp.Value >>= aParentNumberings[i];
                     }
                     Sequence< PropertyValue > aProperties(2);
                     PropertyValue* pProperties = aProperties.getArray();
                     pProperties[0].Name = "NumberingType";
                     pProperties[0].Value <<= aNumberingTypes[i];
                     pProperties[1].Name = "Value";
-                    pProperties[1].Value <<= (sal_Int32)1;
+                    pProperties[1].Value <<= sal_Int32(1);
                     try
                     {
                         sLevelTexts[i] = xFormatter->makeNumberingString( aProperties, aLocale );
@@ -301,22 +318,21 @@ void  SvxNumValueSet::UserDraw( const UserDrawEvent& rUDEvt )
                         OSL_FAIL("Exception in DefaultNumberingProvider::makeNumberingString");
                     }
 
-                    aLeft.Y() -= (pDev->GetTextHeight()/2);
+                    aLeft.AdjustY( -(pDev->GetTextHeight()/2) );
                     if(!sPrefixes[i].isEmpty() &&
                         sPrefixes[i] != " ")
                     {
                         pVDev->SetFont(aFont);
                         pVDev->DrawText(aLeft, sPrefixes[i]);
-                        aLeft.X() += pDev->GetTextWidth(sPrefixes[i]);
+                        aLeft.AdjustX(pDev->GetTextWidth(sPrefixes[i]) );
                     }
                     if(aParentNumberings[i])
                     {
                         //insert old numberings here
-                        sal_Int32 nStartLevel = std::min((sal_Int32)aParentNumberings[i], i);
+                        sal_Int32 nStartLevel = std::min(static_cast<sal_Int32>(aParentNumberings[i]), i);
                         for(sal_Int32 nParentLevel = i - nStartLevel; nParentLevel < i; nParentLevel++)
                         {
-                            OUString sTmp(sLevelTexts[nParentLevel]);
-                            sTmp += ".";
+                            OUString sTmp = sLevelTexts[nParentLevel] + ".";
                             lcl_PaintLevel(pVDev,
                                     aNumberingTypes[nParentLevel],
                                     sBulletChars[nParentLevel],
@@ -340,7 +356,7 @@ void  SvxNumValueSet::UserDraw( const UserDrawEvent& rUDEvt )
                     {
                         pVDev->SetFont(aFont);
                         pVDev->DrawText(aLeft, sSuffixes[i]);
-                        aLeft.X() += pDev->GetTextWidth(sSuffixes[i]);
+                        aLeft.AdjustX(pDev->GetTextWidth(sSuffixes[i]) );
                     }
 
                     long nLineTop = nStartY + nRectHeight * aLinesArr[2 * i + 1]/100 ;
@@ -376,14 +392,17 @@ void  SvxNumValueSet::UserDraw( const UserDrawEvent& rUDEvt )
     pDev->SetLineColor(aOldColor);
 }
 
-SvxNumValueSet::SvxNumValueSet(vcl::Window* pParent, WinBits nWinBits)
-    : ValueSet(pParent, nWinBits)
+SvxNumValueSet::SvxNumValueSet(std::unique_ptr<weld::ScrolledWindow> pScrolledWindow)
+    : ValueSet(std::move(pScrolledWindow))
     , ePageType(NumberingPageType::BULLET)
     , pVDev(nullptr)
 {
 }
 
-VCL_BUILDER_FACTORY_ARGS(SvxNumValueSet, WB_TABSTOP)
+FactoryFunction SvxNumValueSet::GetUITestFactory() const
+{
+    return SvxNumValueSetUIObject::create;
+}
 
 void SvxNumValueSet::init(NumberingPageType eType)
 {
@@ -398,25 +417,18 @@ void SvxNumValueSet::init(NumberingPageType eType)
         for ( sal_uInt16 i = 0; i < 8; i++ )
         {
             InsertItem( i + 1, i );
-            SetItemText( i + 1, SvxResId( RID_SVXSTR_BULLET_DESCRIPTIONS + i ) );
+            SetItemText(i + 1, SvxResId(RID_SVXSTR_BULLET_DESCRIPTIONS[i]));
         }
     }
 }
 
 SvxNumValueSet::~SvxNumValueSet()
 {
-    disposeOnce();
-}
-
-void SvxNumValueSet::dispose()
-{
-    pVDev.disposeAndClear();
-    ValueSet::dispose();
 }
 
 void SvxNumValueSet::SetNumberingSettings(
     const Sequence<Sequence<PropertyValue> >& aNum,
-    Reference<XNumberingFormatter>& xFormat,
+    Reference<XNumberingFormatter> const & xFormat,
     const Locale& rLocale   )
 {
     aNumSettings = aNum;
@@ -428,13 +440,13 @@ void SvxNumValueSet::SetNumberingSettings(
     {
             InsertItem( i + 1, i );
             if( i < 8 )
-                SetItemText( i + 1, SvxResId( RID_SVXSTR_SINGLENUM_DESCRIPTIONS + i ));
+                SetItemText(i + 1, SvxResId(RID_SVXSTR_SINGLENUM_DESCRIPTIONS[i]));
     }
 }
 
 void SvxNumValueSet::SetOutlineNumberingSettings(
-            Sequence<Reference<XIndexAccess> >& rOutline,
-            Reference<XNumberingFormatter>& xFormat,
+            Sequence<Reference<XIndexAccess> > const & rOutline,
+            Reference<XNumberingFormatter> const & xFormat,
             const Locale& rLocale)
 {
     aOutlineSettings = rOutline;
@@ -446,18 +458,16 @@ void SvxNumValueSet::SetOutlineNumberingSettings(
     {
         InsertItem( i + 1, i );
         if( i < 8 )
-            SetItemText( i + 1, SvxResId( RID_SVXSTR_OUTLINENUM_DESCRIPTIONS + i ));
+            SetItemText(i + 1, SvxResId(RID_SVXSTR_OUTLINENUM_DESCRIPTIONS[i]));
     }
 }
 
-SvxBmpNumValueSet::SvxBmpNumValueSet(vcl::Window* pParent, WinBits nWinBits)
-    : SvxNumValueSet(pParent, nWinBits)
+SvxBmpNumValueSet::SvxBmpNumValueSet(std::unique_ptr<weld::ScrolledWindow> pScrolledWindow)
+    : SvxNumValueSet(std::move(pScrolledWindow))
     , aFormatIdle("SvxBmpNumValueSet FormatIdle")
+    , bGrfNotFound(false)
 {
-    init();
 }
-
-VCL_BUILDER_FACTORY_ARGS(SvxBmpNumValueSet, WB_TABSTOP)
 
 void SvxBmpNumValueSet::init()
 {
@@ -473,14 +483,8 @@ void SvxBmpNumValueSet::init()
 
 SvxBmpNumValueSet::~SvxBmpNumValueSet()
 {
-    disposeOnce();
-}
-
-void SvxBmpNumValueSet::dispose()
-{
     GalleryExplorer::EndLocking(GALLERY_THEME_BULLETS);
     aFormatIdle.Stop();
-    SvxNumValueSet::dispose();
 }
 
 void SvxBmpNumValueSet::UserDraw(const UserDrawEvent& rUDEvt)
@@ -507,7 +511,7 @@ void SvxBmpNumValueSet::UserDraw(const UserDrawEvent& rUDEvt)
         for( sal_uInt16 i = 0; i < 3; i++ )
         {
             sal_uInt16 nY = 11 + i * 33;
-            aPos.Y() = aBLPos.Y() + nRectHeight  * nY / 100;
+            aPos.setY( aBLPos.Y() + nRectHeight  * nY / 100 );
             aGraphic.Draw( pDev, aPos, aSize );
         }
     }

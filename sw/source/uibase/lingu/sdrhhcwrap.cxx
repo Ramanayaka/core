@@ -17,23 +17,12 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <hintids.hxx>
-#include <svx/svditer.hxx>
 #include <svx/svdotext.hxx>
-#include <editeng/editdata.hxx>
 #include <svx/svdpagv.hxx>
-#include <svx/svdogrp.hxx>
 #include <sfx2/printer.hxx>
-#include <svx/svdmodel.hxx>
-#include <editeng/langitem.hxx>
-#include <linguistic/lngprops.hxx>
-#include <sfx2/sfxuno.hxx>
 #include <svx/svdview.hxx>
-#include <editeng/unolingu.hxx>
-#include <unotools/localedatawrapper.hxx>
 #include <drawdoc.hxx>
-#include <sdrhhcwrap.hxx>
-#include <frmfmt.hxx>
+#include "sdrhhcwrap.hxx"
 #include <docsh.hxx>
 #include <wrtsh.hxx>
 #include <view.hxx>
@@ -41,7 +30,6 @@
 #include <doc.hxx>
 #include <IDocumentDeviceAccess.hxx>
 #include <IDocumentDrawModelAccess.hxx>
-#include <docary.hxx>
 #include <edtwin.hxx>
 
 using namespace ::com::sun::star;
@@ -56,7 +44,6 @@ SdrHHCWrapper::SdrHHCWrapper( SwView* pVw,
                 OutlinerMode::TextObject ),
     pView( pVw ),
     pTextObj( nullptr ),
-    pOutlView( nullptr ),
     nOptions( nConvOptions ),
     nDocIndex( 0 ),
     nSourceLang( nSourceLanguage ),
@@ -69,18 +56,18 @@ SdrHHCWrapper::SdrHHCWrapper( SwView* pVw,
     MapMode aMapMode (MapUnit::MapTwip);
     SetRefMapMode(aMapMode);
 
-     Size aSize( 1, 1 );
+    Size aSize( 1, 1 );
     SetPaperSize( aSize );
 
-    pOutlView = new OutlinerView( this, &(pView->GetEditWin()) );
+    pOutlView.reset( new OutlinerView( this, &(pView->GetEditWin()) ) );
     pOutlView->GetOutliner()->SetRefDevice(pView->GetWrtShell().getIDocumentDeviceAccess().getPrinter( false ));
 
     // Hack: all SdrTextObj attributes should be transferred to EditEngine
-    pOutlView->SetBackgroundColor( Color( COL_WHITE ) );
+    pOutlView->SetBackgroundColor( COL_WHITE );
 
-    InsertView( pOutlView );
+    InsertView( pOutlView.get() );
     Point aPoint( 0, 0 );
-     tools::Rectangle aRect( aPoint, aSize );
+    tools::Rectangle aRect( aPoint, aSize );
     pOutlView->SetOutputArea( aRect );
 //  SetText( NULL );
     ClearModifyFlag();
@@ -96,8 +83,8 @@ SdrHHCWrapper::~SdrHHCWrapper()
         SetUpdateMode(false);
         pOutlView->SetOutputArea( tools::Rectangle( Point(), Size(1, 1) ) );
     }
-    RemoveView( pOutlView );
-    delete pOutlView;
+    RemoveView( pOutlView.get() );
+    pOutlView.reset();
 }
 
 void SdrHHCWrapper::StartTextConversion()
@@ -125,15 +112,15 @@ bool SdrHHCWrapper::ConvertNextDocument()
 
     std::list<SdrTextObj*> aTextObjs;
     SwDrawContact::GetTextObjectsFromFormat( aTextObjs, pView->GetDocShell()->GetDoc() );
-    for ( std::list<SdrTextObj*>::iterator aIt = aTextObjs.begin(); aIt != aTextObjs.end(); ++aIt )
+    for (auto const& textObj : aTextObjs)
     {
-        pTextObj = (*aIt);
-        if ( pTextObj )
+        pTextObj = textObj;
+        if (textObj)
         {
-            OutlinerParaObject* pParaObj = pTextObj->GetOutlinerParaObject();
+            OutlinerParaObject* pParaObj = textObj->GetOutlinerParaObject();
             if ( pParaObj )
             {
-                SetPaperSize( pTextObj->GetLogicRect().GetSize() );
+                SetPaperSize( textObj->GetLogicRect().GetSize() );
                 SetText( *pParaObj );
 
                 ClearModifyFlag();
@@ -156,7 +143,7 @@ bool SdrHHCWrapper::ConvertNextDocument()
                     SetUpdateMode(true);
                     pView->GetWrtShell().MakeVisible(pTextObj->GetLogicRect());
 
-                    pSdrView->SdrBeginTextEdit(pTextObj, pPV, &pView->GetEditWin(), false, this, pOutlView, true, true);
+                    pSdrView->SdrBeginTextEdit(pTextObj, pPV, &pView->GetEditWin(), false, this, pOutlView.get(), true, true);
                 }
                 else
                     SetUpdateMode(false);

@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_AVMEDIA_SOURCE_WIN_WINDOW_HXX
-#define INCLUDED_AVMEDIA_SOURCE_WIN_WINDOW_HXX
+#pragma once
 
 #include <sal/config.h>
 
@@ -28,11 +27,11 @@
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/interfacecontainer.h>
 
-#include "com/sun/star/media/XPlayerWindow.hpp"
+#include <com/sun/star/media/XPlayerWindow.hpp>
 
 struct IVideoWindow;
 
-namespace avmedia { namespace win {
+namespace avmedia::win {
 
 class Player;
 
@@ -42,8 +41,7 @@ class Window : public ::cppu::WeakImplHelper< css::media::XPlayerWindow,
 {
 public:
 
-            Window( const css::uno::Reference< css::lang::XMultiServiceFactory >& rxMgr,
-                    Player& rPlayer );
+            Window( Player& rPlayer );
             ~Window() override;
 
     bool    create( const css::uno::Sequence< css::uno::Any >& aArguments );
@@ -93,10 +91,9 @@ public:
     void fireKeyPressedEvent( const css::awt::KeyEvent& rEvt );
     void fireKeyReleasedEvent( const css::awt::KeyEvent& rEvt );
     void fireSetFocusEvent( const css::awt::FocusEvent& rEvt );
+    HWND getParentWnd() const { return mnParentWnd; }
 
 private:
-
-    css::uno::Reference< css::lang::XMultiServiceFactory > mxMgr;
 
     ::osl::Mutex                                maMutex;
     ::cppu::OMultiTypeInterfaceContainerHelper  maListeners;
@@ -109,9 +106,6 @@ private:
     void                                        ImplLayoutVideoWindow();
 };
 
-} // namespace win
-} // namespace avmedia
-
-#endif // INCLUDED_AVMEDIA_SOURCE_WIN_WINDOW_HXX
+} // namespace avmedia::win
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

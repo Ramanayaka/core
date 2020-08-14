@@ -22,8 +22,7 @@
 #include <osl/diagnose.h>
 
 
-namespace filter{
-    namespace config{
+namespace filter::config{
 
 
 QueryTokenizer::QueryTokenizer(const OUString& sQuery)
@@ -35,21 +34,13 @@ QueryTokenizer::QueryTokenizer(const OUString& sQuery)
         OUString sToken = sQuery.getToken(0, ':', token);
         if (!sToken.isEmpty())
         {
-            sal_Int32 equal = sToken.indexOf('=');
+            sal_Int32 nIdx{ 0 };
+            const OUString sKey{ sToken.getToken(0, '=', nIdx) };
+            const OUString sVal{ sToken.getToken(0, ':', nIdx) };
 
-            if (equal == 0)
+            if (sKey.isEmpty())
                 m_bValid = false;
             OSL_ENSURE(m_bValid, "QueryTokenizer::QueryTokenizer() Found non boolean query parameter ... but its key is empty. Will be ignored!");
-
-            OUString sKey;
-            OUString sVal;
-
-            sKey = sToken;
-            if (equal > 0)
-            {
-                sKey = sToken.copy(0      , equal                       );
-                sVal = sToken.copy(equal+1, sToken.getLength()-(equal+1));
-            }
 
             if (find(sKey) != end())
                 m_bValid = false;
@@ -72,7 +63,6 @@ bool QueryTokenizer::valid() const
     return m_bValid;
 }
 
-    } // namespace config
-} // namespace filter
+} // namespace filter::config
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

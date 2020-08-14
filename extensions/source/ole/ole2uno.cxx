@@ -18,13 +18,13 @@
  */
 
 
-#include "osl/getglobalmutex.hxx"
-#include "rtl/instance.hxx"
+#include <osl/getglobalmutex.hxx>
+#include <rtl/instance.hxx>
 #include "ole2uno.hxx"
 
 using namespace osl;
-namespace ole_adapter
-{
+
+namespace {
 
 struct MutexInit
 {
@@ -35,15 +35,13 @@ struct MutexInit
     }
 };
 
+}
 
 Mutex * getBridgeMutex()
 {
     return rtl_Instance< Mutex, MutexInit, ::osl::MutexGuard,
         ::osl::GetGlobalMutex >::create(
             MutexInit(), ::osl::GetGlobalMutex());
-}
-
-
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

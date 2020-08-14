@@ -23,14 +23,9 @@
 #include <sfx2/stbitem.hxx>
 #include <svx/svxdllapi.h>
 
-// forward ---------------------------------------------------------------
-
-class  SvxSizeItem;
 struct SvxPosSizeStatusBarControl_Impl;
 
-// class SvxPosSizeToolBoxControl ----------------------------------------
-
-class SVX_DLLPUBLIC SvxPosSizeStatusBarControl : public SfxStatusBarControl
+class SVX_DLLPUBLIC SvxPosSizeStatusBarControl final : public SfxStatusBarControl
 {
 private:
     std::unique_ptr<SvxPosSizeStatusBarControl_Impl>    pImpl;
@@ -44,8 +39,9 @@ public:
     virtual void    StateChanged( sal_uInt16 nSID, SfxItemState eState, const SfxPoolItem* pState ) override;
     virtual void    Paint( const UserDrawEvent& rEvt ) override;
     virtual void    Command( const CommandEvent& rCEvt ) override;
+private:
+    void ImplUpdateItemText();
 };
-
 
 #endif
 

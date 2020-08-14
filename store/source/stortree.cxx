@@ -20,14 +20,15 @@
 #include <sal/config.h>
 
 #include <memory>
+#include <string.h>
 
 #include "stortree.hxx"
 
-#include "sal/types.h"
-#include "sal/log.hxx"
-#include "osl/diagnose.h"
+#include <sal/types.h>
+#include <sal/log.hxx>
+#include <osl/diagnose.h>
 
-#include "store/types.h"
+#include <store/types.h>
 
 #include "storbase.hxx"
 #include "storbios.hxx"
@@ -72,14 +73,14 @@ sal_uInt16 OStoreBTreeNodeData::find (const T& t) const
         sal_Int32 const m = ((l + r) >> 1);
 
         if (t.m_aKey == m_pData[m].m_aKey)
-            return (sal_uInt16)m;
+            return static_cast<sal_uInt16>(m);
         if (t.m_aKey < m_pData[m].m_aKey)
             r = m - 1;
         else
             l = m + 1;
     }
 
-    sal_uInt16 const k = ((sal_uInt16)(r));
+    sal_uInt16 const k = static_cast<sal_uInt16>(r);
     if ((k < capacityCount()) && (t.m_aKey < m_pData[k].m_aKey))
         return k - 1;
     else
@@ -224,7 +225,7 @@ storeError OStoreBTreeNodeObject::remove (
     OStorePageBIOS &   rBIOS)
 {
     PageHolderObject< page > xImpl (m_xPage);
-    page & rPage = (*xImpl);
+    page & rPage = *xImpl;
 
     // Check depth.
     storeError eErrCode = store_E_None;
@@ -232,7 +233,7 @@ storeError OStoreBTreeNodeObject::remove (
     {
         // Check link entry.
         T const aEntryL (rPage.m_pData[nIndexL]);
-        if (!(rEntryL.compare (aEntryL) == T::COMPARE_EQUAL))
+        if (rEntryL.compare (aEntryL) != T::COMPARE_EQUAL)
             return store_E_InvalidAccess;
 
         // Load link node.
@@ -270,7 +271,7 @@ storeError OStoreBTreeNodeObject::remove (
     else
     {
         // Check leaf entry.
-        if (!(rEntryL.compare (rPage.m_pData[nIndexL]) == T::COMPARE_EQUAL))
+        if (rEntryL.compare (rPage.m_pData[nIndexL]) != T::COMPARE_EQUAL)
             return store_E_NotExists;
 
         // Save leaf entry.
@@ -301,9 +302,9 @@ storeError OStoreBTreeNodeObject::remove (
  * testInvariant.
  * Precond: root node page loaded.
  */
-void OStoreBTreeRootObject::testInvariant (char const * message)
+void OStoreBTreeRootObject::testInvariant (char const * message) const
 {
-    OSL_PRECOND(m_xPage.get() != nullptr, "OStoreBTreeRootObject::testInvariant(): Null pointer");
+    OSL_PRECOND(m_xPage != nullptr, "OStoreBTreeRootObject::testInvariant(): Null pointer");
     SAL_WARN_IF( (m_xPage->location() - m_xPage->size()) != 0, "store", message);
 }
 
@@ -380,7 +381,7 @@ storeError OStoreBTreeRootObject::find_lookup (
     OStoreBTreeNodeObject & rNode,  // [out]
     sal_uInt16 &            rIndex, // [out]
     OStorePageKey const &   rKey,
-    OStorePageBIOS &        rBIOS)
+    OStorePageBIOS &        rBIOS) const
 {
     // Init node w/ root page.
     testInvariant("OStoreBTreeRootObject::find_lookup(): enter");
@@ -397,10 +398,10 @@ storeError OStoreBTreeRootObject::find_lookup (
     for (; xPage->depth() > 0; xPage = rNode.makeHolder< page >())
     {
         // Find next page.
-        page const & rPage = (*xPage);
+        page const & rPage = *xPage;
         sal_uInt16 const i = rPage.find(entry);
         sal_uInt16 const n = rPage.usageCount();
-        if (!(i < n))
+        if (i >= n)
         {
             // Path to entry not exists (Must not happen(?)).
             return store_E_NotExists;
@@ -421,9 +422,9 @@ storeError OStoreBTreeRootObject::find_lookup (
     }
 
     // Find index.
-    page const & rPage = (*xPage);
+    page const & rPage = *xPage;
     rIndex = rPage.find(entry);
-    if (!(rIndex < rPage.usageCount()))
+    if (rIndex >= rPage.usageCount())
         return store_E_NotExists;
 
     // Compare entry.
@@ -482,10 +483,10 @@ storeError OStoreBTreeRootObject::find_insert (
     for (; xPage->depth() > 0; xPage = rNode.makeHolder< page >())
     {
         // Find next page.
-        page const & rPage = (*xPage);
+        page const & rPage = *xPage;
         sal_uInt16 const i = rPage.find (entry);
         sal_uInt16 const n = rPage.usageCount();
-        if (!(i < n))
+        if (i >= n)
         {
             // Path to entry not exists (Must not happen(?)).
             return store_E_NotExists;
@@ -524,7 +525,7 @@ storeError OStoreBTreeRootObject::find_insert (
     }
 
     // Find index.
-    page const & rPage = (*xPage);
+    page const & rPage = *xPage;
     rIndex = rPage.find(entry);
     if (rIndex < rPage.usageCount())
     {

@@ -18,19 +18,25 @@
  */
 
 
-#include "navtoolbar.hxx"
-#include "frm_resource.hxx"
-#include "featuredispatcher.hxx"
-#include "frm_resource.hrc"
-#include "commandimageprovider.hxx"
+#include <navtoolbar.hxx>
+#include <frm_resource.hxx>
+#include <featuredispatcher.hxx>
+#include <strings.hrc>
+#include <commandimageprovider.hxx>
 
 #include <com/sun/star/uno/Any.hxx>
 #include <com/sun/star/form/runtime/FormFeature.hpp>
 
+#include <svx/labelitemwindow.hxx>
+
+#include <vcl/event.hxx>
 #include <vcl/fixed.hxx>
 #include <vcl/commandinfoprovider.hxx>
+#include <vcl/toolbox.hxx>
 
 #include <sal/macros.h>
+#include <osl/diagnose.h>
+#include <tools/debug.hxx>
 
 #define LID_RECORD_LABEL    1000
 #define LID_RECORD_FILLER   1001
@@ -52,17 +58,15 @@ namespace frm
                 || ( _nFeatureId == LID_RECORD_FILLER );
         }
 
-        OUString getLabelString( sal_uInt16 _nResId )
+        OUString getLabelString(const char* pResId)
         {
-            OUString sLabel( " " );
-            sLabel += FRM_RES_STRING( _nResId );
-            sLabel += " ";
+            OUString sLabel( " " + FRM_RES_STRING(pResId) + " " );
             return sLabel;
         }
 
         OUString lcl_getCommandURL( const sal_Int16 _nFormFeature )
         {
-            const sal_Char* pAsciiCommandName = nullptr;
+            const char* pAsciiCommandName = nullptr;
             switch ( _nFormFeature )
             {
                 case FormFeature::MoveAbsolute          : pAsciiCommandName = "AbsoluteRecord";     break;
@@ -143,7 +147,6 @@ namespace frm
         implInit( );
     }
 
-
     NavigationToolBar::~NavigationToolBar( )
     {
         disposeOnce();
@@ -151,13 +154,12 @@ namespace frm
 
     void NavigationToolBar::dispose()
     {
-        for (auto i = m_aChildWins.begin(); i != m_aChildWins.end(); ++i)
-            i->disposeAndClear();
+        for (auto & childWin : m_aChildWins)
+            childWin.disposeAndClear();
         m_aChildWins.clear();
         m_pToolbar.disposeAndClear();
         vcl::Window::dispose();
     }
-
 
     void NavigationToolBar::setDispatcher( const IFeatureDispatcher* _pDispatcher )
     {
@@ -184,7 +186,6 @@ namespace frm
         }
     }
 
-
     void NavigationToolBar::implEnableItem( sal_uInt16 _nItemId, bool _bEnabled )
     {
         m_pToolbar->EnableItem( _nItemId, _bEnabled );
@@ -196,37 +197,38 @@ namespace frm
             m_pToolbar->EnableItem( LID_RECORD_FILLER, _bEnabled );
     }
 
-
     void NavigationToolBar::enableFeature( sal_Int16 _nFeatureId, bool _bEnabled )
     {
-        DBG_ASSERT( m_pToolbar->GetItemPos( (sal_uInt16)_nFeatureId ) != ToolBox::ITEM_NOTFOUND,
+        DBG_ASSERT( m_pToolbar->GetItemPos( static_cast<sal_uInt16>(_nFeatureId) ) != ToolBox::ITEM_NOTFOUND,
             "NavigationToolBar::enableFeature: invalid id!" );
 
-        implEnableItem( (sal_uInt16)_nFeatureId, _bEnabled );
+        implEnableItem( static_cast<sal_uInt16>(_nFeatureId), _bEnabled );
     }
-
 
     void NavigationToolBar::checkFeature( sal_Int16 _nFeatureId, bool _bEnabled )
     {
-        DBG_ASSERT( m_pToolbar->GetItemPos( (sal_uInt16)_nFeatureId ) != ToolBox::ITEM_NOTFOUND,
+        DBG_ASSERT( m_pToolbar->GetItemPos( static_cast<sal_uInt16>(_nFeatureId) ) != ToolBox::ITEM_NOTFOUND,
             "NavigationToolBar::checkFeature: invalid id!" );
 
-        m_pToolbar->CheckItem( (sal_uInt16)_nFeatureId, _bEnabled );
+        m_pToolbar->CheckItem( static_cast<sal_uInt16>(_nFeatureId), _bEnabled );
     }
-
 
     void NavigationToolBar::setFeatureText( sal_Int16 _nFeatureId, const OUString& _rText )
     {
-        DBG_ASSERT( m_pToolbar->GetItemPos( (sal_uInt16)_nFeatureId ) != ToolBox::ITEM_NOTFOUND,
+        DBG_ASSERT( m_pToolbar->GetItemPos( static_cast<sal_uInt16>(_nFeatureId) ) != ToolBox::ITEM_NOTFOUND,
             "NavigationToolBar::checkFeature: invalid id!" );
 
-        vcl::Window* pItemWindow = m_pToolbar->GetItemWindow( (sal_uInt16)_nFeatureId );
+        vcl::Window* pItemWindow = m_pToolbar->GetItemWindow( static_cast<sal_uInt16>(_nFeatureId) );
         if ( pItemWindow )
-            pItemWindow->SetText( _rText );
+        {
+            if (_nFeatureId == FormFeature::TotalRecords)
+                static_cast<LabelItemWindow*>(pItemWindow)->set_label(_rText);
+            else if (_nFeatureId == FormFeature::MoveAbsolute)
+                static_cast<RecordPositionInput*>(pItemWindow)->set_text(_rText);
+        }
         else
-            m_pToolbar->SetItemText( (sal_uInt16)_nFeatureId, _rText );
+            m_pToolbar->SetItemText( static_cast<sal_uInt16>(_nFeatureId), _rText );
     }
-
 
     void NavigationToolBar::implInit( )
     {
@@ -238,12 +240,12 @@ namespace frm
         // items. We could duplicate all the information here in our lib
         // (such as the item text and the image), but why should we?
 
-        struct FeatureDescription
+        static struct FeatureDescription
         {
             sal_uInt16      nId;
             bool        bRepeat;
             bool        bItemWindow;
-        } aSupportedFeatures[] =
+        } const aSupportedFeatures[] =
         {
             { LID_RECORD_LABEL,                     false, true },
             { FormFeature::MoveAbsolute,            false, true },
@@ -270,8 +272,8 @@ namespace frm
             { FormFeature::RemoveFilterAndSort,     false, false },
         };
 
-        FeatureDescription* pSupportedFeatures = aSupportedFeatures;
-        FeatureDescription* pSupportedFeaturesEnd = aSupportedFeatures + SAL_N_ELEMENTS( aSupportedFeatures );
+        FeatureDescription const * pSupportedFeatures = aSupportedFeatures;
+        FeatureDescription const * pSupportedFeaturesEnd = aSupportedFeatures + SAL_N_ELEMENTS( aSupportedFeatures );
         for ( ; pSupportedFeatures < pSupportedFeaturesEnd; ++pSupportedFeatures )
         {
             if ( pSupportedFeatures->nId )
@@ -285,8 +287,9 @@ namespace frm
                 {
                     OUString sCommandURL( lcl_getCommandURL( pSupportedFeatures->nId ) );
                     m_pToolbar->SetItemCommand( pSupportedFeatures->nId, sCommandURL );
-                    m_pToolbar->SetQuickHelpText( pSupportedFeatures->nId,
-                            vcl::CommandInfoProvider::GetLabelForCommand(sCommandURL, m_sModuleId) );
+                    auto aProperties = vcl::CommandInfoProvider::GetCommandProperties(sCommandURL, m_sModuleId);
+                    m_pToolbar->SetQuickHelpText(pSupportedFeatures->nId,
+                            vcl::CommandInfoProvider::GetLabelForCommand(aProperties));
                 }
 
                 if ( pSupportedFeatures->bItemWindow )
@@ -297,30 +300,14 @@ namespace frm
                         pItemWindow = VclPtr<RecordPositionInput>::Create( m_pToolbar );
                         static_cast< RecordPositionInput* >( pItemWindow )->setDispatcher( m_pDispatcher );
                     }
-                    else if ( LID_RECORD_FILLER == pSupportedFeatures->nId )
-                    {
-                        pItemWindow = VclPtr<FixedText>::Create( m_pToolbar, WB_CENTER | WB_VCENTER );
-                        pItemWindow->SetBackground(Wallpaper(Color(COL_TRANSPARENT)));
-                    }
-                    else
-                    {
-                        pItemWindow = VclPtr<FixedText>::Create( m_pToolbar, WB_VCENTER );
-                        pItemWindow->SetBackground();
-                        pItemWindow->SetPaintTransparent(true);
-                    }
-                    m_aChildWins.push_back( pItemWindow );
+                    else if (pSupportedFeatures->nId == LID_RECORD_FILLER)
+                        pItemWindow = VclPtr<LabelItemWindow>::Create(m_pToolbar, getLabelString(RID_STR_LABEL_OF));
+                    else if (pSupportedFeatures->nId == LID_RECORD_LABEL)
+                        pItemWindow = VclPtr<LabelItemWindow>::Create(m_pToolbar, getLabelString(RID_STR_LABEL_RECORD));
+                    else if (pSupportedFeatures->nId == FormFeature::TotalRecords)
+                        pItemWindow = VclPtr<LabelItemWindow>::Create(m_pToolbar, "");
 
-                    switch ( pSupportedFeatures->nId )
-                    {
-                    case LID_RECORD_LABEL:
-                        pItemWindow->SetText( getLabelString( RID_STR_LABEL_RECORD ) );
-                        break;
-
-                    case LID_RECORD_FILLER:
-                        pItemWindow->SetText( getLabelString( RID_STR_LABEL_OF ) );
-                        break;
-                    }
-
+                    m_aChildWins.emplace_back(pItemWindow );
                     m_pToolbar->SetItemWindow( pSupportedFeatures->nId, pItemWindow );
                 }
             }
@@ -345,8 +332,7 @@ namespace frm
         const ToolBox::ImplToolItems::size_type nItemCount = m_pToolbar->GetItemCount();
 
         // collect the FormFeatures in the toolbar
-        typedef ::std::vector< sal_Int16 >  FormFeatures;
-        FormFeatures aFormFeatures;
+        std::vector<sal_Int16> aFormFeatures;
         aFormFeatures.reserve( nItemCount );
 
         for ( ToolBox::ImplToolItems::size_type i=0; i<nItemCount; ++i )
@@ -358,25 +344,21 @@ namespace frm
 
         // translate them into command URLs
         css::uno::Sequence< OUString > aCommandURLs( aFormFeatures.size() );
-        for (   FormFeatures::const_iterator formFeature = aFormFeatures.begin();
-                formFeature != aFormFeatures.end();
-                ++formFeature
-            )
+        size_t i = 0;
+        for (auto const& formFeature : aFormFeatures)
         {
-            aCommandURLs[ formFeature - aFormFeatures.begin() ] = lcl_getCommandURL( *formFeature );
+            aCommandURLs[i++] = lcl_getCommandURL(formFeature);
         }
 
         // retrieve the images for the command URLs
-        CommandImages aCommandImages = m_pImageProvider->getCommandImages( aCommandURLs, m_eImageSize == eLarge );
+        std::vector<Image> aCommandImages = m_pImageProvider->getCommandImages( aCommandURLs, m_eImageSize == eLarge );
 
         // and set them at the toolbar
-        CommandImages::const_iterator commandImage = aCommandImages.begin();
-        for (   FormFeatures::const_iterator formFeature = aFormFeatures.begin();
-                formFeature != aFormFeatures.end();
-                ++formFeature, ++commandImage
-            )
+        auto commandImage = aCommandImages.begin();
+        for (auto const& formFeature : aFormFeatures)
         {
-            m_pToolbar->SetItemImage( *formFeature, *commandImage );
+            m_pToolbar->SetItemImage( formFeature, *commandImage );
+            ++commandImage;
         }
 
         // parts of our layout is dependent on the size of our icons
@@ -499,7 +481,6 @@ namespace frm
         }
     }
 
-
     void NavigationToolBar::Resize()
     {
         // resize/position the toolbox as a whole
@@ -512,7 +493,6 @@ namespace frm
         Window::Resize();
     }
 
-
     void NavigationToolBar::SetControlBackground()
     {
         Window::SetControlBackground();
@@ -521,7 +501,6 @@ namespace frm
 
         implUpdateImages();
     }
-
 
     void NavigationToolBar::SetControlBackground( const Color& _rColor )
     {
@@ -532,7 +511,6 @@ namespace frm
         implUpdateImages();
     }
 
-
     void NavigationToolBar::SetTextLineColor( )
     {
         Window::SetTextLineColor( );
@@ -540,14 +518,12 @@ namespace frm
         forEachItemWindow( &NavigationToolBar::setTextLineColor, nullptr );
     }
 
-
     void NavigationToolBar::SetTextLineColor( const Color& _rColor )
     {
         Window::SetTextLineColor( _rColor );
         m_pToolbar->SetTextLineColor( _rColor );
         forEachItemWindow( &NavigationToolBar::setTextLineColor, &_rColor );
     }
-
 
     void NavigationToolBar::forEachItemWindow( ItemWindowHandler _handler )
     {
@@ -579,7 +555,6 @@ namespace frm
             _pItemWindow->SetControlBackground();
     }
 
-
     void NavigationToolBar::setTextLineColor( sal_uInt16 /* _nItemId */, vcl::Window* _pItemWindow, const void* _pColor )
     {
         if ( _pColor )
@@ -587,14 +562,6 @@ namespace frm
         else
             _pItemWindow->SetTextLineColor();
     }
-#if 0
-
-    void NavigationToolBar::setItemWindowZoom( sal_uInt16 /* _nItemId */, vcl::Window* _pItemWindow, const void* /* _pParam */ ) const
-    {
-        _pItemWindow->SetZoom( GetZoom() );
-        _pItemWindow->SetZoomedPointFont( IsControlFont() ? GetControlFont() : GetPointFont() );
-    }
-#endif
 
     void NavigationToolBar::setItemControlFont( sal_uInt16 /* _nItemId */, vcl::Window* _pItemWindow ) const
     {
@@ -603,7 +570,6 @@ namespace frm
         else
             _pItemWindow->SetControlFont( );
     }
-
 
     void NavigationToolBar::setItemControlForeground( sal_uInt16 /* _nItemId */, vcl::Window* _pItemWindow ) const
     {
@@ -614,9 +580,10 @@ namespace frm
         _pItemWindow->SetTextColor( GetTextColor() );
     }
 
-
     void NavigationToolBar::adjustItemWindowWidth( sal_uInt16 _nItemId, vcl::Window* _pItemWindow ) const
     {
+        int nHeight = 0;
+
         OUString sItemText;
         switch ( _nItemId )
         {
@@ -630,6 +597,7 @@ namespace frm
 
         case FormFeature::MoveAbsolute:
             sItemText = "12345678";
+            nHeight = _pItemWindow->get_preferred_size().Height();
             break;
 
         case FormFeature::TotalRecords:
@@ -637,70 +605,39 @@ namespace frm
             break;
         }
 
-        Size aSize( _pItemWindow->GetTextWidth( sItemText ), /* _pItemWindow->GetSizePixel( ).Height() */ _pItemWindow->GetTextHeight() + 4 );
-        aSize.Width() += 6;
+        if (nHeight == 0)
+            nHeight = _pItemWindow->GetTextHeight() + 4;
+
+        Size aSize(_pItemWindow->GetTextWidth(sItemText), nHeight);
+        aSize.AdjustWidth(6 );
         _pItemWindow->SetSizePixel( aSize );
 
         m_pToolbar->SetItemWindow( _nItemId, _pItemWindow );
     }
-
 
     void NavigationToolBar::enableItemRTL( sal_uInt16 /*_nItemId*/, vcl::Window* _pItemWindow, const void* _pIsRTLEnabled )
     {
         _pItemWindow->EnableRTL( *static_cast< const sal_Bool* >( _pIsRTLEnabled ) );
     }
 
-    RecordPositionInput::RecordPositionInput( vcl::Window* _pParent )
-        :NumericField( _pParent, WB_BORDER | WB_VCENTER )
-        ,m_pDispatcher( nullptr )
+    RecordPositionInput::RecordPositionInput(vcl::Window* pParent)
+        : RecordItemWindow(pParent, true)
+        , m_pDispatcher( nullptr )
     {
-        SetMin( 1 );
-        SetFirst( 1 );
-        SetSpinSize( 1 );
-        SetDecimalDigits( 0 );
-        SetStrictFormat( true );
-        SetBorderStyle( WindowBorderStyle::MONO );
     }
-
 
     void RecordPositionInput::setDispatcher( const IFeatureDispatcher* _pDispatcher )
     {
         m_pDispatcher = _pDispatcher;
     }
 
-
-    void RecordPositionInput::FirePosition( bool _bForce )
+    void RecordPositionInput::PositionFired(sal_Int64 nRecord)
     {
-        if ( _bForce || IsValueChangedFromSaved() )
-        {
-            sal_Int64 nRecord = GetValue();
-            if ( nRecord < GetMin() || nRecord > GetMax() )
-                return;
-
-            if ( m_pDispatcher )
-                m_pDispatcher->dispatchWithArgument( FormFeature::MoveAbsolute, "Position", makeAny( (sal_Int32)nRecord ) );
-
-            SaveValue();
-        }
+        if (!m_pDispatcher)
+            return;
+        m_pDispatcher->dispatchWithArgument( FormFeature::MoveAbsolute, "Position", makeAny( static_cast<sal_Int32>(nRecord) ) );
     }
-
-
-    void RecordPositionInput::LoseFocus()
-    {
-        FirePosition( false );
-    }
-
-
-    void RecordPositionInput::KeyInput( const KeyEvent& rKeyEvent )
-    {
-        if( rKeyEvent.GetKeyCode() == KEY_RETURN && !GetText().isEmpty() )
-            FirePosition( true );
-        else
-            NumericField::KeyInput( rKeyEvent );
-    }
-
 
 }   // namespace frm
-
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

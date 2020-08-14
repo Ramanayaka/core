@@ -21,35 +21,32 @@
 
 #include <connectivity/sdbcx/VCollection.hxx>
 #include <com/sun/star/sdbc/XDatabaseMetaData.hpp>
-namespace connectivity
-{
-    namespace hsqldb
+namespace connectivity::hsqldb
     {
-        class HViews : public sdbcx::OCollection
+        class HViews final : public sdbcx::OCollection
         {
             css::uno::Reference< css::sdbc::XConnection >         m_xConnection;
             css::uno::Reference< css::sdbc::XDatabaseMetaData >   m_xMetaData;
             bool m_bInDrop;
 
-        protected:
             virtual sdbcx::ObjectType createObject(const OUString& _rName) override;
             virtual void impl_refresh() override;
             virtual css::uno::Reference< css::beans::XPropertySet > createDescriptor() override;
-        virtual sdbcx::ObjectType appendObject( const OUString& _rForName, const css::uno::Reference< css::beans::XPropertySet >& descriptor ) override;
+            virtual sdbcx::ObjectType appendObject( const OUString& _rForName, const css::uno::Reference< css::beans::XPropertySet >& descriptor ) override;
             virtual void dropObject(sal_Int32 _nPos, const OUString& _sElementName) override;
 
             void createView( const css::uno::Reference< css::beans::XPropertySet >& descriptor );
         public:
             HViews(
                 const css::uno::Reference< css::sdbc::XConnection >& _rxConnection,
-                ::cppu::OWeakObject& _rParent, ::osl::Mutex& _rMutex, const TStringVector &_rVector );
+                ::cppu::OWeakObject& _rParent, ::osl::Mutex& _rMutex, const ::std::vector< OUString> &_rVector );
 
             // only the name is identical to ::cppu::OComponentHelper
-            virtual void SAL_CALL disposing() override;
+            virtual void disposing() override;
 
             void dropByNameImpl(const OUString& elementName);
         };
-    }
+
 }
 #endif // INCLUDED_CONNECTIVITY_SOURCE_INC_HSQLDB_HVIEWS_HXX
 

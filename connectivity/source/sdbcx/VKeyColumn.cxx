@@ -17,9 +17,10 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <connectivity/sdbcx/VKeyColumn.hxx>
+#include <sdbcx/VKeyColumn.hxx>
+#include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <cppuhelper/supportsservice.hxx>
-#include "TConnection.hxx"
+#include <TConnection.hxx>
 
 using namespace connectivity;
 using namespace connectivity::sdbcx;
@@ -30,19 +31,13 @@ using namespace cppu;
 OUString SAL_CALL OKeyColumn::getImplementationName(  )
 {
     if(isNew())
-        return OUString("com.sun.star.sdbcx.VKeyColumnDescription");
-    return OUString("com.sun.star.sdbcx.VKeyColumn");
+        return "com.sun.star.sdbcx.VKeyColumnDescriptor";
+    return "com.sun.star.sdbcx.VKeyColumn";
 }
 
 css::uno::Sequence< OUString > SAL_CALL OKeyColumn::getSupportedServiceNames(  )
 {
-    css::uno::Sequence< OUString > aSupported(1);
-    if(isNew())
-        aSupported[0] = "com.sun.star.sdbcx.KeyColumnDescription";
-    else
-        aSupported[0] = "com.sun.star.sdbcx.KeyColumn";
-
-    return aSupported;
+    return { isNew()?OUString("com.sun.star.sdbcx.KeyColumnDescriptor"):OUString("com.sun.star.sdbcx.KeyColumn") };
 }
 
 sal_Bool SAL_CALL OKeyColumn::supportsService( const OUString& _rServiceName )

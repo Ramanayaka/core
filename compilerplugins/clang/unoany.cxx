@@ -7,19 +7,30 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
+#ifndef LO_CLANG_SHARED_PLUGINS
+
 #include "check.hxx"
+#include "compat.hxx"
 #include "plugin.hxx"
 
+namespace {
 
 class UnoAny:
-    public RecursiveASTVisitor<UnoAny>, public loplugin::Plugin
+    public loplugin::FilteringPlugin<UnoAny>
 {
 public:
-    explicit UnoAny(InstantiationData const & data): Plugin(data) {}
+    explicit UnoAny(loplugin::InstantiationData const & data): FilteringPlugin(data) {}
+
+    bool preRun() override {
+        return compiler.getLangOpts().CPlusPlus;
+    }
 
     void run() override {
-        TraverseDecl(compiler.getASTContext().getTranslationUnitDecl());
+        if (preRun()) {
+            TraverseDecl(compiler.getASTContext().getTranslationUnitDecl());
+        }
     }
+
     bool VisitCXXOperatorCallExpr(CXXOperatorCallExpr const * expr);
 };
 
@@ -28,7 +39,8 @@ bool UnoAny::VisitCXXOperatorCallExpr(CXXOperatorCallExpr const * expr)
     if (ignoreLocation(expr)) {
         return true;
     }
-    StringRef aFileName = compiler.getSourceManager().getFilename(compiler.getSourceManager().getSpellingLoc(expr->getLocStart()));
+    StringRef aFileName = getFilenameOfLocation(
+            compiler.getSourceManager().getSpellingLoc(compat::getBeginLoc(expr)));
     if (loplugin::isSamePathname(aFileName, SRCDIR "/include/com/sun/star/uno/Any.hxx")) {
         return true;
     }
@@ -41,24 +53,26 @@ bool UnoAny::VisitCXXOperatorCallExpr(CXXOperatorCallExpr const * expr)
         return true;
     }
     if (auto expr2 = dyn_cast<MaterializeTemporaryExpr>(expr->getArg(1))) {
-        if (auto expr3 = dyn_cast<CXXBindTemporaryExpr>(expr2->GetTemporaryExpr())) {
+        if (auto expr3 = dyn_cast<CXXBindTemporaryExpr>(compat::getSubExpr(expr2))) {
             if (auto expr4 = dyn_cast<CallExpr>(expr3->getSubExpr())) {
                 if (loplugin::DeclCheck(expr4->getDirectCallee()).Function("makeAny").
                     Namespace("uno").Namespace("star").Namespace("sun").Namespace("com").GlobalNamespace()) {
                     report(
                             DiagnosticsEngine::Warning,
-                            "unnecessary copy, rather use <<= operator",
+                            ("unnecessary copy, rather use <<= operator directly with the 'makeAny'"
+                             " argument"),
                             expr->getOperatorLoc())
                       << expr->getSourceRange();
                     return true;
                 }
             }
         }
-        if (isa<CXXFunctionalCastExpr>(expr2->GetTemporaryExpr())) {
+        if (isa<CXXFunctionalCastExpr>(compat::getSubExpr(expr2))) {
             //expr->getArg(1)->dump();
             report(
                     DiagnosticsEngine::Warning,
-                    "unnecessary copy, rather use <<= operator",
+                    ("unnecessary copy, rather use <<= operator directly with the 'Any' constructor"
+                     " argument"),
                     expr->getOperatorLoc())
               << expr->getSourceRange();
             return true;
@@ -68,7 +82,10 @@ bool UnoAny::VisitCXXOperatorCallExpr(CXXOperatorCallExpr const * expr)
     return true;
 }
 
-loplugin::Plugin::Registration<UnoAny> X("unoany");
+loplugin::Plugin::Registration<UnoAny> unoany("unoany");
 
+} // namespace
+
+#endif // LO_CLANG_SHARED_PLUGINS
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

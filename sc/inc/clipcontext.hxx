@@ -12,7 +12,7 @@
 
 #include "address.hxx"
 #include "cellvalue.hxx"
-#include <celltextattr.hxx>
+#include "celltextattr.hxx"
 
 #include <memory>
 #include <vector>
@@ -40,9 +40,10 @@ public:
     virtual ~ClipContextBase();
 
     ColumnBlockPosition* getBlockPosition(SCTAB nTab, SCCOL nCol);
+    ColumnBlockPositionSet* getBlockPositionSet() { return mpSet.get(); }
 };
 
-class CopyFromClipContext : public ClipContextBase
+class CopyFromClipContext final : public ClipContextBase
 {
     SCCOL mnDestCol1;
     SCCOL mnDestCol2;
@@ -94,6 +95,7 @@ public:
 
     ScDocument* getUndoDoc();
     ScDocument* getClipDoc();
+    ScDocument* getDestDoc() { return &mrDestDoc; }
     InsertDeleteFlags getInsertFlag() const;
 
     void setDeleteFlag( InsertDeleteFlags nFlag );
@@ -130,7 +132,7 @@ public:
     bool isDateCell( const ScColumn& rCol, SCROW nRow ) const;
 };
 
-class CopyToClipContext : public ClipContextBase
+class CopyToClipContext final : public ClipContextBase
 {
     bool mbKeepScenarioFlags:1;
 
@@ -141,7 +143,7 @@ public:
     bool isKeepScenarioFlags() const;
 };
 
-class CopyToDocContext : public ClipContextBase
+class CopyToDocContext final : public ClipContextBase
 {
     bool mbStartListening;
 
@@ -153,7 +155,7 @@ public:
     bool isStartListening() const;
 };
 
-class MixDocContext : public ClipContextBase
+class MixDocContext final : public ClipContextBase
 {
 public:
     MixDocContext(ScDocument& rDoc);

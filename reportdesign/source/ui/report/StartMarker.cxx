@@ -16,23 +16,23 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#include "StartMarker.hxx"
+#include <StartMarker.hxx>
+#include <UITools.hxx>
 #include <vcl/image.hxx>
 #include <vcl/svapp.hxx>
-#include "RptResId.hrc"
-#include "bitmaps.hlst"
-#include "ModuleHelper.hxx"
-#include "ColorChanger.hxx"
-#include "ReportDefines.hxx"
-#include "SectionWindow.hxx"
-#include "helpids.hrc"
+#include <bitmaps.hlst>
+#include <ColorChanger.hxx>
+#include <ReportDefines.hxx>
+#include <SectionWindow.hxx>
+#include <helpids.h>
+#include <vcl/event.hxx>
 #include <vcl/help.hxx>
 #include <vcl/gradient.hxx>
 #include <vcl/lineinfo.hxx>
 #include <vcl/settings.hxx>
 
-#include <toolkit/helper/vclunohelper.hxx>
 #include <unotools/syslocale.hxx>
+#include <unotools/localedatawrapper.hxx>
 
 #define CORNER_SPACE     5
 
@@ -70,7 +70,7 @@ OStartMarker::OStartMarker(OSectionWindow* _pParent,const OUString& _sColorEntry
     m_aVRuler->SetMargin1();
     m_aVRuler->SetMargin2();
     const MeasurementSystem eSystem = SvtSysLocale().GetLocaleData().getMeasurementSystemEnum();
-    m_aVRuler->SetUnit(MeasurementSystem::Metric == eSystem ? FUNIT_CM : FUNIT_INCH);
+    m_aVRuler->SetUnit(MeasurementSystem::Metric == eSystem ? FieldUnit::CM : FieldUnit::INCH);
     EnableChildTransparentMode();
     SetParentClipMode( ParentClipMode::NoClip );
     SetPaintTransparent( true );
@@ -85,8 +85,10 @@ void OStartMarker::dispose()
 {
     if ( osl_atomic_decrement(&s_nImageRefCount) == 0 )
     {
-        DELETEZ(s_pDefCollapsed);
-        DELETEZ(s_pDefExpanded);
+        delete s_pDefCollapsed;
+        s_pDefCollapsed = nullptr;
+        delete s_pDefExpanded;
+        s_pDefExpanded = nullptr;
     }
     m_aVRuler.disposeAndClear();
     m_aText.disposeAndClear();
@@ -115,7 +117,7 @@ void OStartMarker::Paint(vcl::RenderContext& rRenderContext, const tools::Rectan
     {
         const long nVRulerWidth = m_aVRuler->GetSizePixel().Width();
         long nSize = aSize.Width() - nVRulerWidth;
-        aSize.Width() += nCornerWidth;
+        aSize.AdjustWidth(nCornerWidth );
         rRenderContext.SetClipRegion(vcl::Region(rRenderContext.PixelToLogic(tools::Rectangle(Point(),
                                                                              Size(nSize, aSize.Height())))));
     }
@@ -195,8 +197,8 @@ void OStartMarker::initDefaultNodeImages()
 {
     if ( !s_pDefCollapsed )
     {
-        s_pDefCollapsed = new Image(BitmapEx(RID_BMP_TREENODE_COLLAPSED));
-        s_pDefExpanded = new Image(BitmapEx(RID_BMP_TREENODE_EXPANDED));
+        s_pDefCollapsed = new Image(StockImage::Yes, RID_BMP_TREENODE_COLLAPSED);
+        s_pDefExpanded = new Image(StockImage::Yes, RID_BMP_TREENODE_EXPANDED);
     }
 
     Image* pImage = m_bCollapsed ? s_pDefCollapsed : s_pDefExpanded;
@@ -231,18 +233,17 @@ void OStartMarker::Resize()
 
     Size aImageSize = m_aImage->GetImage().GetSizePixel();
     const MapMode& rMapMode = GetMapMode();
-    aImageSize.Width() = long(aImageSize.Width() * (double)rMapMode.GetScaleX());
-    aImageSize.Height() = long(aImageSize.Height() * (double)rMapMode.GetScaleY());
+    aImageSize.setWidth( long(aImageSize.Width() * static_cast<double>(rMapMode.GetScaleX())) );
+    aImageSize.setHeight( long(aImageSize.Height() * static_cast<double>(rMapMode.GetScaleY())) );
 
-    Fraction aExtraWidth(long(REPORT_EXTRA_SPACE));
-    aExtraWidth *= rMapMode.GetScaleX();
+    long nExtraWidth = long(REPORT_EXTRA_SPACE * rMapMode.GetScaleX());
 
-    Point aPos(aImageSize.Width() + (long)(aExtraWidth + aExtraWidth), aExtraWidth);
+    Point aPos(aImageSize.Width() + (nExtraWidth * 2), nExtraWidth);
     const long nHeight = ::std::max<sal_Int32>(nOutputHeight - 2*aPos.Y(),LogicToPixel(Size(0,m_aText->GetTextHeight())).Height());
     m_aText->SetPosSizePixel(aPos,Size(aRulerPos.X() - aPos.X(),nHeight));
 
-    aPos.X() = aExtraWidth;
-    aPos.Y() += static_cast<sal_Int32>((LogicToPixel(Size(0,m_aText->GetTextHeight())).Height() - aImageSize.Height()) * 0.5) ;
+    aPos.setX( nExtraWidth );
+    aPos.AdjustY(static_cast<sal_Int32>((LogicToPixel(Size(0,m_aText->GetTextHeight())).Height() - aImageSize.Height()) * 0.5) ) ;
     m_aImage->SetPosSizePixel(aPos,aImageSize);
 }
 
@@ -269,21 +270,21 @@ void OStartMarker::showRuler(bool _bShow)
 
 void OStartMarker::RequestHelp( const HelpEvent& rHEvt )
 {
-    if( !m_aText->GetText().isEmpty())
-    {
-        // Hilfe anzeigen
-        tools::Rectangle aItemRect(rHEvt.GetMousePosPixel(),Size(GetSizePixel().Width(),getMinHeight()));
-        Point aPt = OutputToScreenPixel( aItemRect.TopLeft() );
-        aItemRect.Left()   = aPt.X();
-        aItemRect.Top()    = aPt.Y();
-        aPt = OutputToScreenPixel( aItemRect.BottomRight() );
-        aItemRect.Right()  = aPt.X();
-        aItemRect.Bottom() = aPt.Y();
-        if( rHEvt.GetMode() == HelpEventMode::BALLOON )
-            Help::ShowBalloon( this, aItemRect.Center(), aItemRect, m_aText->GetText());
-        else
-            Help::ShowQuickHelp( this, aItemRect, m_aText->GetText() );
-    }
+    if( m_aText->GetText().isEmpty())
+        return;
+
+    // show help
+    tools::Rectangle aItemRect(rHEvt.GetMousePosPixel(),Size(GetSizePixel().Width(),getMinHeight()));
+    Point aPt = OutputToScreenPixel( aItemRect.TopLeft() );
+    aItemRect.SetLeft( aPt.X() );
+    aItemRect.SetTop( aPt.Y() );
+    aPt = OutputToScreenPixel( aItemRect.BottomRight() );
+    aItemRect.SetRight( aPt.X() );
+    aItemRect.SetBottom( aPt.Y() );
+    if( rHEvt.GetMode() == HelpEventMode::BALLOON )
+        Help::ShowBalloon( this, aItemRect.Center(), aItemRect, m_aText->GetText());
+    else
+        Help::ShowQuickHelp( this, aItemRect, m_aText->GetText() );
 }
 
 void OStartMarker::setCollapsed(bool _bCollapsed)
@@ -297,7 +298,7 @@ void OStartMarker::zoom(const Fraction& _aZoom)
 {
     setZoomFactor(_aZoom,*this);
     m_aVRuler->SetZoom(_aZoom);
-    setZoomFactor(_aZoom, *m_aText.get());
+    setZoomFactor(_aZoom, *m_aText);
     Resize();
     Invalidate();
 }

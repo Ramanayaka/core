@@ -20,28 +20,24 @@
 #include <stdio.h>
 #include <string.h>
 
-#include <sal/alloca.h>
+#include <o3tl/safeint.hxx>
 #include <osl/thread.h>
+#include <sal/log.hxx>
 
 #include <X11/Xlib.h>
-#include <X11/Xutil.h>
-#include <X11/Xlocale.h>
 
 #include <vcl/commandevent.hxx>
-#include <unx/salunx.h>
-#include <unx/XIM.h>
 #include <unx/i18n_cb.hxx>
-#include <unx/i18n_status.hxx>
 #include <unx/i18n_ic.hxx>
 #include <unx/i18n_im.hxx>
-#include "salframe.hxx"
+#include <salframe.hxx>
 
 // i. preedit start callback
 
 int
 PreeditStartCallback ( XIC, XPointer client_data, XPointer )
 {
-      preedit_data_t* pPreeditData = reinterpret_cast<preedit_data_t*>(client_data);
+    preedit_data_t* pPreeditData = reinterpret_cast<preedit_data_t*>(client_data);
     if ( pPreeditData->eState == PreeditStatus::ActivationRequired )
     {
         pPreeditData->eState = PreeditStatus::Active;
@@ -70,7 +66,7 @@ PreeditDoneCallback ( XIC, XPointer client_data, XPointer )
 // Handle deletion of text in a preedit_draw_callback
 // from and howmuch are guaranteed to be nonnegative
 
-void
+static void
 Preedit_DeleteText(preedit_text_t *ptext, int from, int howmuch)
 {
     // If we've been asked to delete no text then just set
@@ -83,13 +79,12 @@ Preedit_DeleteText(preedit_text_t *ptext, int from, int howmuch)
 
     int to = from + howmuch;
 
-      if (to == (int)ptext->nLength)
+    if (to == static_cast<int>(ptext->nLength))
     {
         // delete from the end of the text
         ptext->nLength = from;
-      }
-    else
-        if (to < (int)ptext->nLength)
+    }
+    else if (to < static_cast<int>(ptext->nLength))
     {
         // cut out of the middle of the text
         memmove( static_cast<void*>(ptext->pUnicodeBuffer + from),
@@ -99,29 +94,31 @@ Preedit_DeleteText(preedit_text_t *ptext, int from, int howmuch)
                 static_cast<void*>(ptext->pCharStyle + to),
                 (ptext->nLength - to) * sizeof(XIMFeedback));
         ptext->nLength -= howmuch;
-      }
+    }
     else
     {
           // XXX this indicates an error, are we out of sync ?
-          fprintf(stderr, "Preedit_DeleteText( from=%i to=%i length=%i )\n",
-                from, to, ptext->nLength );
+          SAL_INFO("vcl.app", "Preedit_DeleteText( from=" << from
+                  << " to=" << to
+                  << " length=" << ptext->nLength
+                  << " ).");
           fprintf (stderr, "\t XXX internal error, out of sync XXX\n");
 
           ptext->nLength = from;
     }
 
-      // NULL-terminate the string
-      ptext->pUnicodeBuffer[ptext->nLength] = u'\0';
+    // NULL-terminate the string
+    ptext->pUnicodeBuffer[ptext->nLength] = u'\0';
 }
 
 // reallocate the textbuffer with sufficiently large size 2^x
 // nnewlimit is presupposed to be larger than ptext->size
-void
+static void
 enlarge_buffer ( preedit_text_t *ptext, int nnewlimit )
 {
       size_t nnewsize = ptext->nSize;
 
-      while ( nnewsize <= (size_t)nnewlimit )
+      while ( nnewsize <= o3tl::make_unsigned(nnewlimit) )
         nnewsize *= 2;
 
       ptext->nSize = nnewsize;
@@ -134,7 +131,7 @@ enlarge_buffer ( preedit_text_t *ptext, int nnewlimit )
 // Handle insertion of text in a preedit_draw_callback
 // string field of XIMText struct is guaranteed to be != NULL
 
-void
+static void
 Preedit_InsertText(preedit_text_t *pText, XIMText *pInsertText, int where)
 {
     sal_Unicode *pInsertTextString;
@@ -149,9 +146,9 @@ Preedit_InsertText(preedit_text_t *pText, XIMText *pInsertText, int where)
     if (pInsertText->encoding_is_wchar)
     {
         wchar_t *pWCString = pInsertText->string.wide_char;
-          size_t nBytes = wcstombs ( nullptr, pWCString, 1024 /* don't care */);
-          pMBString = static_cast<char*>(alloca( nBytes + 1 ));
-          nMBLength = wcstombs ( pMBString, pWCString, nBytes + 1);
+        size_t nBytes = wcstombs ( nullptr, pWCString, 1024 /* don't care */);
+        pMBString = static_cast<char*>(alloca( nBytes + 1 ));
+        nMBLength = wcstombs ( pMBString, pWCString, nBytes + 1);
     }
     else
     {
@@ -164,17 +161,17 @@ Preedit_InsertText(preedit_text_t *pText, XIMText *pInsertText, int where)
 
     if (nEncoding != RTL_TEXTENCODING_UNICODE)
     {
-          rtl_TextToUnicodeConverter aConverter =
+        rtl_TextToUnicodeConverter aConverter =
                 rtl_createTextToUnicodeConverter( nEncoding );
-          rtl_TextToUnicodeContext aContext =
+        rtl_TextToUnicodeContext aContext =
                 rtl_createTextToUnicodeContext(aConverter);
 
-          sal_Size nBufferSize = nInsertTextLength * 2;
+        sal_Size nBufferSize = nInsertTextLength * 2;
 
-          pInsertTextString = static_cast<sal_Unicode*>(alloca(nBufferSize));
+        pInsertTextString = static_cast<sal_Unicode*>(alloca(nBufferSize));
 
-          sal_uInt32  nConversionInfo;
-          sal_Size    nConvertedChars;
+        sal_uInt32  nConversionInfo;
+        sal_Size    nConvertedChars;
 
         rtl_convertTextToUnicode( aConverter, aContext,
                 pMBString, nMBLength,
@@ -183,8 +180,8 @@ Preedit_InsertText(preedit_text_t *pText, XIMText *pInsertText, int where)
                 | RTL_TEXTTOUNICODE_FLAGS_INVALID_IGNORE,
                 &nConversionInfo, &nConvertedChars );
 
-          rtl_destroyTextToUnicodeContext(aConverter, aContext);
-          rtl_destroyTextToUnicodeConverter(aConverter);
+        rtl_destroyTextToUnicodeContext(aConverter, aContext);
+        rtl_destroyTextToUnicodeConverter(aConverter);
 
     }
     else
@@ -224,15 +221,16 @@ Preedit_InsertText(preedit_text_t *pText, XIMText *pInsertText, int where)
 
 // Handle the change of attributes in a preedit_draw_callback
 
-void
-Preedit_UpdateAttributes ( preedit_text_t* ptext, XIMFeedback* feedback,
+static void
+Preedit_UpdateAttributes ( preedit_text_t* ptext, XIMFeedback const * feedback,
         int from, int amount )
 {
-    if ( (from + amount) > (int)ptext->nLength )
+    if ( (from + amount) > static_cast<int>(ptext->nLength) )
     {
         // XXX this indicates an error, are we out of sync ?
-        fprintf (stderr, "Preedit_UpdateAttributes( %i + %i > %i )\n",
-            from, amount, ptext->nLength );
+        SAL_INFO("vcl.app", "Preedit_UpdateAttributes( "
+                << from << " + " << amount << " > " << ptext->nLength
+                << " ).");
         fprintf (stderr, "\t XXX internal error, out of sync XXX\n");
 
         return;
@@ -245,7 +243,7 @@ Preedit_UpdateAttributes ( preedit_text_t* ptext, XIMFeedback* feedback,
 // Convert the XIM feedback values into appropriate VCL
 // EXTTEXTINPUT_ATTR values
 // returns an allocate list of attributes, which must be freed by caller
-ExtTextInputAttr*
+static ExtTextInputAttr*
 Preedit_FeedbackToSAL ( const XIMFeedback* pfeedback, int nlength, std::vector<ExtTextInputAttr>& rSalAttr )
 {
     ExtTextInputAttr *psalattr;
@@ -257,7 +255,7 @@ Preedit_FeedbackToSAL ( const XIMFeedback* pfeedback, int nlength, std::vector<E
     if (nlength > 0 && nlength > sal::static_int_cast<int>(rSalAttr.size()) )
     {
         rSalAttr.reserve( nlength );
-        psalattr = &rSalAttr[0];
+        psalattr = rSalAttr.data();
     }
     else
         return nullptr;
@@ -292,9 +290,9 @@ Preedit_FeedbackToSAL ( const XIMFeedback* pfeedback, int nlength, std::vector<E
         // copy in list
         psalattr[npos] = nval;
         noldval = nval;
-      }
-      // return list of sal attributes
-     return psalattr;
+    }
+    // return list of sal attributes
+    return psalattr;
 }
 
 void
@@ -404,12 +402,7 @@ GetPreeditSpotLocation(XIC ic, XPointer client_data)
 void
 PreeditCaretCallback ( XIC ic, XPointer client_data,
     XIMPreeditCaretCallbackStruct *call_data )
-#else
-void
-PreeditCaretCallback ( XIC, XPointer,XIMPreeditCaretCallbackStruct* )
-#endif
 {
-    #if OSL_DEBUG_LEVEL > 1
     // XXX PreeditCaretCallback is pure debug code for now
     const char *direction = "?";
     const char *style = "?";
@@ -436,12 +429,20 @@ PreeditCaretCallback ( XIC, XPointer,XIMPreeditCaretCallbackStruct* )
         case XIMDontChange:   direction = "Don't change";  break;
     }
 
-    fprintf (stderr, "PreeditCaretCallback( ic=%p, client=%p,\n",
-        ic, client_data );
-    fprintf (stderr, "\t position=%i, direction=\"%s\", style=\"%s\" )\n",
-        call_data->position, direction, style );
-    #endif
+    SAL_INFO("vcl.app", "PreeditCaretCallback( ic=" << ic
+            << ", client=" << client_data
+            << ",");
+    SAL_INFO("vcl.app", "\t position=" << call_data->position
+            << ", direction=\"" << direction
+            << "\", style=\"" << style
+            << "\" ).");
 }
+#else
+void
+PreeditCaretCallback ( XIC, XPointer, XIMPreeditCaretCallbackStruct* )
+{
+}
+#endif
 
 // v. commit string callback: convert an extended text input (iiimp ... )
 //     into an ordinary key-event
@@ -468,46 +469,8 @@ StatusDoneCallback (XIC, XPointer, XPointer)
 }
 
 void
-StatusDrawCallback (XIC, XPointer, XIMStatusDrawCallbackStruct *call_data)
+StatusDrawCallback (XIC, XPointer, XIMStatusDrawCallbackStruct *)
 {
-    if( call_data->type == XIMTextType )
-    {
-        OUString aText;
-        if( call_data->data.text )
-        {
-            // XIM with text
-            sal_Char* pMBString = nullptr;
-            size_t nLength = 0;
-            if( call_data->data.text->encoding_is_wchar )
-            {
-                if( call_data->data.text->string.wide_char )
-                {
-                    wchar_t* pWString = call_data->data.text->string.wide_char;
-                    size_t nBytes = wcstombs( nullptr, pWString, 1024 );
-                    pMBString = static_cast<sal_Char*>(alloca( nBytes+1 ));
-                    nLength = wcstombs( pMBString, pWString, nBytes+1 );
-                }
-            }
-            else
-            {
-                if( call_data->data.text->string.multi_byte )
-                {
-                    pMBString = call_data->data.text->string.multi_byte;
-                    nLength = strlen( pMBString );
-                }
-            }
-            if( nLength )
-                aText = OUString( pMBString, nLength, osl_getThreadTextEncoding() );
-        }
-        vcl::I18NStatus::get().setStatusText( aText );
-    }
-#if OSL_DEBUG_LEVEL > 1
-    else
-    {
-        fprintf( stderr, "XIMStatusDataType %s not supported\n",
-            call_data->type == XIMBitmapType ? "XIMBitmapType" : OString::number(call_data->type).getStr() );
-    }
-#endif
 }
 
 // vii. destroy callbacks: internally disable all IC/IM calls

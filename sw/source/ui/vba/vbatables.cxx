@@ -20,6 +20,7 @@
 #include "vbatables.hxx"
 #include "vbatable.hxx"
 #include "vbarange.hxx"
+#include "wordvbahelper.hxx"
 #include <com/sun/star/text/XTextTable.hpp>
 #include <com/sun/star/text/XTextTablesSupplier.hpp>
 #include <com/sun/star/text/XTextDocument.hpp>
@@ -60,6 +61,8 @@ static bool lcl_isInHeaderFooter( const uno::Reference< text::XTextTable >& xTab
 
 typedef std::vector< uno::Reference< text::XTextTable > > XTextTableVec;
 
+namespace {
+
 class TableCollectionHelper : public ::cppu::WeakImplHelper< container::XIndexAccess,
                                                              container::XNameAccess >
 {
@@ -89,7 +92,7 @@ public:
     {
         if ( Index < 0 || Index >= getCount() )
             throw lang::IndexOutOfBoundsException();
-        uno::Reference< text::XTextTable > xTable( mxTables[ Index ], uno::UNO_QUERY_THROW );
+        uno::Reference< text::XTextTable > xTable( mxTables[ Index ], uno::UNO_SET_THROW );
         return uno::makeAny( xTable );
     }
     // XElementAccess
@@ -100,19 +103,18 @@ public:
     {
         if ( !hasByName(aName) )
             throw container::NoSuchElementException();
-        uno::Reference< text::XTextTable > xTable( *cachePos, uno::UNO_QUERY_THROW );
+        uno::Reference< text::XTextTable > xTable( *cachePos, uno::UNO_SET_THROW );
         return uno::makeAny( xTable );
     }
     virtual uno::Sequence< OUString > SAL_CALL getElementNames(  ) override
     {
         uno::Sequence< OUString > sNames( mxTables.size() );
         OUString* pString = sNames.getArray();
-        XTextTableVec::iterator it = mxTables.begin();
-        XTextTableVec::iterator it_end = mxTables.end();
-        for ( ; it != it_end; ++it, ++pString )
+        for ( const auto& rxTable : mxTables )
         {
-            uno::Reference< container::XNamed > xName( *it, uno::UNO_QUERY_THROW );
+            uno::Reference< container::XNamed > xName( rxTable, uno::UNO_QUERY_THROW );
             *pString = xName->getName();
+            ++pString;
         }
         return sNames;
     }
@@ -153,6 +155,8 @@ public:
     }
 
 };
+
+}
 
 SwVbaTables::SwVbaTables( const uno::Reference< XHelperInterface >& xParent, const uno::Reference< uno::XComponentContext > & xContext, const uno::Reference< frame::XModel >& xDocument ) : SwVbaTables_BASE( xParent, xContext , uno::Reference< container::XIndexAccess >( new TableCollectionHelper( xDocument ) ) ), mxDocument( xDocument )
 {
@@ -209,7 +213,7 @@ SwVbaTables::createCollectionObject( const uno::Any& aSource )
 OUString
 SwVbaTables::getServiceImplName()
 {
-    return OUString("SwVbaTables");
+    return "SwVbaTables";
 }
 
 // XEnumerationAccess
@@ -222,12 +226,10 @@ SwVbaTables::getElementType()
 uno::Sequence<OUString>
 SwVbaTables::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.word.Tables";
-    }
+        "ooo.vba.word.Tables"
+    };
     return aServiceNames;
 }
 

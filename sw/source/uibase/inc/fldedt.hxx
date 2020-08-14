@@ -18,36 +18,37 @@
  */
 #ifndef INCLUDED_SW_SOURCE_UIBASE_INC_FLDEDT_HXX
 #define INCLUDED_SW_SOURCE_UIBASE_INC_FLDEDT_HXX
+
+#include <fldbas.hxx>
+
 #include <sfx2/basedlgs.hxx>
-#include <vcl/button.hxx>
 
 class SwView;
 class SwWrtShell;
 class SwFieldMgr;
 
-class SwFieldEditDlg : public SfxSingleTabDialog
+class SwFieldEditDlg : public SfxSingleTabDialogController
 {
     SwWrtShell* pSh;
-    VclPtr<PushButton> m_pPrevBT;
-    VclPtr<PushButton> m_pNextBT;
-    VclPtr<PushButton> m_pAddressBT;
+    std::unique_ptr<weld::Button> m_xPrevBT;
+    std::unique_ptr<weld::Button> m_xNextBT;
+    std::unique_ptr<weld::Button> m_xAddressBT;
 
-    DECL_LINK(AddressHdl, Button *, void);
-    DECL_LINK(NextPrevHdl, Button *, void);
+    DECL_LINK(AddressHdl, weld::Button&, void);
+    DECL_LINK(NextPrevHdl, weld::Button&, void);
 
     void            Init();
-    VclPtr<SfxTabPage> CreatePage(sal_uInt16 nGroup);
+    SfxTabPage* CreatePage(sal_uInt16 nGroup);
 
     void EnsureSelection(SwField *pCurField, SwFieldMgr &rMgr);
 public:
 
-    SwFieldEditDlg(SwView& rVw);
+    SwFieldEditDlg(SwView const & rVw);
     virtual ~SwFieldEditDlg() override;
-    virtual void dispose() override;
 
-    DECL_LINK(OKHdl, Button*, void);
+    DECL_LINK(OKHdl, weld::Button&, void);
 
-    virtual short   Execute() override;
+    virtual short   run() override;
 
     void            EnableInsert(bool bEnable);
     void            InsertHdl();

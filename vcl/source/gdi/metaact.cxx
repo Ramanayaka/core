@@ -17,10 +17,10 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <algorithm>
 #include <stdio.h>
 #include <string.h>
 #include <osl/thread.h>
+#include <sal/log.hxx>
 #include <tools/stream.hxx>
 #include <tools/vcompat.hxx>
 #include <tools/helpers.hxx>
@@ -28,8 +28,8 @@
 #include <vcl/outdev.hxx>
 #include <vcl/metaact.hxx>
 #include <vcl/graphictools.hxx>
-#include <basegfx/matrix/b2dhommatrixtools.hxx>
 #include <unotools/fontdefs.hxx>
+#include <TypeSerializer.hxx>
 
 namespace
 {
@@ -100,20 +100,20 @@ meta_action_name(MetaActionType nMetaAction)
     default:
         // Yes, return a pointer to a static buffer. This is a very
         // local debugging output function, so no big deal.
-        static char buffer[6];
+        static char buffer[11];
         sprintf(buffer, "%u", static_cast<unsigned int>(nMetaAction));
         return buffer;
     }
 #endif
 }
 
-inline void ImplScalePoint( Point& rPt, double fScaleX, double fScaleY )
+void ImplScalePoint( Point& rPt, double fScaleX, double fScaleY )
 {
-    rPt.X() = FRound( fScaleX * rPt.X() );
-    rPt.Y() = FRound( fScaleY * rPt.Y() );
+    rPt.setX( FRound( fScaleX * rPt.X() ) );
+    rPt.setY( FRound( fScaleY * rPt.Y() ) );
 }
 
-inline void ImplScaleRect( tools::Rectangle& rRect, double fScaleX, double fScaleY )
+void ImplScaleRect( tools::Rectangle& rRect, double fScaleX, double fScaleY )
 {
     Point aTL( rRect.TopLeft() );
     Point aBR( rRect.BottomRight() );
@@ -125,13 +125,13 @@ inline void ImplScaleRect( tools::Rectangle& rRect, double fScaleX, double fScal
     rRect.Justify();
 }
 
-inline void ImplScalePoly( tools::Polygon& rPoly, double fScaleX, double fScaleY )
+void ImplScalePoly( tools::Polygon& rPoly, double fScaleX, double fScaleY )
 {
     for( sal_uInt16 i = 0, nCount = rPoly.GetSize(); i < nCount; i++ )
         ImplScalePoint( rPoly[ i ], fScaleX, fScaleY );
 }
 
-inline void ImplScaleLineInfo( LineInfo& rLineInfo, double fScaleX, double fScaleY )
+void ImplScaleLineInfo( LineInfo& rLineInfo, double fScaleX, double fScaleY )
 {
     if( !rLineInfo.IsDefault() )
     {
@@ -147,14 +147,17 @@ inline void ImplScaleLineInfo( LineInfo& rLineInfo, double fScaleX, double fScal
 } //anonymous namespace
 
 MetaAction::MetaAction() :
-    mnRefCount( 1 ),
     mnType( MetaActionType::NONE )
 {
 }
 
 MetaAction::MetaAction( MetaActionType nType ) :
-    mnRefCount( 1 ),
     mnType( nType )
+{
+}
+
+MetaAction::MetaAction( MetaAction const & rOther ) :
+    SimpleReferenceObject(), mnType( rOther.mnType )
 {
 }
 
@@ -166,7 +169,7 @@ void MetaAction::Execute( OutputDevice* )
 {
 }
 
-MetaAction* MetaAction::Clone()
+rtl::Reference<MetaAction> MetaAction::Clone()
 {
     return new MetaAction;
 }
@@ -286,11 +289,9 @@ void MetaPixelAction::Execute( OutputDevice* pOut )
     pOut->DrawPixel( maPt, maColor );
 }
 
-MetaAction* MetaPixelAction::Clone()
+rtl::Reference<MetaAction> MetaPixelAction::Clone()
 {
-    MetaAction* pClone = static_cast<MetaAction*>(new MetaPixelAction( *this ));
-    pClone->ResetRefCount();
-    return pClone;
+    return new MetaPixelAction( *this );
 }
 
 void MetaPixelAction::Move( long nHorzMove, long nVertMove )
@@ -307,15 +308,17 @@ void MetaPixelAction::Write( SvStream& rOStm, ImplMetaWriteData* pData )
 {
     MetaAction::Write(rOStm, pData);
     VersionCompat aCompat(rOStm, StreamMode::WRITE, 1);
-    WritePair( rOStm, maPt );
-    maColor.Write( rOStm );
+    TypeSerializer aSerializer(rOStm);
+    aSerializer.writePoint(maPt);
+    rOStm.WriteUInt32(maColor.mValue);
 }
 
 void MetaPixelAction::Read( SvStream& rIStm, ImplMetaReadData* )
 {
     VersionCompat aCompat(rIStm, StreamMode::READ);
-    ReadPair( rIStm, maPt );
-    maColor.Read( rIStm);
+    TypeSerializer aSerializer(rIStm);
+    aSerializer.readPoint(maPt);
+    rIStm.ReadUInt32(maColor.mValue);
 }
 
 MetaPointAction::MetaPointAction() :
@@ -335,11 +338,9 @@ void MetaPointAction::Execute( OutputDevice* pOut )
     pOut->DrawPixel( maPt );
 }
 
-MetaAction* MetaPointAction::Clone()
+rtl::Reference<MetaAction> MetaPointAction::Clone()
 {
-    MetaAction* pClone = static_cast<MetaAction*>(new MetaPointAction( *this ));
-    pClone->ResetRefCount();
-    return pClone;
+    return new MetaPointAction( *this );
 }
 
 void MetaPointAction::Move( long nHorzMove, long nVertMove )
@@ -356,13 +357,15 @@ void MetaPointAction::Write( SvStream& rOStm, ImplMetaWriteData* pData )
 {
     MetaAction::Write(rOStm, pData);
     VersionCompat aCompat(rOStm, StreamMode::WRITE, 1);
-    WritePair( rOStm, maPt );
+    TypeSerializer aSerializer(rOStm);
+    aSerializer.writePoint(maPt);
 }
 
 void MetaPointAction::Read( SvStream& rIStm, ImplMetaReadData* )
 {
     VersionCompat aCompat(rIStm, StreamMode::READ);
-    ReadPair( rIStm, maPt );
+    TypeSerializer aSerializer(rIStm);
+    aSerializer.readPoint(maPt);
 }
 
 MetaLineAction::MetaLineAction() :
@@ -394,11 +397,9 @@ void MetaLineAction::Execute( OutputDevice* pOut )
         pOut->DrawLine( maStartPt, maEndPt, maLineInfo );
 }
 
-MetaAction* MetaLineAction::Clone()
+rtl::Reference<MetaAction> MetaLineAction::Clone()
 {
-    MetaAction* pClone = static_cast<MetaAction*>(new MetaLineAction( *this ));
-    pClone->ResetRefCount();
-    return pClone;
+    return new MetaLineAction( *this );
 }
 
 void MetaLineAction::Move( long nHorzMove, long nVertMove )
@@ -419,9 +420,12 @@ void MetaLineAction::Write( SvStream& rOStm, ImplMetaWriteData* pData )
     MetaAction::Write(rOStm, pData);
     VersionCompat aCompat(rOStm, StreamMode::WRITE, 2);
 
-    WritePair( rOStm, maStartPt );
-    WritePair( rOStm, maEndPt );  // Version 1
-    WriteLineInfo( rOStm, maLineInfo );            // Version 2
+    // Version 1
+    TypeSerializer aSerializer(rOStm);
+    aSerializer.writePoint(maStartPt);
+    aSerializer.writePoint(maEndPt);
+    // Version 2
+    WriteLineInfo( rOStm, maLineInfo );
 }
 
 void MetaLineAction::Read( SvStream& rIStm, ImplMetaReadData* )
@@ -429,8 +433,9 @@ void MetaLineAction::Read( SvStream& rIStm, ImplMetaReadData* )
     VersionCompat aCompat(rIStm, StreamMode::READ);
 
     // Version 1
-    ReadPair( rIStm, maStartPt );
-    ReadPair( rIStm, maEndPt );
+    TypeSerializer aSerializer(rIStm);
+    aSerializer.readPoint(maStartPt);
+    aSerializer.readPoint(maEndPt);
 
     // Version 2
     if( aCompat.GetVersion() >= 2 )
@@ -456,11 +461,9 @@ void MetaRectAction::Execute( OutputDevice* pOut )
     pOut->DrawRect( maRect );
 }
 
-MetaAction* MetaRectAction::Clone()
+rtl::Reference<MetaAction> MetaRectAction::Clone()
 {
-    MetaAction* pClone = static_cast<MetaAction*>(new MetaRectAction( *this ));
-    pClone->ResetRefCount();
-    return pClone;
+    return new MetaRectAction( *this );
 }
 
 void MetaRectAction::Move( long nHorzMove, long nVertMove )
@@ -477,13 +480,15 @@ void MetaRectAction::Write( SvStream& rOStm, ImplMetaWriteData* pData )
 {
     MetaAction::Write(rOStm, pData);
     VersionCompat aCompat(rOStm, StreamMode::WRITE, 1);
-    WriteRectangle( rOStm, maRect );
+    TypeSerializer aSerializer(rOStm);
+    aSerializer.writeRectangle(maRect);
 }
 
 void MetaRectAction::Read( SvStream& rIStm, ImplMetaReadData* )
 {
     VersionCompat aCompat(rIStm, StreamMode::READ);
-    ReadRectangle( rIStm, maRect );
+    TypeSerializer aSerializer(rIStm);
+    aSerializer.readRectangle(maRect);
 }
 
 MetaRoundRectAction::MetaRoundRectAction() :
@@ -508,11 +513,9 @@ void MetaRoundRectAction::Execute( OutputDevice* pOut )
     pOut->DrawRect( maRect, mnHorzRound, mnVertRound );
 }
 
-MetaAction* MetaRoundRectAction::Clone()
+rtl::Reference<MetaAction> MetaRoundRectAction::Clone()
 {
-    MetaAction* pClone = static_cast<MetaAction*>(new MetaRoundRectAction( *this ));
-    pClone->ResetRefCount();
-    return pClone;
+    return new MetaRoundRectAction( *this );
 }
 
 void MetaRoundRectAction::Move( long nHorzMove, long nVertMove )
@@ -531,14 +534,17 @@ void MetaRoundRectAction::Write( SvStream& rOStm, ImplMetaWriteData* pData )
 {
     MetaAction::Write(rOStm, pData);
     VersionCompat aCompat(rOStm, StreamMode::WRITE, 1);
-    WriteRectangle( rOStm, maRect );
+    TypeSerializer aSerializer(rOStm);
+    aSerializer.writeRectangle(maRect);
     rOStm.WriteUInt32( mnHorzRound ).WriteUInt32( mnVertRound );
 }
 
 void MetaRoundRectAction::Read( SvStream& rIStm, ImplMetaReadData* )
 {
     VersionCompat aCompat(rIStm, StreamMode::READ);
-    ReadRectangle( rIStm, maRect ).ReadUInt32( mnHorzRound ).ReadUInt32( mnVertRound );
+    TypeSerializer aSerializer(rIStm);
+    aSerializer.readRectangle(maRect);
+    rIStm.ReadUInt32( mnHorzRound ).ReadUInt32( mnVertRound );
 }
 
 MetaEllipseAction::MetaEllipseAction() :
@@ -558,11 +564,9 @@ void MetaEllipseAction::Execute( OutputDevice* pOut )
     pOut->DrawEllipse( maRect );
 }
 
-MetaAction* MetaEllipseAction::Clone()
+rtl::Reference<MetaAction> MetaEllipseAction::Clone()
 {
-    MetaAction* pClone = static_cast<MetaAction*>(new MetaEllipseAction( *this ));
-    pClone->ResetRefCount();
-    return pClone;
+    return new MetaEllipseAction( *this );
 }
 
 void MetaEllipseAction::Move( long nHorzMove, long nVertMove )
@@ -579,13 +583,15 @@ void MetaEllipseAction::Write( SvStream& rOStm, ImplMetaWriteData* pData )
 {
     MetaAction::Write(rOStm, pData);
     VersionCompat aCompat(rOStm, StreamMode::WRITE, 1);
-    WriteRectangle( rOStm, maRect );
+    TypeSerializer aSerializer(rOStm);
+    aSerializer.writeRectangle(maRect);
 }
 
 void MetaEllipseAction::Read( SvStream& rIStm, ImplMetaReadData* )
 {
     VersionCompat aCompat(rIStm, StreamMode::READ);
-    ReadRectangle( rIStm, maRect );
+    TypeSerializer aSerializer(rIStm);
+    aSerializer.readRectangle(maRect);
 }
 
 MetaArcAction::MetaArcAction() :
@@ -608,11 +614,9 @@ void MetaArcAction::Execute( OutputDevice* pOut )
     pOut->DrawArc( maRect, maStartPt, maEndPt );
 }
 
-MetaAction* MetaArcAction::Clone()
+rtl::Reference<MetaAction> MetaArcAction::Clone()
 {
-    MetaAction* pClone = static_cast<MetaAction*>(new MetaArcAction( *this ));
-    pClone->ResetRefCount();
-    return pClone;
+    return new MetaArcAction( *this );
 }
 
 void MetaArcAction::Move( long nHorzMove, long nVertMove )
@@ -633,17 +637,19 @@ void MetaArcAction::Write( SvStream& rOStm, ImplMetaWriteData* pData )
 {
     MetaAction::Write(rOStm, pData);
     VersionCompat aCompat(rOStm, StreamMode::WRITE, 1);
-    WriteRectangle( rOStm, maRect );
-    WritePair( rOStm, maStartPt );
-    WritePair( rOStm, maEndPt );
+    TypeSerializer aSerializer(rOStm);
+    aSerializer.writeRectangle(maRect);
+    aSerializer.writePoint(maStartPt);
+    aSerializer.writePoint(maEndPt);
 }
 
 void MetaArcAction::Read( SvStream& rIStm, ImplMetaReadData* )
 {
     VersionCompat aCompat(rIStm, StreamMode::READ);
-    ReadRectangle( rIStm, maRect );
-    ReadPair( rIStm, maStartPt );
-    ReadPair( rIStm, maEndPt );
+    TypeSerializer aSerializer(rIStm);
+    aSerializer.readRectangle(maRect);
+    aSerializer.readPoint(maStartPt);
+    aSerializer.readPoint(maEndPt);
 }
 
 MetaPieAction::MetaPieAction() :
@@ -666,11 +672,9 @@ void MetaPieAction::Execute( OutputDevice* pOut )
     pOut->DrawPie( maRect, maStartPt, maEndPt );
 }
 
-MetaAction* MetaPieAction::Clone()
+rtl::Reference<MetaAction> MetaPieAction::Clone()
 {
-    MetaAction* pClone = static_cast<MetaAction*>(new MetaPieAction( *this ));
-    pClone->ResetRefCount();
-    return pClone;
+    return new MetaPieAction( *this );
 }
 
 void MetaPieAction::Move( long nHorzMove, long nVertMove )
@@ -691,17 +695,19 @@ void MetaPieAction::Write( SvStream& rOStm, ImplMetaWriteData* pData )
 {
     MetaAction::Write(rOStm, pData);
     VersionCompat aCompat(rOStm, StreamMode::WRITE, 1);
-    WriteRectangle( rOStm, maRect );
-    WritePair( rOStm, maStartPt );
-    WritePair( rOStm, maEndPt );
+    TypeSerializer aSerializer(rOStm);
+    aSerializer.writeRectangle(maRect);
+    aSerializer.writePoint(maStartPt);
+    aSerializer.writePoint(maEndPt);
 }
 
 void MetaPieAction::Read( SvStream& rIStm, ImplMetaReadData* )
 {
     VersionCompat aCompat(rIStm, StreamMode::READ);
-    ReadRectangle( rIStm, maRect );
-    ReadPair( rIStm, maStartPt );
-    ReadPair( rIStm, maEndPt );
+    TypeSerializer aSerializer(rIStm);
+    aSerializer.readRectangle(maRect);
+    aSerializer.readPoint(maStartPt);
+    aSerializer.readPoint(maEndPt);
 }
 
 MetaChordAction::MetaChordAction() :
@@ -724,11 +730,9 @@ void MetaChordAction::Execute( OutputDevice* pOut )
     pOut->DrawChord( maRect, maStartPt, maEndPt );
 }
 
-MetaAction* MetaChordAction::Clone()
+rtl::Reference<MetaAction> MetaChordAction::Clone()
 {
-    MetaAction* pClone = static_cast<MetaAction*>(new MetaChordAction( *this ));
-    pClone->ResetRefCount();
-    return pClone;
+    return new MetaChordAction( *this );
 }
 
 void MetaChordAction::Move( long nHorzMove, long nVertMove )
@@ -749,17 +753,19 @@ void MetaChordAction::Write( SvStream& rOStm, ImplMetaWriteData* pData )
 {
     MetaAction::Write(rOStm, pData);
     VersionCompat aCompat(rOStm, StreamMode::WRITE, 1);
-    WriteRectangle( rOStm, maRect );
-    WritePair( rOStm, maStartPt );
-    WritePair( rOStm, maEndPt );
+    TypeSerializer aSerializer(rOStm);
+    aSerializer.writeRectangle(maRect);
+    aSerializer.writePoint(maStartPt);
+    aSerializer.writePoint(maEndPt);
 }
 
 void MetaChordAction::Read( SvStream& rIStm, ImplMetaReadData* )
 {
     VersionCompat aCompat(rIStm, StreamMode::READ);
-    ReadRectangle( rIStm, maRect );
-    ReadPair( rIStm, maStartPt );
-    ReadPair( rIStm, maEndPt );
+    TypeSerializer aSerializer(rIStm);
+    aSerializer.readRectangle(maRect);
+    aSerializer.readPoint(maStartPt);
+    aSerializer.readPoint(maEndPt);
 }
 
 MetaPolyLineAction::MetaPolyLineAction() :
@@ -788,11 +794,9 @@ void MetaPolyLineAction::Execute( OutputDevice* pOut )
         pOut->DrawPolyLine( maPoly, maLineInfo );
 }
 
-MetaAction* MetaPolyLineAction::Clone()
+rtl::Reference<MetaAction> MetaPolyLineAction::Clone()
 {
-    MetaAction* pClone = static_cast<MetaAction*>(new MetaPolyLineAction( *this ));
-    pClone->ResetRefCount();
-    return pClone;
+    return new MetaPolyLineAction( *this );
 }
 
 void MetaPolyLineAction::Move( long nHorzMove, long nVertMove )
@@ -859,11 +863,9 @@ void MetaPolygonAction::Execute( OutputDevice* pOut )
     pOut->DrawPolygon( maPoly );
 }
 
-MetaAction* MetaPolygonAction::Clone()
+rtl::Reference<MetaAction> MetaPolygonAction::Clone()
 {
-    MetaAction* pClone = static_cast<MetaAction*>(new MetaPolygonAction( *this ));
-    pClone->ResetRefCount();
-    return pClone;
+    return new MetaPolygonAction( *this );
 }
 
 void MetaPolygonAction::Move( long nHorzMove, long nVertMove )
@@ -923,11 +925,9 @@ void MetaPolyPolygonAction::Execute( OutputDevice* pOut )
     pOut->DrawPolyPolygon( maPolyPoly );
 }
 
-MetaAction* MetaPolyPolygonAction::Clone()
+rtl::Reference<MetaAction> MetaPolyPolygonAction::Clone()
 {
-    MetaAction* pClone = static_cast<MetaAction*>(new MetaPolyPolygonAction( *this ));
-    pClone->ResetRefCount();
-    return pClone;
+    return new MetaPolyPolygonAction( *this );
 }
 
 void MetaPolyPolygonAction::Move( long nHorzMove, long nVertMove )
@@ -979,32 +979,32 @@ void MetaPolyPolygonAction::Read( SvStream& rIStm, ImplMetaReadData* )
     VersionCompat aCompat(rIStm, StreamMode::READ);
     ReadPolyPolygon( rIStm, maPolyPoly );                // Version 1
 
-    if ( aCompat.GetVersion() >= 2 )    // Version 2
+    if ( aCompat.GetVersion() < 2 )    // Version 2
+        return;
+
+    sal_uInt16 nNumberOfComplexPolygons(0);
+    rIStm.ReadUInt16( nNumberOfComplexPolygons );
+    const size_t nMinRecordSize = sizeof(sal_uInt16);
+    const size_t nMaxRecords = rIStm.remainingSize() / nMinRecordSize;
+    if (nNumberOfComplexPolygons > nMaxRecords)
     {
-        sal_uInt16 nNumberOfComplexPolygons(0);
-        rIStm.ReadUInt16( nNumberOfComplexPolygons );
-        const size_t nMinRecordSize = sizeof(sal_uInt16);
-        const size_t nMaxRecords = rIStm.remainingSize() / nMinRecordSize;
-        if (nNumberOfComplexPolygons > nMaxRecords)
+        SAL_WARN("vcl.gdi", "Parsing error: " << nMaxRecords <<
+                 " max possible entries, but " << nNumberOfComplexPolygons << " claimed, truncating");
+        nNumberOfComplexPolygons = nMaxRecords;
+    }
+    for (sal_uInt16 i = 0; i < nNumberOfComplexPolygons; ++i)
+    {
+        sal_uInt16 nIndex(0);
+        rIStm.ReadUInt16( nIndex );
+        tools::Polygon aPoly;
+        aPoly.Read( rIStm );
+        if (nIndex >= maPolyPoly.Count())
         {
-            SAL_WARN("vcl.gdi", "Parsing error: " << nMaxRecords <<
-                     " max possible entries, but " << nNumberOfComplexPolygons << " claimed, truncating");
-            nNumberOfComplexPolygons = nMaxRecords;
+            SAL_WARN("vcl.gdi", "svm contains polygon index " << nIndex
+                     << " outside possible range " << maPolyPoly.Count());
+            continue;
         }
-        for (sal_uInt16 i = 0; i < nNumberOfComplexPolygons; ++i)
-        {
-            sal_uInt16 nIndex(0);
-            rIStm.ReadUInt16( nIndex );
-            tools::Polygon aPoly;
-            aPoly.Read( rIStm );
-            if (nIndex >= maPolyPoly.Count())
-            {
-                SAL_WARN("vcl.gdi", "svm contains polygon index " << nIndex
-                         << " outside possible range " << maPolyPoly.Count());
-                continue;
-            }
-            maPolyPoly.Replace( aPoly, nIndex );
-        }
+        maPolyPoly.Replace( aPoly, nIndex );
     }
 }
 
@@ -1031,11 +1031,9 @@ void MetaTextAction::Execute( OutputDevice* pOut )
     pOut->DrawText( maPt, maStr, mnIndex, mnLen );
 }
 
-MetaAction* MetaTextAction::Clone()
+rtl::Reference<MetaAction> MetaTextAction::Clone()
 {
-    MetaAction* pClone = static_cast<MetaAction*>(new MetaTextAction( *this ));
-    pClone->ResetRefCount();
-    return pClone;
+    return new MetaTextAction( *this );
 }
 
 void MetaTextAction::Move( long nHorzMove, long nVertMove )
@@ -1052,7 +1050,8 @@ void MetaTextAction::Write( SvStream& rOStm, ImplMetaWriteData* pData )
 {
     MetaAction::Write(rOStm, pData);
     VersionCompat aCompat(rOStm, StreamMode::WRITE, 2);
-    WritePair( rOStm, maPt );
+    TypeSerializer aSerializer(rOStm);
+    aSerializer.writePoint(maPt);
     rOStm.WriteUniOrByteString( maStr, pData->meActualCharSet );
     rOStm.WriteUInt16(mnIndex);
     rOStm.WriteUInt16(mnLen);
@@ -1063,7 +1062,8 @@ void MetaTextAction::Write( SvStream& rOStm, ImplMetaWriteData* pData )
 void MetaTextAction::Read( SvStream& rIStm, ImplMetaReadData* pData )
 {
     VersionCompat aCompat(rIStm, StreamMode::READ);
-    ReadPair( rIStm, maPt );
+    TypeSerializer aSerializer(rIStm);
+    aSerializer.readPoint(maPt);
     maStr = rIStm.ReadUniOrByteString(pData->meActualCharSet);
     sal_uInt16 nTmpIndex(0);
     rIStm.ReadUInt16(nTmpIndex);
@@ -1078,7 +1078,6 @@ void MetaTextAction::Read( SvStream& rIStm, ImplMetaReadData* pData )
 
 MetaTextArrayAction::MetaTextArrayAction() :
     MetaAction  ( MetaActionType::TEXTARRAY ),
-    mpDXAry     ( nullptr ),
     mnIndex     ( 0 ),
     mnLen       ( 0 )
 {}
@@ -1126,11 +1125,9 @@ void MetaTextArrayAction::Execute( OutputDevice* pOut )
     pOut->DrawTextArray( maStartPt, maStr, mpDXAry.get(), mnIndex, mnLen );
 }
 
-MetaAction* MetaTextArrayAction::Clone()
+rtl::Reference<MetaAction> MetaTextArrayAction::Clone()
 {
-    MetaAction* pClone = static_cast<MetaAction*>(new MetaTextArrayAction( *this ));
-    pClone->ResetRefCount();
-    return pClone;
+    return new MetaTextArrayAction( *this );
 }
 
 void MetaTextArrayAction::Move( long nHorzMove, long nVertMove )
@@ -1155,7 +1152,8 @@ void MetaTextArrayAction::Write( SvStream& rOStm, ImplMetaWriteData* pData )
 
     MetaAction::Write(rOStm, pData);
     VersionCompat aCompat(rOStm, StreamMode::WRITE, 2);
-    WritePair( rOStm, maStartPt );
+    TypeSerializer aSerializer(rOStm);
+    aSerializer.writePoint(maStartPt);
     rOStm.WriteUniOrByteString( maStr, pData->meActualCharSet );
     rOStm.WriteUInt16(mnIndex);
     rOStm.WriteUInt16(mnLen);
@@ -1172,7 +1170,8 @@ void MetaTextArrayAction::Read( SvStream& rIStm, ImplMetaReadData* pData )
     mpDXAry.reset();
 
     VersionCompat aCompat(rIStm, StreamMode::READ);
-    ReadPair( rIStm, maStartPt );
+    TypeSerializer aSerializer(rIStm);
+    aSerializer.readPoint(maStartPt);
     maStr = rIStm.ReadUniOrByteString(pData->meActualCharSet);
     sal_uInt16 nTmpIndex(0);
     rIStm.ReadUInt16(nTmpIndex);
@@ -1257,11 +1256,9 @@ void MetaStretchTextAction::Execute( OutputDevice* pOut )
     pOut->DrawStretchText( maPt, mnWidth, maStr, mnIndex, mnLen );
 }
 
-MetaAction* MetaStretchTextAction::Clone()
+rtl::Reference<MetaAction> MetaStretchTextAction::Clone()
 {
-    MetaAction* pClone = static_cast<MetaAction*>(new MetaStretchTextAction( *this ));
-    pClone->ResetRefCount();
-    return pClone;
+    return new MetaStretchTextAction( *this );
 }
 
 void MetaStretchTextAction::Move( long nHorzMove, long nVertMove )
@@ -1272,14 +1269,15 @@ void MetaStretchTextAction::Move( long nHorzMove, long nVertMove )
 void MetaStretchTextAction::Scale( double fScaleX, double fScaleY )
 {
     ImplScalePoint( maPt, fScaleX, fScaleY );
-    mnWidth = (sal_uLong)FRound( mnWidth * fabs(fScaleX) );
+    mnWidth = static_cast<sal_uLong>(FRound( mnWidth * fabs(fScaleX) ));
 }
 
 void MetaStretchTextAction::Write( SvStream& rOStm, ImplMetaWriteData* pData )
 {
     MetaAction::Write(rOStm, pData);
     VersionCompat aCompat(rOStm, StreamMode::WRITE, 2);
-    WritePair( rOStm, maPt );
+    TypeSerializer aSerializer(rOStm);
+    aSerializer.writePoint(maPt);
     rOStm.WriteUniOrByteString( maStr, pData->meActualCharSet );
     rOStm.WriteUInt32( mnWidth );
     rOStm.WriteUInt16( mnIndex );
@@ -1291,7 +1289,8 @@ void MetaStretchTextAction::Write( SvStream& rOStm, ImplMetaWriteData* pData )
 void MetaStretchTextAction::Read( SvStream& rIStm, ImplMetaReadData* pData )
 {
     VersionCompat aCompat(rIStm, StreamMode::READ);
-    ReadPair( rIStm, maPt );
+    TypeSerializer aSerializer(rIStm);
+    aSerializer.readPoint(maPt);
     maStr = rIStm.ReadUniOrByteString(pData->meActualCharSet);
     rIStm.ReadUInt32( mnWidth );
     sal_uInt16 nTmpIndex(0);
@@ -1326,11 +1325,9 @@ void MetaTextRectAction::Execute( OutputDevice* pOut )
     pOut->DrawText( maRect, maStr, mnStyle );
 }
 
-MetaAction* MetaTextRectAction::Clone()
+rtl::Reference<MetaAction> MetaTextRectAction::Clone()
 {
-    MetaAction* pClone = static_cast<MetaAction*>(new MetaTextRectAction( *this ));
-    pClone->ResetRefCount();
-    return pClone;
+    return new MetaTextRectAction( *this );
 }
 
 void MetaTextRectAction::Move( long nHorzMove, long nVertMove )
@@ -1347,7 +1344,8 @@ void MetaTextRectAction::Write( SvStream& rOStm, ImplMetaWriteData* pData )
 {
     MetaAction::Write(rOStm, pData);
     VersionCompat aCompat(rOStm, StreamMode::WRITE, 2);
-    WriteRectangle( rOStm, maRect );
+    TypeSerializer aSerializer(rOStm);
+    aSerializer.writeRectangle(maRect);
     rOStm.WriteUniOrByteString( maStr, pData->meActualCharSet );
     rOStm.WriteUInt16( static_cast<sal_uInt16>(mnStyle) );
 
@@ -1357,7 +1355,8 @@ void MetaTextRectAction::Write( SvStream& rOStm, ImplMetaWriteData* pData )
 void MetaTextRectAction::Read( SvStream& rIStm, ImplMetaReadData* pData )
 {
     VersionCompat aCompat(rIStm, StreamMode::READ);
-    ReadRectangle( rIStm, maRect );
+    TypeSerializer aSerializer(rIStm);
+    aSerializer.readRectangle(maRect);
     maStr = rIStm.ReadUniOrByteString(pData->meActualCharSet);
     sal_uInt16 nTmp;
     rIStm  .ReadUInt16( nTmp );
@@ -1395,11 +1394,9 @@ void MetaTextLineAction::Execute( OutputDevice* pOut )
     pOut->DrawTextLine( maPos, mnWidth, meStrikeout, meUnderline, meOverline );
 }
 
-MetaAction* MetaTextLineAction::Clone()
+rtl::Reference<MetaAction> MetaTextLineAction::Clone()
 {
-    MetaAction* pClone = static_cast<MetaAction*>(new MetaTextLineAction( *this ));
-    pClone->ResetRefCount();
-    return pClone;
+    return new MetaTextLineAction( *this );
 }
 
 void MetaTextLineAction::Move( long nHorzMove, long nVertMove )
@@ -1418,7 +1415,9 @@ void MetaTextLineAction::Write( SvStream& rOStm, ImplMetaWriteData* pData )
     MetaAction::Write(rOStm, pData);
     VersionCompat aCompat(rOStm, StreamMode::WRITE, 2);
 
-    WritePair( rOStm, maPos );
+    TypeSerializer aSerializer(rOStm);
+    aSerializer.writePoint(maPos);
+
     rOStm.WriteInt32( mnWidth );
     rOStm.WriteUInt32( meStrikeout );
     rOStm.WriteUInt32( meUnderline );
@@ -1431,23 +1430,24 @@ void MetaTextLineAction::Read( SvStream& rIStm, ImplMetaReadData* )
     VersionCompat aCompat(rIStm, StreamMode::READ);
 
     sal_Int32 nTempWidth(0);
-    ReadPair( rIStm, maPos );
+    TypeSerializer aSerializer(rIStm);
+    aSerializer.readPoint(maPos);
     rIStm.ReadInt32(nTempWidth);
     mnWidth = nTempWidth;
 
     sal_uInt32 nTempStrikeout(0);
     rIStm.ReadUInt32( nTempStrikeout );
-    meStrikeout = (FontStrikeout)nTempStrikeout;
+    meStrikeout = static_cast<FontStrikeout>(nTempStrikeout);
 
     sal_uInt32 nTempUnderline(0);
     rIStm.ReadUInt32( nTempUnderline );
-    meUnderline = (FontLineStyle)nTempUnderline;
+    meUnderline = static_cast<FontLineStyle>(nTempUnderline);
 
     if (aCompat.GetVersion() >= 2)
     {
         sal_uInt32 nTempOverline(0);
         rIStm.ReadUInt32(nTempOverline);
-        meOverline = (FontLineStyle)nTempOverline;
+        meOverline = static_cast<FontLineStyle>(nTempOverline);
     }
 }
 
@@ -1469,11 +1469,9 @@ void MetaBmpAction::Execute( OutputDevice* pOut )
     pOut->DrawBitmap( maPt, maBmp );
 }
 
-MetaAction* MetaBmpAction::Clone()
+rtl::Reference<MetaAction> MetaBmpAction::Clone()
 {
-    MetaAction* pClone = static_cast<MetaAction*>(new MetaBmpAction( *this ));
-    pClone->ResetRefCount();
-    return pClone;
+    return new MetaBmpAction( *this );
 }
 
 void MetaBmpAction::Move( long nHorzMove, long nVertMove )
@@ -1491,9 +1489,10 @@ void MetaBmpAction::Write( SvStream& rOStm, ImplMetaWriteData* pData )
     if( !!maBmp )
     {
         MetaAction::Write(rOStm, pData);
-    VersionCompat aCompat(rOStm, StreamMode::WRITE, 1);
+        VersionCompat aCompat(rOStm, StreamMode::WRITE, 1);
         WriteDIB(maBmp, rOStm, false, true);
-        WritePair( rOStm, maPt );
+        TypeSerializer aSerializer(rOStm);
+        aSerializer.writePoint(maPt);
     }
 }
 
@@ -1501,7 +1500,8 @@ void MetaBmpAction::Read( SvStream& rIStm, ImplMetaReadData* )
 {
     VersionCompat aCompat(rIStm, StreamMode::READ);
     ReadDIB(maBmp, rIStm, true);
-    ReadPair( rIStm, maPt );
+    TypeSerializer aSerializer(rIStm);
+    aSerializer.readPoint(maPt);
 }
 
 MetaBmpScaleAction::MetaBmpScaleAction() :
@@ -1524,11 +1524,9 @@ void MetaBmpScaleAction::Execute( OutputDevice* pOut )
     pOut->DrawBitmap( maPt, maSz, maBmp );
 }
 
-MetaAction* MetaBmpScaleAction::Clone()
+rtl::Reference<MetaAction> MetaBmpScaleAction::Clone()
 {
-    MetaAction* pClone = static_cast<MetaAction*>(new MetaBmpScaleAction( *this ));
-    pClone->ResetRefCount();
-    return pClone;
+    return new MetaBmpScaleAction( *this );
 }
 
 void MetaBmpScaleAction::Move( long nHorzMove, long nVertMove )
@@ -1551,8 +1549,10 @@ void MetaBmpScaleAction::Write( SvStream& rOStm, ImplMetaWriteData* pData )
         MetaAction::Write(rOStm, pData);
         VersionCompat aCompat(rOStm, StreamMode::WRITE, 1);
         WriteDIB(maBmp, rOStm, false, true);
-        WritePair( rOStm, maPt );
-        WritePair( rOStm, maSz );
+        TypeSerializer aSerializer(rOStm);
+        aSerializer.writePoint(maPt);
+        aSerializer.writeSize(maSz);
+
     }
 }
 
@@ -1560,8 +1560,9 @@ void MetaBmpScaleAction::Read( SvStream& rIStm, ImplMetaReadData* )
 {
     VersionCompat aCompat(rIStm, StreamMode::READ);
     ReadDIB(maBmp, rIStm, true);
-    ReadPair( rIStm, maPt );
-    ReadPair( rIStm, maSz );
+    TypeSerializer aSerializer(rIStm);
+    aSerializer.readPoint(maPt);
+    aSerializer.readSize(maSz);
 }
 
 MetaBmpScalePartAction::MetaBmpScalePartAction() :
@@ -1587,11 +1588,9 @@ void MetaBmpScalePartAction::Execute( OutputDevice* pOut )
     pOut->DrawBitmap( maDstPt, maDstSz, maSrcPt, maSrcSz, maBmp );
 }
 
-MetaAction* MetaBmpScalePartAction::Clone()
+rtl::Reference<MetaAction> MetaBmpScalePartAction::Clone()
 {
-    MetaAction* pClone = static_cast<MetaAction*>(new MetaBmpScalePartAction( *this ));
-    pClone->ResetRefCount();
-    return pClone;
+    return new MetaBmpScalePartAction( *this );
 }
 
 void MetaBmpScalePartAction::Move( long nHorzMove, long nVertMove )
@@ -1614,10 +1613,12 @@ void MetaBmpScalePartAction::Write( SvStream& rOStm, ImplMetaWriteData* pData )
         MetaAction::Write(rOStm, pData);
         VersionCompat aCompat(rOStm, StreamMode::WRITE, 1);
         WriteDIB(maBmp, rOStm, false, true);
-        WritePair( rOStm, maDstPt );
-        WritePair( rOStm, maDstSz );
-        WritePair( rOStm, maSrcPt );
-        WritePair( rOStm, maSrcSz );
+        TypeSerializer aSerializer(rOStm);
+        aSerializer.writePoint(maDstPt);
+        aSerializer.writeSize(maDstSz);
+        aSerializer.writePoint(maSrcPt);
+        aSerializer.writeSize(maSrcSz);
+
     }
 }
 
@@ -1625,10 +1626,11 @@ void MetaBmpScalePartAction::Read( SvStream& rIStm, ImplMetaReadData* )
 {
     VersionCompat aCompat(rIStm, StreamMode::READ);
     ReadDIB(maBmp, rIStm, true);
-    ReadPair( rIStm, maDstPt );
-    ReadPair( rIStm, maDstSz );
-    ReadPair( rIStm, maSrcPt );
-    ReadPair( rIStm, maSrcSz );
+    TypeSerializer aSerializer(rIStm);
+    aSerializer.readPoint(maDstPt);
+    aSerializer.readSize(maDstSz);
+    aSerializer.readPoint(maSrcPt);
+    aSerializer.readSize(maSrcSz);
 }
 
 MetaBmpExAction::MetaBmpExAction() :
@@ -1649,11 +1651,9 @@ void MetaBmpExAction::Execute( OutputDevice* pOut )
     pOut->DrawBitmapEx( maPt, maBmpEx );
 }
 
-MetaAction* MetaBmpExAction::Clone()
+rtl::Reference<MetaAction> MetaBmpExAction::Clone()
 {
-    MetaBmpExAction* pClone = new MetaBmpExAction( *this );
-    pClone->ResetRefCount();
-    return pClone;
+    return new MetaBmpExAction( *this );
 }
 
 void MetaBmpExAction::Move( long nHorzMove, long nVertMove )
@@ -1673,7 +1673,8 @@ void MetaBmpExAction::Write( SvStream& rOStm, ImplMetaWriteData* pData )
         MetaAction::Write(rOStm, pData);
         VersionCompat aCompat(rOStm, StreamMode::WRITE, 1);
         WriteDIBBitmapEx(maBmpEx, rOStm);
-        WritePair( rOStm, maPt );
+        TypeSerializer aSerializer(rOStm);
+        aSerializer.writePoint(maPt);
     }
 }
 
@@ -1681,7 +1682,8 @@ void MetaBmpExAction::Read( SvStream& rIStm, ImplMetaReadData* )
 {
     VersionCompat aCompat(rIStm, StreamMode::READ);
     ReadDIBBitmapEx(maBmpEx, rIStm);
-    ReadPair( rIStm, maPt );
+    TypeSerializer aSerializer(rIStm);
+    aSerializer.readPoint(maPt);
 }
 
 MetaBmpExScaleAction::MetaBmpExScaleAction() :
@@ -1704,11 +1706,9 @@ void MetaBmpExScaleAction::Execute( OutputDevice* pOut )
     pOut->DrawBitmapEx( maPt, maSz, maBmpEx );
 }
 
-MetaAction* MetaBmpExScaleAction::Clone()
+rtl::Reference<MetaAction> MetaBmpExScaleAction::Clone()
 {
-    MetaAction* pClone = static_cast<MetaAction*>(new MetaBmpExScaleAction( *this ));
-    pClone->ResetRefCount();
-    return pClone;
+    return new MetaBmpExScaleAction( *this );
 }
 
 void MetaBmpExScaleAction::Move( long nHorzMove, long nVertMove )
@@ -1731,8 +1731,9 @@ void MetaBmpExScaleAction::Write( SvStream& rOStm, ImplMetaWriteData* pData )
         MetaAction::Write(rOStm, pData);
         VersionCompat aCompat(rOStm, StreamMode::WRITE, 1);
         WriteDIBBitmapEx(maBmpEx, rOStm);
-        WritePair( rOStm, maPt );
-        WritePair( rOStm, maSz );
+        TypeSerializer aSerializer(rOStm);
+        aSerializer.writePoint(maPt);
+        aSerializer.writeSize(maSz);
     }
 }
 
@@ -1740,8 +1741,9 @@ void MetaBmpExScaleAction::Read( SvStream& rIStm, ImplMetaReadData* )
 {
     VersionCompat aCompat(rIStm, StreamMode::READ);
     ReadDIBBitmapEx(maBmpEx, rIStm);
-    ReadPair( rIStm, maPt );
-    ReadPair( rIStm, maSz );
+    TypeSerializer aSerializer(rIStm);
+    aSerializer.readPoint(maPt);
+    aSerializer.readSize(maSz);
 }
 
 MetaBmpExScalePartAction::MetaBmpExScalePartAction() :
@@ -1767,11 +1769,9 @@ void MetaBmpExScalePartAction::Execute( OutputDevice* pOut )
     pOut->DrawBitmapEx( maDstPt, maDstSz, maSrcPt, maSrcSz, maBmpEx );
 }
 
-MetaAction* MetaBmpExScalePartAction::Clone()
+rtl::Reference<MetaAction> MetaBmpExScalePartAction::Clone()
 {
-    MetaAction* pClone = static_cast<MetaAction*>(new MetaBmpExScalePartAction( *this ));
-    pClone->ResetRefCount();
-    return pClone;
+    return new MetaBmpExScalePartAction( *this );
 }
 
 void MetaBmpExScalePartAction::Move( long nHorzMove, long nVertMove )
@@ -1794,10 +1794,11 @@ void MetaBmpExScalePartAction::Write( SvStream& rOStm, ImplMetaWriteData* pData 
         MetaAction::Write(rOStm, pData);
         VersionCompat aCompat(rOStm, StreamMode::WRITE, 1);
         WriteDIBBitmapEx(maBmpEx, rOStm);
-        WritePair( rOStm, maDstPt );
-        WritePair( rOStm, maDstSz );
-        WritePair( rOStm, maSrcPt );
-        WritePair( rOStm, maSrcSz );
+        TypeSerializer aSerializer(rOStm);
+        aSerializer.writePoint(maDstPt);
+        aSerializer.writeSize(maDstSz);
+        aSerializer.writePoint(maSrcPt);
+        aSerializer.writeSize(maSrcSz);
     }
 }
 
@@ -1805,10 +1806,11 @@ void MetaBmpExScalePartAction::Read( SvStream& rIStm, ImplMetaReadData* )
 {
     VersionCompat aCompat(rIStm, StreamMode::READ);
     ReadDIBBitmapEx(maBmpEx, rIStm);
-    ReadPair( rIStm, maDstPt );
-    ReadPair( rIStm, maDstSz );
-    ReadPair( rIStm, maSrcPt );
-    ReadPair( rIStm, maSrcSz );
+    TypeSerializer aSerializer(rIStm);
+    aSerializer.readPoint(maDstPt);
+    aSerializer.readSize(maDstSz);
+    aSerializer.readPoint(maSrcPt);
+    aSerializer.readSize(maSrcSz);
 }
 
 MetaMaskAction::MetaMaskAction() :
@@ -1832,11 +1834,9 @@ void MetaMaskAction::Execute( OutputDevice* pOut )
     pOut->DrawMask( maPt, maBmp, maColor );
 }
 
-MetaAction* MetaMaskAction::Clone()
+rtl::Reference<MetaAction> MetaMaskAction::Clone()
 {
-    MetaAction* pClone = static_cast<MetaAction*>(new MetaMaskAction( *this ));
-    pClone->ResetRefCount();
-    return pClone;
+    return new MetaMaskAction( *this );
 }
 
 void MetaMaskAction::Move( long nHorzMove, long nVertMove )
@@ -1856,7 +1856,8 @@ void MetaMaskAction::Write( SvStream& rOStm, ImplMetaWriteData* pData )
         MetaAction::Write(rOStm, pData);
         VersionCompat aCompat(rOStm, StreamMode::WRITE, 1);
         WriteDIB(maBmp, rOStm, false, true);
-        WritePair( rOStm, maPt );
+        TypeSerializer aSerializer(rOStm);
+        aSerializer.writePoint(maPt);
     }
 }
 
@@ -1864,7 +1865,8 @@ void MetaMaskAction::Read( SvStream& rIStm, ImplMetaReadData* )
 {
     VersionCompat aCompat(rIStm, StreamMode::READ);
     ReadDIB(maBmp, rIStm, true);
-    ReadPair( rIStm, maPt );
+    TypeSerializer aSerializer(rIStm);
+    aSerializer.readPoint(maPt);
 }
 
 MetaMaskScaleAction::MetaMaskScaleAction() :
@@ -1889,11 +1891,9 @@ void MetaMaskScaleAction::Execute( OutputDevice* pOut )
     pOut->DrawMask( maPt, maSz, maBmp, maColor );
 }
 
-MetaAction* MetaMaskScaleAction::Clone()
+rtl::Reference<MetaAction> MetaMaskScaleAction::Clone()
 {
-    MetaAction* pClone = static_cast<MetaAction*>(new MetaMaskScaleAction( *this ));
-    pClone->ResetRefCount();
-    return pClone;
+    return new MetaMaskScaleAction( *this );
 }
 
 void MetaMaskScaleAction::Move( long nHorzMove, long nVertMove )
@@ -1916,8 +1916,9 @@ void MetaMaskScaleAction::Write( SvStream& rOStm, ImplMetaWriteData* pData )
         MetaAction::Write(rOStm, pData);
         VersionCompat aCompat(rOStm, StreamMode::WRITE, 1);
         WriteDIB(maBmp, rOStm, false, true);
-        WritePair( rOStm, maPt );
-        WritePair( rOStm, maSz );
+        TypeSerializer aSerializer(rOStm);
+        aSerializer.writePoint(maPt);
+        aSerializer.writeSize(maSz);
     }
 }
 
@@ -1925,8 +1926,9 @@ void MetaMaskScaleAction::Read( SvStream& rIStm, ImplMetaReadData* )
 {
     VersionCompat aCompat(rIStm, StreamMode::READ);
     ReadDIB(maBmp, rIStm, true);
-    ReadPair( rIStm, maPt );
-    ReadPair( rIStm, maSz );
+    TypeSerializer aSerializer(rIStm);
+    aSerializer.readPoint(maPt);
+    aSerializer.readSize(maSz);
 }
 
 MetaMaskScalePartAction::MetaMaskScalePartAction() :
@@ -1954,11 +1956,9 @@ void MetaMaskScalePartAction::Execute( OutputDevice* pOut )
     pOut->DrawMask( maDstPt, maDstSz, maSrcPt, maSrcSz, maBmp, maColor, MetaActionType::MASKSCALE );
 }
 
-MetaAction* MetaMaskScalePartAction::Clone()
+rtl::Reference<MetaAction> MetaMaskScalePartAction::Clone()
 {
-    MetaAction* pClone = static_cast<MetaAction*>(new MetaMaskScalePartAction( *this ));
-    pClone->ResetRefCount();
-    return pClone;
+    return new MetaMaskScalePartAction( *this );
 }
 
 void MetaMaskScalePartAction::Move( long nHorzMove, long nVertMove )
@@ -1981,11 +1981,12 @@ void MetaMaskScalePartAction::Write( SvStream& rOStm, ImplMetaWriteData* pData )
         MetaAction::Write(rOStm, pData);
         VersionCompat aCompat(rOStm, StreamMode::WRITE, 1);
         WriteDIB(maBmp, rOStm, false, true);
-        maColor.Write( rOStm );
-        WritePair( rOStm, maDstPt );
-        WritePair( rOStm, maDstSz );
-        WritePair( rOStm, maSrcPt );
-        WritePair( rOStm, maSrcSz );
+        rOStm.WriteUInt32(maColor.mValue);
+        TypeSerializer aSerializer(rOStm);
+        aSerializer.writePoint(maDstPt);
+        aSerializer.writeSize(maDstSz);
+        aSerializer.writePoint(maSrcPt);
+        aSerializer.writeSize(maSrcSz);
     }
 }
 
@@ -1993,11 +1994,12 @@ void MetaMaskScalePartAction::Read( SvStream& rIStm, ImplMetaReadData* )
 {
     VersionCompat aCompat(rIStm, StreamMode::READ);
     ReadDIB(maBmp, rIStm, true);
-    maColor.Read( rIStm );
-    ReadPair( rIStm, maDstPt );
-    ReadPair( rIStm, maDstSz );
-    ReadPair( rIStm, maSrcPt );
-    ReadPair( rIStm, maSrcSz );
+    rIStm.ReadUInt32(maColor.mValue);
+    TypeSerializer aSerializer(rIStm);
+    aSerializer.readPoint(maDstPt);
+    aSerializer.readSize(maDstSz);
+    aSerializer.readPoint(maSrcPt);
+    aSerializer.readSize(maSrcSz);
 }
 
 MetaGradientAction::MetaGradientAction() :
@@ -2018,11 +2020,9 @@ void MetaGradientAction::Execute( OutputDevice* pOut )
     pOut->DrawGradient( maRect, maGradient );
 }
 
-MetaAction* MetaGradientAction::Clone()
+rtl::Reference<MetaAction> MetaGradientAction::Clone()
 {
-    MetaAction* pClone = static_cast<MetaAction*>(new MetaGradientAction( *this ));
-    pClone->ResetRefCount();
-    return pClone;
+    return new MetaGradientAction( *this );
 }
 
 void MetaGradientAction::Move( long nHorzMove, long nVertMove )
@@ -2039,15 +2039,17 @@ void MetaGradientAction::Write( SvStream& rOStm, ImplMetaWriteData* pData )
 {
     MetaAction::Write(rOStm, pData);
     VersionCompat aCompat(rOStm, StreamMode::WRITE, 1);
-    WriteRectangle( rOStm, maRect );
-    WriteGradient( rOStm, maGradient );
+    TypeSerializer aSerializer(rOStm);
+    aSerializer.writeRectangle(maRect);
+    aSerializer.writeGradient(maGradient);
 }
 
 void MetaGradientAction::Read( SvStream& rIStm, ImplMetaReadData* )
 {
     VersionCompat aCompat(rIStm, StreamMode::READ);
-    ReadRectangle( rIStm, maRect );
-    ReadGradient( rIStm, maGradient );
+    TypeSerializer aSerializer(rIStm);
+    aSerializer.readRectangle(maRect);
+    aSerializer.readGradient(maGradient);
 }
 
 MetaGradientExAction::MetaGradientExAction() :
@@ -2067,16 +2069,13 @@ void MetaGradientExAction::Execute( OutputDevice* pOut )
 {
     if( pOut->GetConnectMetaFile() )
     {
-        Duplicate();
         pOut->GetConnectMetaFile()->AddAction( this );
     }
 }
 
-MetaAction* MetaGradientExAction::Clone()
+rtl::Reference<MetaAction> MetaGradientExAction::Clone()
 {
-    MetaAction* pClone = static_cast<MetaAction*>(new MetaGradientExAction( *this ));
-    pClone->ResetRefCount();
-    return pClone;
+    return new MetaGradientExAction( *this );
 }
 
 void MetaGradientExAction::Move( long nHorzMove, long nVertMove )
@@ -2100,14 +2099,16 @@ void MetaGradientExAction::Write( SvStream& rOStm, ImplMetaWriteData* pData )
     maPolyPoly.AdaptiveSubdivide(aNoCurvePolyPolygon);
 
     WritePolyPolygon( rOStm, aNoCurvePolyPolygon );
-    WriteGradient( rOStm, maGradient );
+    TypeSerializer aSerializer(rOStm);
+    aSerializer.writeGradient(maGradient);
 }
 
 void MetaGradientExAction::Read( SvStream& rIStm, ImplMetaReadData* )
 {
     VersionCompat aCompat(rIStm, StreamMode::READ);
     ReadPolyPolygon( rIStm, maPolyPoly );
-    ReadGradient( rIStm, maGradient );
+    TypeSerializer aSerializer(rIStm);
+    aSerializer.readGradient(maGradient);
 }
 
 MetaHatchAction::MetaHatchAction() :
@@ -2128,11 +2129,9 @@ void MetaHatchAction::Execute( OutputDevice* pOut )
     pOut->DrawHatch( maPolyPoly, maHatch );
 }
 
-MetaAction* MetaHatchAction::Clone()
+rtl::Reference<MetaAction> MetaHatchAction::Clone()
 {
-    MetaAction* pClone = static_cast<MetaAction*>(new MetaHatchAction( *this ));
-    pClone->ResetRefCount();
-    return pClone;
+    return new MetaHatchAction( *this );
 }
 
 void MetaHatchAction::Move( long nHorzMove, long nVertMove )
@@ -2185,11 +2184,9 @@ void MetaWallpaperAction::Execute( OutputDevice* pOut )
     pOut->DrawWallpaper( maRect, maWallpaper );
 }
 
-MetaAction* MetaWallpaperAction::Clone()
+rtl::Reference<MetaAction> MetaWallpaperAction::Clone()
 {
-    MetaAction* pClone = static_cast<MetaAction*>(new MetaWallpaperAction( *this ));
-    pClone->ResetRefCount();
-    return pClone;
+    return new MetaWallpaperAction( *this );
 }
 
 void MetaWallpaperAction::Move( long nHorzMove, long nVertMove )
@@ -2238,11 +2235,9 @@ void MetaClipRegionAction::Execute( OutputDevice* pOut )
         pOut->SetClipRegion();
 }
 
-MetaAction* MetaClipRegionAction::Clone()
+rtl::Reference<MetaAction> MetaClipRegionAction::Clone()
 {
-    MetaAction* pClone = static_cast<MetaAction*>(new MetaClipRegionAction( *this ));
-    pClone->ResetRefCount();
-    return pClone;
+    return new MetaClipRegionAction( *this );
 }
 
 void MetaClipRegionAction::Move( long nHorzMove, long nVertMove )
@@ -2288,11 +2283,9 @@ void MetaISectRectClipRegionAction::Execute( OutputDevice* pOut )
     pOut->IntersectClipRegion( maRect );
 }
 
-MetaAction* MetaISectRectClipRegionAction::Clone()
+rtl::Reference<MetaAction> MetaISectRectClipRegionAction::Clone()
 {
-    MetaAction* pClone = static_cast<MetaAction*>(new MetaISectRectClipRegionAction( *this ));
-    pClone->ResetRefCount();
-    return pClone;
+    return new MetaISectRectClipRegionAction( *this );
 }
 
 void MetaISectRectClipRegionAction::Move( long nHorzMove, long nVertMove )
@@ -2309,13 +2302,15 @@ void MetaISectRectClipRegionAction::Write( SvStream& rOStm, ImplMetaWriteData* p
 {
     MetaAction::Write(rOStm, pData);
     VersionCompat aCompat(rOStm, StreamMode::WRITE, 1);
-    WriteRectangle( rOStm, maRect );
+    TypeSerializer aSerializer(rOStm);
+    aSerializer.writeRectangle(maRect);
 }
 
 void MetaISectRectClipRegionAction::Read( SvStream& rIStm, ImplMetaReadData* )
 {
     VersionCompat aCompat(rIStm, StreamMode::READ);
-    ReadRectangle( rIStm, maRect );
+    TypeSerializer aSerializer(rIStm);
+    aSerializer.readRectangle(maRect);
 }
 
 MetaISectRegionClipRegionAction::MetaISectRegionClipRegionAction() :
@@ -2336,11 +2331,9 @@ void MetaISectRegionClipRegionAction::Execute( OutputDevice* pOut )
     pOut->IntersectClipRegion( maRegion );
 }
 
-MetaAction* MetaISectRegionClipRegionAction::Clone()
+rtl::Reference<MetaAction> MetaISectRegionClipRegionAction::Clone()
 {
-    MetaAction* pClone = static_cast<MetaAction*>(new MetaISectRegionClipRegionAction( *this ));
-    pClone->ResetRefCount();
-    return pClone;
+    return new MetaISectRegionClipRegionAction( *this );
 }
 
 void MetaISectRegionClipRegionAction::Move( long nHorzMove, long nVertMove )
@@ -2386,11 +2379,9 @@ void MetaMoveClipRegionAction::Execute( OutputDevice* pOut )
     pOut->MoveClipRegion( mnHorzMove, mnVertMove );
 }
 
-MetaAction* MetaMoveClipRegionAction::Clone()
+rtl::Reference<MetaAction> MetaMoveClipRegionAction::Clone()
 {
-    MetaAction* pClone = static_cast<MetaAction*>(new MetaMoveClipRegionAction( *this ));
-    pClone->ResetRefCount();
-    return pClone;
+    return new MetaMoveClipRegionAction( *this );
 }
 
 void MetaMoveClipRegionAction::Scale( double fScaleX, double fScaleY )
@@ -2437,25 +2428,23 @@ void MetaLineColorAction::Execute( OutputDevice* pOut )
         pOut->SetLineColor();
 }
 
-MetaAction* MetaLineColorAction::Clone()
+rtl::Reference<MetaAction> MetaLineColorAction::Clone()
 {
-    MetaAction* pClone = static_cast<MetaAction*>(new MetaLineColorAction( *this ));
-    pClone->ResetRefCount();
-    return pClone;
+    return new MetaLineColorAction( *this );
 }
 
 void MetaLineColorAction::Write( SvStream& rOStm, ImplMetaWriteData* pData )
 {
     MetaAction::Write(rOStm, pData);
     VersionCompat aCompat(rOStm, StreamMode::WRITE, 1);
-    maColor.Write( rOStm );
+    rOStm.WriteUInt32(maColor.mValue);
     rOStm.WriteBool( mbSet );
 }
 
 void MetaLineColorAction::Read( SvStream& rIStm, ImplMetaReadData* )
 {
     VersionCompat aCompat(rIStm, StreamMode::READ);
-    maColor.Read( rIStm );
+    rIStm.ReadUInt32(maColor.mValue);
     rIStm.ReadCharAsBool( mbSet );
 }
 
@@ -2481,25 +2470,23 @@ void MetaFillColorAction::Execute( OutputDevice* pOut )
         pOut->SetFillColor();
 }
 
-MetaAction* MetaFillColorAction::Clone()
+rtl::Reference<MetaAction> MetaFillColorAction::Clone()
 {
-    MetaAction* pClone = static_cast<MetaAction*>(new MetaFillColorAction( *this ));
-    pClone->ResetRefCount();
-    return pClone;
+    return new MetaFillColorAction( *this );
 }
 
 void MetaFillColorAction::Write( SvStream& rOStm, ImplMetaWriteData* pData )
 {
     MetaAction::Write(rOStm, pData);
     VersionCompat aCompat(rOStm, StreamMode::WRITE, 1);
-    maColor.Write( rOStm );
+    rOStm.WriteUInt32(maColor.mValue);
     rOStm.WriteBool( mbSet );
 }
 
 void MetaFillColorAction::Read( SvStream& rIStm, ImplMetaReadData* )
 {
     VersionCompat aCompat(rIStm, StreamMode::READ);
-    maColor.Read( rIStm );
+    rIStm.ReadUInt32(maColor.mValue);
     rIStm.ReadCharAsBool( mbSet );
 }
 
@@ -2520,24 +2507,22 @@ void MetaTextColorAction::Execute( OutputDevice* pOut )
     pOut->SetTextColor( maColor );
 }
 
-MetaAction* MetaTextColorAction::Clone()
+rtl::Reference<MetaAction> MetaTextColorAction::Clone()
 {
-    MetaAction* pClone = static_cast<MetaAction*>(new MetaTextColorAction( *this ));
-    pClone->ResetRefCount();
-    return pClone;
+    return new MetaTextColorAction( *this );
 }
 
 void MetaTextColorAction::Write( SvStream& rOStm, ImplMetaWriteData* pData )
 {
     MetaAction::Write(rOStm, pData);
     VersionCompat aCompat(rOStm, StreamMode::WRITE, 1);
-    maColor.Write( rOStm );
+    rOStm.WriteUInt32(maColor.mValue);
 }
 
 void MetaTextColorAction::Read( SvStream& rIStm, ImplMetaReadData* )
 {
     VersionCompat aCompat(rIStm, StreamMode::READ);
-    maColor.Read( rIStm );
+    rIStm.ReadUInt32(maColor.mValue);
 }
 
 MetaTextFillColorAction::MetaTextFillColorAction() :
@@ -2562,25 +2547,23 @@ void MetaTextFillColorAction::Execute( OutputDevice* pOut )
         pOut->SetTextFillColor();
 }
 
-MetaAction* MetaTextFillColorAction::Clone()
+rtl::Reference<MetaAction> MetaTextFillColorAction::Clone()
 {
-    MetaAction* pClone = static_cast<MetaAction*>(new MetaTextFillColorAction( *this ));
-    pClone->ResetRefCount();
-    return pClone;
+    return new MetaTextFillColorAction( *this );
 }
 
 void MetaTextFillColorAction::Write( SvStream& rOStm, ImplMetaWriteData* pData )
 {
     MetaAction::Write(rOStm, pData);
     VersionCompat aCompat(rOStm, StreamMode::WRITE, 1);
-    maColor.Write( rOStm );
+    rOStm.WriteUInt32(maColor.mValue);
     rOStm.WriteBool( mbSet );
 }
 
 void MetaTextFillColorAction::Read( SvStream& rIStm, ImplMetaReadData* )
 {
     VersionCompat aCompat(rIStm, StreamMode::READ);
-    maColor.Read( rIStm );
+    rIStm.ReadUInt32(maColor.mValue);
     rIStm.ReadCharAsBool( mbSet );
 }
 
@@ -2606,25 +2589,23 @@ void MetaTextLineColorAction::Execute( OutputDevice* pOut )
         pOut->SetTextLineColor();
 }
 
-MetaAction* MetaTextLineColorAction::Clone()
+rtl::Reference<MetaAction> MetaTextLineColorAction::Clone()
 {
-    MetaAction* pClone = static_cast<MetaAction*>(new MetaTextLineColorAction( *this ));
-    pClone->ResetRefCount();
-    return pClone;
+    return new MetaTextLineColorAction( *this );
 }
 
 void MetaTextLineColorAction::Write( SvStream& rOStm, ImplMetaWriteData* pData )
 {
     MetaAction::Write(rOStm, pData);
     VersionCompat aCompat(rOStm, StreamMode::WRITE, 1);
-    maColor.Write( rOStm );
+    rOStm.WriteUInt32(maColor.mValue);
     rOStm.WriteBool( mbSet );
 }
 
 void MetaTextLineColorAction::Read( SvStream& rIStm, ImplMetaReadData* )
 {
     VersionCompat aCompat(rIStm, StreamMode::READ);
-    maColor.Read( rIStm );
+    rIStm.ReadUInt32(maColor.mValue);
     rIStm.ReadCharAsBool( mbSet );
 }
 
@@ -2650,25 +2631,23 @@ void MetaOverlineColorAction::Execute( OutputDevice* pOut )
         pOut->SetOverlineColor();
 }
 
-MetaAction* MetaOverlineColorAction::Clone()
+rtl::Reference<MetaAction> MetaOverlineColorAction::Clone()
 {
-    MetaAction* pClone = static_cast<MetaAction*>(new MetaOverlineColorAction( *this ));
-    pClone->ResetRefCount();
-    return pClone;
+    return new MetaOverlineColorAction( *this );
 }
 
 void MetaOverlineColorAction::Write( SvStream& rOStm, ImplMetaWriteData* pData )
 {
     MetaAction::Write(rOStm, pData);
     VersionCompat aCompat(rOStm, StreamMode::WRITE, 1);
-    maColor.Write( rOStm );
+    rOStm.WriteUInt32(maColor.mValue);
     rOStm.WriteBool( mbSet );
 }
 
 void MetaOverlineColorAction::Read( SvStream& rIStm, ImplMetaReadData* )
 {
     VersionCompat aCompat(rIStm, StreamMode::READ);
-    maColor.Read( rIStm );
+    rIStm.ReadUInt32(maColor.mValue);
     rIStm.ReadCharAsBool( mbSet );
 }
 
@@ -2690,11 +2669,9 @@ void MetaTextAlignAction::Execute( OutputDevice* pOut )
     pOut->SetTextAlign( maAlign );
 }
 
-MetaAction* MetaTextAlignAction::Clone()
+rtl::Reference<MetaAction> MetaTextAlignAction::Clone()
 {
-    MetaAction* pClone = static_cast<MetaAction*>(new MetaTextAlignAction( *this ));
-    pClone->ResetRefCount();
-    return pClone;
+    return new MetaTextAlignAction( *this );
 }
 
 void MetaTextAlignAction::Write( SvStream& rOStm, ImplMetaWriteData* pData )
@@ -2709,7 +2686,7 @@ void MetaTextAlignAction::Read( SvStream& rIStm, ImplMetaReadData* )
     sal_uInt16 nTmp16(0);
 
     VersionCompat aCompat(rIStm, StreamMode::READ);
-    rIStm.ReadUInt16( nTmp16 ); maAlign = (TextAlign) nTmp16;
+    rIStm.ReadUInt16( nTmp16 ); maAlign = static_cast<TextAlign>(nTmp16);
 }
 
 MetaMapModeAction::MetaMapModeAction() :
@@ -2729,11 +2706,9 @@ void MetaMapModeAction::Execute( OutputDevice* pOut )
     pOut->SetMapMode( maMapMode );
 }
 
-MetaAction* MetaMapModeAction::Clone()
+rtl::Reference<MetaAction> MetaMapModeAction::Clone()
 {
-    MetaAction* pClone = static_cast<MetaAction*>(new MetaMapModeAction( *this ));
-    pClone->ResetRefCount();
-    return pClone;
+    return new MetaMapModeAction( *this );
 }
 
 void MetaMapModeAction::Scale( double fScaleX, double fScaleY )
@@ -2784,11 +2759,9 @@ void MetaFontAction::Execute( OutputDevice* pOut )
     pOut->SetFont( maFont );
 }
 
-MetaAction* MetaFontAction::Clone()
+rtl::Reference<MetaAction> MetaFontAction::Clone()
 {
-    MetaAction* pClone = static_cast<MetaAction*>(new MetaFontAction( *this ));
-    pClone->ResetRefCount();
-    return pClone;
+    return new MetaFontAction( *this );
 }
 
 void MetaFontAction::Scale( double fScaleX, double fScaleY )
@@ -2836,11 +2809,9 @@ void MetaPushAction::Execute( OutputDevice* pOut )
     pOut->Push( mnFlags );
 }
 
-MetaAction* MetaPushAction::Clone()
+rtl::Reference<MetaAction> MetaPushAction::Clone()
 {
-    MetaAction* pClone = static_cast<MetaAction*>(new MetaPushAction( *this ));
-    pClone->ResetRefCount();
-    return pClone;
+    return new MetaPushAction( *this );
 }
 
 void MetaPushAction::Write( SvStream& rOStm, ImplMetaWriteData* pData )
@@ -2870,11 +2841,9 @@ void MetaPopAction::Execute( OutputDevice* pOut )
     pOut->Pop();
 }
 
-MetaAction* MetaPopAction::Clone()
+rtl::Reference<MetaAction> MetaPopAction::Clone()
 {
-    MetaAction* pClone = static_cast<MetaAction*>(new MetaPopAction( *this ));
-    pClone->ResetRefCount();
-    return pClone;
+    return new MetaPopAction( *this );
 }
 
 void MetaPopAction::Write( SvStream& rOStm, ImplMetaWriteData* pData )
@@ -2907,18 +2876,16 @@ void MetaRasterOpAction::Execute( OutputDevice* pOut )
     pOut->SetRasterOp( meRasterOp );
 }
 
-MetaAction* MetaRasterOpAction::Clone()
+rtl::Reference<MetaAction> MetaRasterOpAction::Clone()
 {
-    MetaAction* pClone = static_cast<MetaAction*>(new MetaRasterOpAction( *this ));
-    pClone->ResetRefCount();
-    return pClone;
+    return new MetaRasterOpAction( *this );
 }
 
 void MetaRasterOpAction::Write( SvStream& rOStm, ImplMetaWriteData* pData )
 {
     MetaAction::Write(rOStm, pData);
     VersionCompat aCompat(rOStm, StreamMode::WRITE, 1);
-    rOStm.WriteUInt16( (sal_uInt16)meRasterOp );
+    rOStm.WriteUInt16( static_cast<sal_uInt16>(meRasterOp) );
 }
 
 void MetaRasterOpAction::Read( SvStream& rIStm, ImplMetaReadData* )
@@ -2926,7 +2893,7 @@ void MetaRasterOpAction::Read( SvStream& rIStm, ImplMetaReadData* )
     sal_uInt16 nTmp16(0);
 
     VersionCompat aCompat(rIStm, StreamMode::READ);
-    rIStm.ReadUInt16( nTmp16 ); meRasterOp = (RasterOp) nTmp16;
+    rIStm.ReadUInt16( nTmp16 ); meRasterOp = static_cast<RasterOp>(nTmp16);
 }
 
 MetaTransparentAction::MetaTransparentAction() :
@@ -2948,11 +2915,9 @@ void MetaTransparentAction::Execute( OutputDevice* pOut )
     pOut->DrawTransparent( maPolyPoly, mnTransPercent );
 }
 
-MetaAction* MetaTransparentAction::Clone()
+rtl::Reference<MetaAction> MetaTransparentAction::Clone()
 {
-    MetaAction* pClone = static_cast<MetaAction*>(new MetaTransparentAction( *this ));
-    pClone->ResetRefCount();
-    return pClone;
+    return new MetaTransparentAction( *this );
 }
 
 void MetaTransparentAction::Move( long nHorzMove, long nVertMove )
@@ -3015,11 +2980,9 @@ void MetaFloatTransparentAction::Execute( OutputDevice* pOut )
     pOut->DrawTransparent( maMtf, maPoint, maSize, maGradient );
 }
 
-MetaAction* MetaFloatTransparentAction::Clone()
+rtl::Reference<MetaAction> MetaFloatTransparentAction::Clone()
 {
-    MetaAction* pClone = static_cast<MetaAction*>(new MetaFloatTransparentAction( *this ));
-    pClone->ResetRefCount();
-    return pClone;
+    return new MetaFloatTransparentAction( *this );
 }
 
 void MetaFloatTransparentAction::Move( long nHorzMove, long nVertMove )
@@ -3041,18 +3004,20 @@ void MetaFloatTransparentAction::Write( SvStream& rOStm, ImplMetaWriteData* pDat
     VersionCompat aCompat(rOStm, StreamMode::WRITE, 1);
 
     maMtf.Write( rOStm );
-    WritePair( rOStm,  maPoint );
-    WritePair( rOStm, maSize );
-    WriteGradient( rOStm, maGradient );
+    TypeSerializer aSerializer(rOStm);
+    aSerializer.writePoint(maPoint);
+    aSerializer.writeSize(maSize);
+    aSerializer.writeGradient(maGradient);
 }
 
-void MetaFloatTransparentAction::Read( SvStream& rIStm, ImplMetaReadData* )
+void MetaFloatTransparentAction::Read(SvStream& rIStm, ImplMetaReadData* pData)
 {
     VersionCompat aCompat(rIStm, StreamMode::READ);
-    ReadGDIMetaFile( rIStm, maMtf );
-    ReadPair( rIStm, maPoint );
-    ReadPair( rIStm, maSize );
-    ReadGradient( rIStm, maGradient );
+    ReadGDIMetaFile(rIStm, maMtf, pData);
+    TypeSerializer aSerializer(rIStm);
+    aSerializer.readPoint(maPoint);
+    aSerializer.readSize(maSize);
+    aSerializer.readGradient(maGradient);
 }
 
 MetaEPSAction::MetaEPSAction() :
@@ -3076,11 +3041,9 @@ void MetaEPSAction::Execute( OutputDevice* pOut )
     pOut->DrawEPS( maPoint, maSize, maGfxLink, &maSubst );
 }
 
-MetaAction* MetaEPSAction::Clone()
+rtl::Reference<MetaAction> MetaEPSAction::Clone()
 {
-    MetaAction* pClone = static_cast<MetaAction*>(new MetaEPSAction( *this ));
-    pClone->ResetRefCount();
-    return pClone;
+    return new MetaEPSAction( *this );
 }
 
 void MetaEPSAction::Move( long nHorzMove, long nVertMove )
@@ -3101,18 +3064,20 @@ void MetaEPSAction::Write( SvStream& rOStm, ImplMetaWriteData* pData )
     MetaAction::Write(rOStm, pData);
     VersionCompat aCompat(rOStm, StreamMode::WRITE, 1);
 
-    WriteGfxLink( rOStm, maGfxLink );
-    WritePair( rOStm, maPoint );
-    WritePair( rOStm, maSize );
+    TypeSerializer aSerializer(rOStm);
+    aSerializer.writeGfxLink(maGfxLink);
+    aSerializer.writePoint(maPoint);
+    aSerializer.writeSize(maSize);
     maSubst.Write( rOStm );
 }
 
 void MetaEPSAction::Read( SvStream& rIStm, ImplMetaReadData* )
 {
     VersionCompat aCompat(rIStm, StreamMode::READ);
-    ReadGfxLink( rIStm, maGfxLink );
-    ReadPair( rIStm, maPoint );
-    ReadPair( rIStm, maSize );
+    TypeSerializer aSerializer(rIStm);
+    aSerializer.readGfxLink(maGfxLink);
+    aSerializer.readPoint(maPoint);
+    aSerializer.readSize(maSize);
     ReadGDIMetaFile( rIStm, maSubst );
 }
 
@@ -3138,11 +3103,9 @@ void MetaRefPointAction::Execute( OutputDevice* pOut )
         pOut->SetRefPoint();
 }
 
-MetaAction* MetaRefPointAction::Clone()
+rtl::Reference<MetaAction> MetaRefPointAction::Clone()
 {
-    MetaAction* pClone = static_cast<MetaAction*>(new MetaRefPointAction( *this ));
-    pClone->ResetRefCount();
-    return pClone;
+    return new MetaRefPointAction( *this );
 }
 
 void MetaRefPointAction::Write( SvStream& rOStm, ImplMetaWriteData* pData )
@@ -3150,14 +3113,17 @@ void MetaRefPointAction::Write( SvStream& rOStm, ImplMetaWriteData* pData )
     MetaAction::Write(rOStm, pData);
     VersionCompat aCompat(rOStm, StreamMode::WRITE, 1);
 
-    WritePair( rOStm, maRefPoint );
+    TypeSerializer aSerializer(rOStm);
+    aSerializer.writePoint(maRefPoint);
     rOStm.WriteBool( mbSet );
 }
 
 void MetaRefPointAction::Read( SvStream& rIStm, ImplMetaReadData* )
 {
     VersionCompat aCompat(rIStm, StreamMode::READ);
-    ReadPair( rIStm, maRefPoint ).ReadCharAsBool( mbSet );
+    TypeSerializer aSerializer(rIStm);
+    aSerializer.readPoint(maRefPoint);
+    rIStm.ReadCharAsBool( mbSet );
 }
 
 MetaCommentAction::MetaCommentAction() :
@@ -3206,68 +3172,65 @@ void MetaCommentAction::Execute( OutputDevice* pOut )
 {
     if ( pOut->GetConnectMetaFile() )
     {
-        Duplicate();
         pOut->GetConnectMetaFile()->AddAction( this );
     }
 }
 
-MetaAction* MetaCommentAction::Clone()
+rtl::Reference<MetaAction> MetaCommentAction::Clone()
 {
-    MetaAction* pClone = static_cast<MetaAction*>(new MetaCommentAction( *this ));
-    pClone->ResetRefCount();
-    return pClone;
+    return new MetaCommentAction( *this );
 }
 
 void MetaCommentAction::Move( long nXMove, long nYMove )
 {
-    if ( nXMove || nYMove )
+    if ( !(nXMove || nYMove) )
+        return;
+
+    if ( !(mnDataSize && mpData) )
+        return;
+
+    bool bPathStroke = (maComment == "XPATHSTROKE_SEQ_BEGIN");
+    if ( !(bPathStroke || maComment == "XPATHFILL_SEQ_BEGIN") )
+        return;
+
+    SvMemoryStream  aMemStm( static_cast<void*>(mpData.get()), mnDataSize, StreamMode::READ );
+    SvMemoryStream  aDest;
+    if ( bPathStroke )
     {
-        if ( mnDataSize && mpData )
-        {
-            bool bPathStroke = (maComment == "XPATHSTROKE_SEQ_BEGIN");
-            if ( bPathStroke || maComment == "XPATHFILL_SEQ_BEGIN" )
-            {
-                SvMemoryStream  aMemStm( static_cast<void*>(mpData.get()), mnDataSize, StreamMode::READ );
-                SvMemoryStream  aDest;
-                if ( bPathStroke )
-                {
-                    SvtGraphicStroke aStroke;
-                    ReadSvtGraphicStroke( aMemStm, aStroke );
+        SvtGraphicStroke aStroke;
+        ReadSvtGraphicStroke( aMemStm, aStroke );
 
-                    tools::Polygon aPath;
-                    aStroke.getPath( aPath );
-                    aPath.Move( nXMove, nYMove );
-                    aStroke.setPath( aPath );
+        tools::Polygon aPath;
+        aStroke.getPath( aPath );
+        aPath.Move( nXMove, nYMove );
+        aStroke.setPath( aPath );
 
-                    tools::PolyPolygon aStartArrow;
-                    aStroke.getStartArrow(aStartArrow);
-                    aStartArrow.Move(nXMove, nYMove);
-                    aStroke.setStartArrow(aStartArrow);
+        tools::PolyPolygon aStartArrow;
+        aStroke.getStartArrow(aStartArrow);
+        aStartArrow.Move(nXMove, nYMove);
+        aStroke.setStartArrow(aStartArrow);
 
-                    tools::PolyPolygon aEndArrow;
-                    aStroke.getEndArrow(aEndArrow);
-                    aEndArrow.Move(nXMove, nYMove);
-                    aStroke.setEndArrow(aEndArrow);
+        tools::PolyPolygon aEndArrow;
+        aStroke.getEndArrow(aEndArrow);
+        aEndArrow.Move(nXMove, nYMove);
+        aStroke.setEndArrow(aEndArrow);
 
-                    WriteSvtGraphicStroke( aDest, aStroke );
-                }
-                else
-                {
-                    SvtGraphicFill aFill;
-                    ReadSvtGraphicFill( aMemStm, aFill );
-
-                    tools::PolyPolygon aPath;
-                    aFill.getPath( aPath );
-                    aPath.Move( nXMove, nYMove );
-                    aFill.setPath( aPath );
-
-                    WriteSvtGraphicFill( aDest, aFill );
-                }
-                mpData.reset();
-                ImplInitDynamicData( static_cast<const sal_uInt8*>( aDest.GetData() ), aDest.Tell() );
-            }
-        }
+        WriteSvtGraphicStroke( aDest, aStroke );
     }
+    else
+    {
+        SvtGraphicFill aFill;
+        ReadSvtGraphicFill( aMemStm, aFill );
+
+        tools::PolyPolygon aPath;
+        aFill.getPath( aPath );
+        aPath.Move( nXMove, nYMove );
+        aFill.setPath( aPath );
+
+        WriteSvtGraphicFill( aDest, aFill );
+    }
+    mpData.reset();
+    ImplInitDynamicData( static_cast<const sal_uInt8*>( aDest.GetData() ), aDest.Tell() );
 }
 
 // SJ: 25.07.06 #i56656# we are not able to mirror certain kind of
@@ -3276,62 +3239,62 @@ void MetaCommentAction::Move( long nXMove, long nYMove )
 // FIXME: fake comment to apply the next hunk in the right location
 void MetaCommentAction::Scale( double fXScale, double fYScale )
 {
-    if ( ( fXScale != 1.0 ) || ( fYScale != 1.0 ) )
+    if (( fXScale == 1.0 ) && ( fYScale == 1.0 ))
+        return;
+
+    if ( !(mnDataSize && mpData) )
+        return;
+
+    bool bPathStroke = (maComment == "XPATHSTROKE_SEQ_BEGIN");
+    if ( bPathStroke || maComment == "XPATHFILL_SEQ_BEGIN" )
     {
-        if ( mnDataSize && mpData )
+        SvMemoryStream  aMemStm( static_cast<void*>(mpData.get()), mnDataSize, StreamMode::READ );
+        SvMemoryStream  aDest;
+        if ( bPathStroke )
         {
-            bool bPathStroke = (maComment == "XPATHSTROKE_SEQ_BEGIN");
-            if ( bPathStroke || maComment == "XPATHFILL_SEQ_BEGIN" )
-            {
-                SvMemoryStream  aMemStm( static_cast<void*>(mpData.get()), mnDataSize, StreamMode::READ );
-                SvMemoryStream  aDest;
-                if ( bPathStroke )
-                {
-                    SvtGraphicStroke aStroke;
-                    ReadSvtGraphicStroke( aMemStm, aStroke );
-                    aStroke.scale( fXScale, fYScale );
-                    WriteSvtGraphicStroke( aDest, aStroke );
-                }
-                else
-                {
-                    SvtGraphicFill aFill;
-                    ReadSvtGraphicFill( aMemStm, aFill );
-                    tools::PolyPolygon aPath;
-                    aFill.getPath( aPath );
-                    aPath.Scale( fXScale, fYScale );
-                    aFill.setPath( aPath );
-                    WriteSvtGraphicFill( aDest, aFill );
-                }
-                mpData.reset();
-                ImplInitDynamicData( static_cast<const sal_uInt8*>( aDest.GetData() ), aDest.Tell() );
-            } else if( maComment == "EMF_PLUS_HEADER_INFO" ){
-                SvMemoryStream  aMemStm( static_cast<void*>(mpData.get()), mnDataSize, StreamMode::READ );
-                SvMemoryStream  aDest;
-
-                sal_Int32 nLeft(0), nRight(0), nTop(0), nBottom(0);
-                sal_Int32 nPixX(0), nPixY(0), nMillX(0), nMillY(0);
-                float m11(0), m12(0), m21(0), m22(0), mdx(0), mdy(0);
-
-                // read data
-                aMemStm.ReadInt32( nLeft ).ReadInt32( nTop ).ReadInt32( nRight ).ReadInt32( nBottom );
-                aMemStm.ReadInt32( nPixX ).ReadInt32( nPixY ).ReadInt32( nMillX ).ReadInt32( nMillY );
-                aMemStm.ReadFloat( m11 ).ReadFloat( m12 ).ReadFloat( m21 ).ReadFloat( m22 ).ReadFloat( mdx ).ReadFloat( mdy );
-
-                // add scale to the transformation
-                m11 *= fXScale;
-                m12 *= fXScale;
-                m22 *= fYScale;
-                m21 *= fYScale;
-
-                // prepare new data
-                aDest.WriteInt32( nLeft ).WriteInt32( nTop ).WriteInt32( nRight ).WriteInt32( nBottom );
-                aDest.WriteInt32( nPixX ).WriteInt32( nPixY ).WriteInt32( nMillX ).WriteInt32( nMillY );
-                aDest.WriteFloat( m11 ).WriteFloat( m12 ).WriteFloat( m21 ).WriteFloat( m22 ).WriteFloat( mdx ).WriteFloat( mdy );
-
-                // save them
-                ImplInitDynamicData( static_cast<const sal_uInt8*>( aDest.GetData() ), aDest.Tell() );
-            }
+            SvtGraphicStroke aStroke;
+            ReadSvtGraphicStroke( aMemStm, aStroke );
+            aStroke.scale( fXScale, fYScale );
+            WriteSvtGraphicStroke( aDest, aStroke );
         }
+        else
+        {
+            SvtGraphicFill aFill;
+            ReadSvtGraphicFill( aMemStm, aFill );
+            tools::PolyPolygon aPath;
+            aFill.getPath( aPath );
+            aPath.Scale( fXScale, fYScale );
+            aFill.setPath( aPath );
+            WriteSvtGraphicFill( aDest, aFill );
+        }
+        mpData.reset();
+        ImplInitDynamicData( static_cast<const sal_uInt8*>( aDest.GetData() ), aDest.Tell() );
+    } else if( maComment == "EMF_PLUS_HEADER_INFO" ){
+        SvMemoryStream  aMemStm( static_cast<void*>(mpData.get()), mnDataSize, StreamMode::READ );
+        SvMemoryStream  aDest;
+
+        sal_Int32 nLeft(0), nRight(0), nTop(0), nBottom(0);
+        sal_Int32 nPixX(0), nPixY(0), nMillX(0), nMillY(0);
+        float m11(0), m12(0), m21(0), m22(0), mdx(0), mdy(0);
+
+        // read data
+        aMemStm.ReadInt32( nLeft ).ReadInt32( nTop ).ReadInt32( nRight ).ReadInt32( nBottom );
+        aMemStm.ReadInt32( nPixX ).ReadInt32( nPixY ).ReadInt32( nMillX ).ReadInt32( nMillY );
+        aMemStm.ReadFloat( m11 ).ReadFloat( m12 ).ReadFloat( m21 ).ReadFloat( m22 ).ReadFloat( mdx ).ReadFloat( mdy );
+
+        // add scale to the transformation
+        m11 *= fXScale;
+        m12 *= fXScale;
+        m22 *= fYScale;
+        m21 *= fYScale;
+
+        // prepare new data
+        aDest.WriteInt32( nLeft ).WriteInt32( nTop ).WriteInt32( nRight ).WriteInt32( nBottom );
+        aDest.WriteInt32( nPixX ).WriteInt32( nPixY ).WriteInt32( nMillX ).WriteInt32( nMillY );
+        aDest.WriteFloat( m11 ).WriteFloat( m12 ).WriteFloat( m21 ).WriteFloat( m22 ).WriteFloat( mdx ).WriteFloat( mdy );
+
+        // save them
+        ImplInitDynamicData( static_cast<const sal_uInt8*>( aDest.GetData() ), aDest.Tell() );
     }
 }
 
@@ -3388,18 +3351,16 @@ void MetaLayoutModeAction::Execute( OutputDevice* pOut )
     pOut->SetLayoutMode( mnLayoutMode );
 }
 
-MetaAction* MetaLayoutModeAction::Clone()
+rtl::Reference<MetaAction> MetaLayoutModeAction::Clone()
 {
-    MetaAction* pClone = static_cast<MetaAction*>(new MetaLayoutModeAction( *this ));
-    pClone->ResetRefCount();
-    return pClone;
+    return new MetaLayoutModeAction( *this );
 }
 
 void MetaLayoutModeAction::Write( SvStream& rOStm, ImplMetaWriteData* pData )
 {
     MetaAction::Write(rOStm, pData);
     VersionCompat aCompat(rOStm, StreamMode::WRITE, 1);
-    rOStm.WriteUInt32( (sal_uInt32)mnLayoutMode );
+    rOStm.WriteUInt32( static_cast<sal_uInt32>(mnLayoutMode) );
 }
 
 void MetaLayoutModeAction::Read( SvStream& rIStm, ImplMetaReadData* )
@@ -3428,18 +3389,16 @@ void MetaTextLanguageAction::Execute( OutputDevice* pOut )
     pOut->SetDigitLanguage( meTextLanguage );
 }
 
-MetaAction* MetaTextLanguageAction::Clone()
+rtl::Reference<MetaAction> MetaTextLanguageAction::Clone()
 {
-    MetaAction* pClone = static_cast<MetaAction*>(new MetaTextLanguageAction( *this ));
-    pClone->ResetRefCount();
-    return pClone;
+    return new MetaTextLanguageAction( *this );
 }
 
 void MetaTextLanguageAction::Write( SvStream& rOStm, ImplMetaWriteData* pData )
 {
     MetaAction::Write(rOStm, pData);
     VersionCompat aCompat(rOStm, StreamMode::WRITE, 1);
-    rOStm.WriteUInt16( (sal_uInt16)meTextLanguage );
+    rOStm.WriteUInt16( static_cast<sal_uInt16>(meTextLanguage) );
 }
 
 void MetaTextLanguageAction::Read( SvStream& rIStm, ImplMetaReadData* )

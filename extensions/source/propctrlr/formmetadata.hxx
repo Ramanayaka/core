@@ -21,7 +21,6 @@
 #define INCLUDED_EXTENSIONS_SOURCE_PROPCTRLR_FORMMETADATA_HXX
 
 #include "propertyinfo.hxx"
-#include "modulepcr.hxx"
 #include "enumrepresentation.hxx"
 
 
@@ -34,11 +33,9 @@ namespace pcr
 
     //= OPropertyInfoService
 
-    class OPropertyInfoService
+    class OPropertyInfoService final
                 :public IPropertyInfoService
-                ,public PcrClient
     {
-    protected:
         static sal_uInt16               s_nCount;
         static OPropertyInfoImpl*       s_pPropertyInfos;
         // TODO: a real structure which allows quick access by name as well as by id
@@ -54,7 +51,7 @@ namespace pcr
 
         bool                                   isComposeable( const OUString& _rPropertyName ) const;
 
-    protected:
+    private:
         static const OPropertyInfoImpl* getPropertyInfo();
 
         static const OPropertyInfoImpl* getPropertyInfo(const OUString& _rName);
@@ -90,9 +87,9 @@ namespace pcr
     protected:
         // IPropertyEnumRepresentation implementqation
         virtual std::vector< OUString >
-                                    SAL_CALL getDescriptions() const override;
-        virtual void                SAL_CALL getValueFromDescription( const OUString& _rDescription, css::uno::Any& _out_rValue ) const override;
-        virtual OUString            SAL_CALL getDescriptionForValue( const css::uno::Any& _rEnumValue ) const override;
+                                    getDescriptions() const override;
+        virtual void                getValueFromDescription( const OUString& _rDescription, css::uno::Any& _out_rValue ) const override;
+        virtual OUString            getDescriptionForValue( const css::uno::Any& _rEnumValue ) const override;
 
     private:
         DefaultEnumRepresentation( const DefaultEnumRepresentation& ) = delete;
@@ -100,7 +97,7 @@ namespace pcr
     };
 
 
-    //= UI flags (for all browseable properties)
+    //= UI flags (for all browsable properties)
 
 
 #define PROP_FLAG_NONE              0x00000000  // no special flag
@@ -119,7 +116,7 @@ namespace pcr
 #define PROP_FLAG_REPORT_INVISIBLE  0x00000200  // the property should not appear in the Report Designer UI
 
 
-    //= property ids (for all browseable properties)
+    //= property ids (for all browsable properties)
 
 
     #define PROPERTY_ID_NAME                  1
@@ -328,6 +325,19 @@ namespace pcr
     #define PROPERTY_ID_SCROLL_TOP                  205
     #define PROPERTY_ID_SCROLL_LEFT                 206
     #define PROPERTY_ID_TYPEDITEMLIST               207
+    #define PROPERTY_ID_SELECTIONMODEL              208
+    #define PROPERTY_ID_USEGRIDLINE                 209
+    #define PROPERTY_ID_GRIDLINECOLOR               210
+    #define PROPERTY_ID_SHOWCOLUMNHEADER            211
+    #define PROPERTY_ID_SHOWROWHEADER               212
+    #define PROPERTY_ID_HEADERBACKGROUNDCOLOR       213
+    #define PROPERTY_ID_HEADERTEXTCOLOR             214
+    #define PROPERTY_ID_ACTIVESELECTIONBACKGROUNDCOLOR 215
+    #define PROPERTY_ID_ACTIVESELECTIONTEXTCOLOR    216
+    #define PROPERTY_ID_INACTIVESELECTIONBACKGROUNDCOLOR 217
+    #define PROPERTY_ID_INACTIVESELECTIONTEXTCOLOR  218
+    #define PROPERTY_ID_URL                         219
+    #define PROPERTY_ID_AUTOGROW                    220
 
 
 } // namespace pcr

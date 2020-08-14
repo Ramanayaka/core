@@ -18,20 +18,22 @@
  */
 
 #include "WrappedAutomaticPositionProperties.hxx"
-#include "FastPropertyIdRanges.hxx"
-#include "macros.hxx"
+#include <FastPropertyIdRanges.hxx>
+#include <WrappedProperty.hxx>
 #include <com/sun/star/beans/PropertyAttribute.hpp>
-#include <com/sun/star/chart2/RelativePosition.hpp>
+#include <com/sun/star/beans/XPropertyState.hpp>
+#include <com/sun/star/beans/XPropertySet.hpp>
+#include <tools/diagnose_ex.h>
 
 using namespace ::com::sun::star;
 using ::com::sun::star::uno::Any;
 using ::com::sun::star::uno::Reference;
 using ::com::sun::star::beans::Property;
 
-namespace chart
+namespace chart::wrapper
 {
-namespace wrapper
-{
+
+namespace {
 
 class WrappedAutomaticPositionProperty : public WrappedProperty
 {
@@ -43,6 +45,8 @@ public:
     virtual Any getPropertyDefault( const Reference< beans::XPropertyState >& xInnerPropertyState ) const override;
 };
 
+}
+
 WrappedAutomaticPositionProperty::WrappedAutomaticPositionProperty()
     : ::chart::WrappedProperty( "AutomaticPosition" , OUString() )
 {
@@ -50,25 +54,25 @@ WrappedAutomaticPositionProperty::WrappedAutomaticPositionProperty()
 
 void WrappedAutomaticPositionProperty::setPropertyValue( const Any& rOuterValue, const Reference< beans::XPropertySet >& xInnerPropertySet ) const
 {
-    if( xInnerPropertySet.is() )
-    {
-        bool bNewValue = true;
-        if( ! (rOuterValue >>= bNewValue) )
-            throw lang::IllegalArgumentException( "Property AutomaticPosition requires value of type boolean", nullptr, 0 );
+    if( !xInnerPropertySet.is() )
+        return;
 
-        try
+    bool bNewValue = true;
+    if( ! (rOuterValue >>= bNewValue) )
+        throw lang::IllegalArgumentException( "Property AutomaticPosition requires value of type boolean", nullptr, 0 );
+
+    try
+    {
+        if( bNewValue )
         {
-            if( bNewValue )
-            {
-                Any aRelativePosition( xInnerPropertySet->getPropertyValue( "RelativePosition" ) );
-                if( aRelativePosition.hasValue() )
-                    xInnerPropertySet->setPropertyValue( "RelativePosition", Any() );
-            }
+            Any aRelativePosition( xInnerPropertySet->getPropertyValue( "RelativePosition" ) );
+            if( aRelativePosition.hasValue() )
+                xInnerPropertySet->setPropertyValue( "RelativePosition", Any() );
         }
-        catch( const uno::Exception & ex )
-        {
-            ASSERT_EXCEPTION( ex );
-        }
+    }
+    catch( const uno::Exception & )
+    {
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 }
 
@@ -98,29 +102,22 @@ enum
     PROP_CHART_AUTOMATIC_POSITION = FAST_PROPERTY_ID_START_CHART_AUTOPOSITION_PROP
 };
 
-void lcl_addWrappedProperties( std::vector< WrappedProperty* >& rList )
-{
-    rList.push_back( new WrappedAutomaticPositionProperty() );
-}
-
 }//anonymous namespace
 
 void WrappedAutomaticPositionProperties::addProperties( std::vector< Property > & rOutProperties )
 {
-    rOutProperties.push_back(
-        Property( "AutomaticPosition",
+    rOutProperties.emplace_back( "AutomaticPosition",
                   PROP_CHART_AUTOMATIC_POSITION,
                   cppu::UnoType<bool>::get(),
                   beans::PropertyAttribute::BOUND
-                  | beans::PropertyAttribute::MAYBEDEFAULT ));
+                  | beans::PropertyAttribute::MAYBEDEFAULT );
 }
 
-void WrappedAutomaticPositionProperties::addWrappedProperties( std::vector< WrappedProperty* >& rList )
+void WrappedAutomaticPositionProperties::addWrappedProperties( std::vector< std::unique_ptr<WrappedProperty> >& rList )
 {
-    lcl_addWrappedProperties( rList );
+    rList.emplace_back( new WrappedAutomaticPositionProperty() );
 }
 
-} //namespace wrapper
-} //namespace chart
+} //namespace chart::wrapper
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

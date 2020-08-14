@@ -60,10 +60,10 @@
 #ifndef INCLUDED_LOTUSWORDPRO_SOURCE_FILTER_LWPNUMBERINGOVERRIDE_HXX
 #define INCLUDED_LOTUSWORDPRO_SOURCE_FILTER_LWPNUMBERINGOVERRIDE_HXX
 
-#include "lwpoverride.hxx"
+#include <lwpoverride.hxx>
 
 class LwpObjectStream;
-class LwpNumberingOverride : public LwpOverride
+class LwpNumberingOverride final : public LwpOverride
 {
 public:
     LwpNumberingOverride();
@@ -77,19 +77,17 @@ public:
         HEADING         = 0x0004,
         SMARTLEVEL      = 0x0008
     };
-public:
+
     virtual void Read(LwpObjectStream *pStrm) override;
 
     inline sal_uInt16 GetLevel() const;
     inline sal_uInt16 GetPosition() const;
-    inline bool IsHeading();
+    inline bool IsHeading() const;
 
     void OverrideLevel(sal_uInt16 nNewLv);
 
-protected:
-    LwpNumberingOverride(LwpNumberingOverride const& rOther);
-
 private:
+    LwpNumberingOverride(LwpNumberingOverride const& rOther);
     LwpNumberingOverride& operator=(LwpNumberingOverride const& rOther) = delete;
 
     sal_uInt16  m_nLevel;
@@ -106,7 +104,7 @@ inline sal_uInt16 LwpNumberingOverride::GetPosition() const
     return m_nPosition;
 }
 
-inline bool LwpNumberingOverride::IsHeading()
+inline bool LwpNumberingOverride::IsHeading() const
 {
     return (m_nValues & HEADING) != 0;
 }

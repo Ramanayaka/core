@@ -18,12 +18,11 @@
  */
 
 
-#ifndef INCLUDED_ACCESSIBILITY_INC_EXTENDED_ACCESSIBLEBROWSEBOXBASE_HXX
-#define INCLUDED_ACCESSIBILITY_INC_EXTENDED_ACCESSIBLEBROWSEBOXBASE_HXX
+#pragma once
 
 #include <sal/config.h>
 
-#include <svtools/AccessibleBrowseBoxObjType.hxx>
+#include <vcl/AccessibleBrowseBoxObjType.hxx>
 #include <rtl/ustring.hxx>
 #include <tools/gen.hxx>
 #include <vcl/svapp.hxx>
@@ -31,16 +30,12 @@
 #include <cppuhelper/implbase1.hxx>
 #include <cppuhelper/basemutex.hxx>
 #include <unotools/accessiblestatesethelper.hxx>
-#include <toolkit/helper/convert.hxx>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/lang/DisposedException.hpp>
 #include <com/sun/star/awt/XWindow.hpp>
 #include <com/sun/star/accessibility/XAccessible.hpp>
 #include <com/sun/star/accessibility/XAccessibleContext.hpp>
 #include <com/sun/star/accessibility/XAccessibleComponent.hpp>
 #include <com/sun/star/accessibility/XAccessibleEventBroadcaster.hpp>
-#include <com/sun/star/accessibility/AccessibleRole.hpp>
-#include <com/sun/star/accessibility/AccessibleStateType.hpp>
 #include <com/sun/star/awt/XFocusListener.hpp>
 #include <comphelper/accessibleeventnotifier.hxx>
 #include <comphelper/uno3.hxx>
@@ -52,7 +47,7 @@ namespace utl {
     class AccessibleStateSetHelper;
 }
 
-namespace svt {
+namespace vcl {
     class IAccessibleTableProvider;
 }
 
@@ -86,9 +81,9 @@ public:
         @param eObjType         Object type */
     AccessibleBrowseBoxBase(
         const css::uno::Reference< css::accessibility::XAccessible >& rxParent,
-        ::svt::IAccessibleTableProvider& rBrowseBox,
+        ::vcl::IAccessibleTableProvider& rBrowseBox,
         const css::uno::Reference< css::awt::XWindow >& _xFocusWindow,
-        ::svt::AccessibleBrowseBoxObjType eObjType );
+        ::vcl::AccessibleBrowseBoxObjType eObjType );
 
     /** Constructor sets specified name and description.
         @param rxParent         XAccessible interface of the parent object.
@@ -99,9 +94,9 @@ public:
         @param rDescription     The description text of this object. */
     AccessibleBrowseBoxBase(
         const css::uno::Reference< css::accessibility::XAccessible >& rxParent,
-        ::svt::IAccessibleTableProvider& rBrowseBox,
+        ::vcl::IAccessibleTableProvider& rBrowseBox,
         const css::uno::Reference< css::awt::XWindow >& _xFocusWindow,
-        ::svt::AccessibleBrowseBoxObjType eObjType,
+        ::vcl::AccessibleBrowseBoxObjType eObjType,
         const OUString& rName,
         const OUString& rDescription );
 
@@ -202,7 +197,7 @@ public:
 
     // XTypeProvider
 
-    /** @return  An unique implementation ID. */
+    /** @return  a unique implementation ID. */
     virtual css::uno::Sequence< sal_Int8 > SAL_CALL getImplementationId() override;
 
     // XServiceInfo
@@ -219,7 +214,7 @@ public:
     // helper methods
 
     /** @return  The BrowseBox object type. */
-    inline ::svt::AccessibleBrowseBoxObjType getType() const;
+    inline ::vcl::AccessibleBrowseBoxObjType getType() const;
 
     /** Changes the name of the object and notifies listeners. */
     void setAccessibleName( const OUString& rName );
@@ -297,7 +292,7 @@ protected:
     /** The parent accessible object. */
     css::uno::Reference< css::accessibility::XAccessible > mxParent;
     /** The VCL BrowseBox control. */
-    ::svt::IAccessibleTableProvider* mpBrowseBox;
+    ::vcl::IAccessibleTableProvider* mpBrowseBox;
 
     /** This is the window which get all the nice focus events
     */
@@ -310,7 +305,7 @@ private:
     OUString maDescription;
 
     /** The type of this object (for names, descriptions, state sets, ...). */
-    ::svt::AccessibleBrowseBoxObjType meObjType;
+    ::vcl::AccessibleBrowseBoxObjType meObjType;
 
     ::comphelper::AccessibleEventNotifier::TClientId    m_aClientId;
 };
@@ -340,9 +335,9 @@ protected:
     */
     BrowseBoxAccessibleElement(
         const css::uno::Reference< css::accessibility::XAccessible >& rxParent,
-        ::svt::IAccessibleTableProvider& rBrowseBox,
+        ::vcl::IAccessibleTableProvider& rBrowseBox,
         const css::uno::Reference< css::awt::XWindow >& _xFocusWindow,
-        ::svt::AccessibleBrowseBoxObjType eObjType );
+        ::vcl::AccessibleBrowseBoxObjType eObjType );
 
     /** Constructor sets specified name and description.
 
@@ -355,9 +350,9 @@ protected:
     */
     BrowseBoxAccessibleElement(
         const css::uno::Reference< css::accessibility::XAccessible >& rxParent,
-        ::svt::IAccessibleTableProvider& rBrowseBox,
+        ::vcl::IAccessibleTableProvider& rBrowseBox,
         const css::uno::Reference< css::awt::XWindow >& _xFocusWindow,
-        ::svt::AccessibleBrowseBoxObjType eObjType,
+        ::vcl::AccessibleBrowseBoxObjType eObjType,
         const OUString& rName,
         const OUString& rDescription );
 
@@ -395,7 +390,7 @@ public:
 
 // inlines
 
-inline ::svt::AccessibleBrowseBoxObjType AccessibleBrowseBoxBase::getType() const
+inline ::vcl::AccessibleBrowseBoxObjType AccessibleBrowseBoxBase::getType() const
 {
     return meObjType;
 }
@@ -409,6 +404,5 @@ inline void AccessibleBrowseBoxBase::implSetName(
 } // namespace accessibility
 
 
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

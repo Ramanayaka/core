@@ -17,15 +17,17 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <toolkit/controls/accessiblecontrolcontext.hxx>
+#include <controls/accessiblecontrolcontext.hxx>
 #include <unotools/accessiblestatesethelper.hxx>
 #include <com/sun/star/awt/XControl.hpp>
 #include <com/sun/star/awt/XWindow.hpp>
+#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 #include <vcl/svapp.hxx>
 #include <com/sun/star/accessibility/AccessibleStateType.hpp>
 #include <com/sun/star/accessibility/AccessibleRole.hpp>
 #include <toolkit/helper/vclunohelper.hxx>
+#include <tools/diagnose_ex.h>
 #include <vcl/window.hxx>
 
 
@@ -66,7 +68,7 @@ namespace toolkit
         OContextEntryGuard aGuard( this );
 
         // retrieve the model of the control
-        OSL_ENSURE( !m_xControlModel.is(), "OAccessibleControlContext::Init: already know a control model....!???" );
+        OSL_ENSURE( !m_xControlModel.is(), "OAccessibleControlContext::Init: already know a control model...!???" );
 
         Reference< awt::XControl > xControl( _rxCreator, UNO_QUERY );
         if ( xControl.is() )
@@ -133,11 +135,7 @@ namespace toolkit
 
     Reference< XAccessible > SAL_CALL OAccessibleControlContext::getAccessibleParent(  )
     {
-        OContextEntryGuard aGuard( this );
-        OSL_ENSURE( implGetForeignControlledParent().is(), "OAccessibleControlContext::getAccessibleParent: somebody forgot to set a parent!" );
-            // this parent of us is foreign controlled - somebody has to set it using the OAccessibleImplementationAccess
-            // class, before integrating our instance into an AccessibleDocumentModel
-        return implGetForeignControlledParent();
+        return Reference< XAccessible >();
     }
 
 
@@ -176,7 +174,7 @@ namespace toolkit
         if ( isAlive() )
         {
             // no own states, only the ones which are foreign controlled
-            pStateSet = new ::utl::AccessibleStateSetHelper( implGetForeignControlledStates() );
+            pStateSet = new ::utl::AccessibleStateSetHelper( 0 );
         }
         else
         {   // only the DEFUNC state if we're already disposed
@@ -200,7 +198,7 @@ namespace toolkit
     }
 
 
-    OUString OAccessibleControlContext::getModelStringProperty( const sal_Char* _pPropertyName )
+    OUString OAccessibleControlContext::getModelStringProperty( const char* _pPropertyName )
     {
         OUString sReturn;
         try
@@ -214,7 +212,7 @@ namespace toolkit
         }
         catch( const Exception& )
         {
-            OSL_FAIL( "OAccessibleControlContext::getModelStringProperty: caught an exception!" );
+            TOOLS_WARN_EXCEPTION( "toolkit", "OAccessibleControlContext::getModelStringProperty" );
         }
         return sReturn;
     }
@@ -260,7 +258,7 @@ namespace toolkit
         awt::Rectangle aBounds( 0, 0, 0, 0 );
         if ( xWindow.is() )
         {
-            // ugly, but .... though the XWindow has a getPosSize, it is impossible to determine the
+            // ugly, but... though the XWindow has a getPosSize, it is impossible to determine the
             // parent which this position/size is relative to. This means we must tunnel UNO and ask the
             // implementation
             vcl::Window* pVCLParent = pVCLWindow ? pVCLWindow->GetParent() : nullptr;
@@ -275,21 +273,12 @@ namespace toolkit
             if ( pVCLParent )
                 aVCLParentScreenPos = pVCLParent->GetPosPixel();
 
-            // the screen position of the "accessible parent" of the control
-            Reference< XAccessible > xParentAcc( implGetForeignControlledParent() );
-            Reference< XAccessibleComponent > xParentAccComponent;
-            if ( xParentAcc.is() )
-                xParentAccComponent.set(xParentAcc->getAccessibleContext(), css::uno::UNO_QUERY);
-            awt::Point aAccParentScreenPos( 0, 0 );
-            if ( xParentAccComponent.is() )
-                aAccParentScreenPos = xParentAccComponent->getLocationOnScreen();
-
             // now the size of the control
             aBounds = xWindow->getPosSize();
 
             // correct the pos
-            aBounds.X = aWindowRelativePos.X() + aVCLParentScreenPos.X() - aAccParentScreenPos.X;
-            aBounds.Y = aWindowRelativePos.Y() + aVCLParentScreenPos.Y() - aAccParentScreenPos.Y;
+            aBounds.X = aWindowRelativePos.X() + aVCLParentScreenPos.X();
+            aBounds.Y = aWindowRelativePos.Y() + aVCLParentScreenPos.Y();
         }
 
         return aBounds;
@@ -316,11 +305,11 @@ namespace toolkit
         OContextEntryGuard aGuard( this );
 
         VclPtr< vcl::Window > pWindow = implGetWindow();
-        sal_Int32 nColor = 0;
+        Color nColor;
         if ( pWindow )
         {
             if ( pWindow->IsControlForeground() )
-                nColor = pWindow->GetControlForeground().GetColor();
+                nColor = pWindow->GetControlForeground();
             else
             {
                 vcl::Font aFont;
@@ -328,10 +317,10 @@ namespace toolkit
                     aFont = pWindow->GetControlFont();
                 else
                     aFont = pWindow->GetFont();
-                nColor = aFont.GetColor().GetColor();
+                nColor = aFont.GetColor();
             }
         }
-        return nColor;
+        return sal_Int32(nColor);
     }
 
 
@@ -342,16 +331,16 @@ namespace toolkit
         OContextEntryGuard aGuard( this );
 
         VclPtr< vcl::Window > pWindow = implGetWindow();
-        sal_Int32 nColor = 0;
+        Color nColor;
         if ( pWindow )
         {
             if ( pWindow->IsControlBackground() )
-                nColor = pWindow->GetControlBackground().GetColor();
+                nColor = pWindow->GetControlBackground();
             else
-                nColor = pWindow->GetBackground().GetColor().GetColor();
+                nColor = pWindow->GetBackground().GetColor();
         }
 
-        return nColor;
+        return sal_Int32(nColor);
     }
 
 

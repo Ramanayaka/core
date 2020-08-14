@@ -18,9 +18,9 @@
  */
 
 
-#include "osx/salinst.h"
-#include "quartz/utils.h"
-#include "quartz/salgdi.h"
+#include <osx/salinst.h>
+#include <quartz/utils.h>
+#include <quartz/salgdi.h>
 
 #include "a11ytextattributeswrapper.h"
 
@@ -108,20 +108,12 @@ using namespace ::com::sun::star::uno;
 @implementation AquaA11yTextAttributesWrapper : NSObject
 
 +(int)convertUnderlineStyle:(PropertyValue)property {
-#if MACOSX_SDK_VERSION >= 1090
     int underlineStyle = NSUnderlineStyleNone;
-#else
-    int underlineStyle = NSNoUnderlineStyle;
-#endif
     sal_Int16 value = 0;
     property.Value >>= value;
     if ( value != ::css_awt::FontUnderline::NONE
       && value != ::css_awt::FontUnderline::DONTKNOW) {
-#if MACOSX_SDK_VERSION >= 1090
         underlineStyle = NSUnderlineStyleSingle;
-#else
-        underlineStyle = NSSingleUnderlineStyle;
-#endif
     }
     return underlineStyle;
 }
@@ -149,22 +141,22 @@ using namespace ::com::sun::star::uno;
 }
 
 +(BOOL)isStrikethrough:(PropertyValue)property {
-    BOOL strikethrough = NO;
+    bool strikethrough = false;
     sal_Int16 value = 0;
     property.Value >>= value;
     if ( value != ::css_awt::FontStrikeout::NONE
       && value != ::css_awt::FontStrikeout::DONTKNOW ) {
-        strikethrough = YES;
+        strikethrough = true;
     }
     return strikethrough;
 }
 
 +(BOOL)convertBoolean:(PropertyValue)property {
-    BOOL myBoolean = NO;
+    bool myBoolean = false;
     bool value = false;
     property.Value >>= value;
     if ( value ) {
-        myBoolean = YES;
+        myBoolean = true;
     }
     return myBoolean;
 }
@@ -175,10 +167,10 @@ using namespace ::com::sun::star::uno;
     return [ NSNumber numberWithShort: value ];
 }
 
-+(void)addColor:(SalColor)nSalColor forAttribute:(NSString *)attribute andRange:(NSRange)range toString:(NSMutableAttributedString *)string {
-    if( nSalColor == COL_TRANSPARENT )
++(void)addColor:(Color)nColor forAttribute:(NSString *)attribute andRange:(NSRange)range toString:(NSMutableAttributedString *)string {
+    if( nColor == COL_TRANSPARENT )
         return;
-    const RGBAColor aRGBAColor( nSalColor);
+    const RGBAColor aRGBAColor( nColor);
     CGColorRef aColorRef = CGColorCreate ( CGColorSpaceCreateWithName ( kCGColorSpaceGenericRGB ), aRGBAColor.AsArray() );
     [ string addAttribute: attribute value: reinterpret_cast<id>(aColorRef) range: range ];
     CGColorRelease( aColorRef );
@@ -200,7 +192,7 @@ using namespace ::com::sun::star::uno;
     }
 }
 
-+(void)applyAttributesFrom:(Sequence < PropertyValue >)attributes toString:(NSMutableAttributedString *)string forRange:(NSRange)range fontDescriptor:(AquaA11yFontDescriptor*)fontDescriptor {
++(void)applyAttributesFrom:(Sequence < PropertyValue > const &)attributes toString:(NSMutableAttributedString *)string forRange:(NSRange)range fontDescriptor:(AquaA11yFontDescriptor*)fontDescriptor {
     NSAutoreleasePool * pool = [ [ NSAutoreleasePool alloc ] init ];
     // constants
     static const OUString attrUnderline("CharUnderline");
@@ -218,20 +210,15 @@ using namespace ::com::sun::star::uno;
     static const OUString attrTextAlignment("ParaAdjust");
     // vars
     sal_Int32 underlineColor = 0;
-    BOOL underlineHasColor = NO;
+    bool underlineHasColor = false;
     // add attributes to string
-    for ( int attrIndex = 0; attrIndex < attributes.getLength(); attrIndex++ ) {
-        PropertyValue property = attributes [ attrIndex ];
+    for ( const PropertyValue& property : attributes ) {
         // TODO: NSAccessibilityMisspelledTextAttribute, NSAccessibilityAttachmentTextAttribute, NSAccessibilityLinkTextAttribute
         // NSAccessibilityStrikethroughColorTextAttribute is unsupported by UNP-API
         if ( property.Value.hasValue() ) {
             if ( property.Name.equals ( attrUnderline ) ) {
                 int style = [ AquaA11yTextAttributesWrapper convertUnderlineStyle: property ];
-#if MACOSX_SDK_VERSION >= 1090
                 if ( style != NSUnderlineStyleNone ) {
-#else
-                if ( style != NSNoUnderlineStyle ) {
-#endif
                     [ string addAttribute: NSAccessibilityUnderlineTextAttribute value: [ NSNumber numberWithInt: style ] range: range ];
                 }
             } else if ( property.Name.equals ( attrFontname ) ) {
@@ -279,7 +266,7 @@ SAL_WNODEPRECATED_DECLARATIONS_PUSH
     // 'NSJustifiedTextAlignment' is deprecated: first deprecated in macOS 10.12
     // 'NSLeftTextAlignment' is deprecated: first deprecated in macOS 10.12
     // 'NSRightTextAlignment' is deprecated: first deprecated in macOS 10.12
-                switch((css::style::ParagraphAdjust)alignment) {
+                switch(static_cast<css::style::ParagraphAdjust>(alignment)) {
                     case css::style::ParagraphAdjust_RIGHT : textAlignment = [NSNumber numberWithInteger:NSRightTextAlignment]    ; break;
                     case css::style::ParagraphAdjust_CENTER: textAlignment = [NSNumber numberWithInteger:NSCenterTextAlignment]   ; break;
                     case css::style::ParagraphAdjust_BLOCK : textAlignment = [NSNumber numberWithInteger:NSJustifiedTextAlignment]; break;
@@ -322,7 +309,7 @@ SAL_WNODEPRECATED_DECLARATIONS_POP
 }
 
 +(void)addMarkup:(XAccessibleTextMarkup*)markup toString:(NSMutableAttributedString*)string inRange:(NSRange)range {
-    [AquaA11yTextAttributesWrapper addMarkup:markup withType:(css::text::TextMarkupType::SPELLCHECK) toString:string inRange:range];
+    [AquaA11yTextAttributesWrapper addMarkup:markup withType:css::text::TextMarkupType::SPELLCHECK toString:string inRange:range];
 }
 
 +(NSMutableAttributedString *)createAttributedStringForElement:(AquaA11yWrapper *)wrapper inOrigRange:(id)origRange {
@@ -359,9 +346,9 @@ SAL_WNODEPRECATED_DECLARATIONS_POP
                 [AquaA11yTextAttributesWrapper addMarkup:[wrapper accessibleTextMarkup] toString:string inRange:[origRange rangeValue]];
             [ string endEditing ];
         }
-    } catch ( IllegalArgumentException & e ) {
+    } catch ( IllegalArgumentException & ) {
         // empty
-    } catch ( IndexOutOfBoundsException & e ) {
+    } catch ( IndexOutOfBoundsException & ) {
         // empty
     } catch ( RuntimeException& ) {
         // at least don't crash

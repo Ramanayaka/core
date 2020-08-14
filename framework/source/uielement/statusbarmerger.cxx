@@ -18,7 +18,6 @@
  */
 #include <uielement/statusbarmerger.hxx>
 
-using rtl::OUString;
 using com::sun::star::beans::PropertyValue;
 using com::sun::star::uno::Sequence;
 
@@ -26,10 +25,10 @@ namespace framework
 {
 namespace {
 
-static const char MERGECOMMAND_ADDAFTER[]       = "AddAfter";
-static const char MERGECOMMAND_ADDBEFORE[]      = "AddBefore";
-static const char MERGECOMMAND_REPLACE[]        = "Replace";
-static const char MERGECOMMAND_REMOVE[]         = "Remove";
+const char MERGECOMMAND_ADDAFTER[]       = "AddAfter";
+const char MERGECOMMAND_ADDBEFORE[]      = "AddBefore";
+const char MERGECOMMAND_REPLACE[]        = "Replace";
+const char MERGECOMMAND_REMOVE[]         = "Remove";
 
 void lcl_ConvertSequenceToValues(
     const Sequence< PropertyValue > &rSequence,
@@ -38,11 +37,10 @@ void lcl_ConvertSequenceToValues(
     OUString sAlignment;
     bool bAutoSize = false;
     bool bOwnerDraw = false;
+    bool bMandatory = true;
 
-    PropertyValue aPropVal;
-    for ( sal_Int32 i = 0; i < rSequence.getLength(); i++ )
+    for ( PropertyValue const & aPropVal : rSequence )
     {
-        aPropVal = rSequence[i];
         if ( aPropVal.Name == "URL" )
             aPropVal.Value >>= rItem.aCommandURL;
         else if ( aPropVal.Name == "Title" )
@@ -55,6 +53,8 @@ void lcl_ConvertSequenceToValues(
             aPropVal.Value >>= bAutoSize;
         else if ( aPropVal.Name == "OwnerDraw" )
             aPropVal.Value >>= bOwnerDraw;
+        else if ( aPropVal.Name == "Mandatory" )
+            aPropVal.Value >>= bMandatory;
         else if ( aPropVal.Name == "Width" )
         {
             sal_Int32 aWidth = 0;
@@ -68,6 +68,8 @@ void lcl_ConvertSequenceToValues(
         nItemBits |= StatusBarItemBits::AutoSize;
     if ( bOwnerDraw )
         nItemBits |= StatusBarItemBits::UserDraw;
+    if ( bMandatory )
+        nItemBits |= StatusBarItemBits::Mandatory;
     if ( sAlignment == "center" )
         nItemBits |= StatusBarItemBits::Center;
     else if ( sAlignment == "right" )
@@ -102,14 +104,13 @@ bool lcl_MergeItems( StatusBar* pStatusbar,
                             sal_uInt16 nPos,
                             sal_uInt16 nModIndex,
                             sal_uInt16& rItemId,
-                            const ::rtl::OUString& rModuleIdentifier,
                             const AddonStatusbarItemContainer& rAddonItems )
 {
     const sal_uInt16 nSize( rAddonItems.size() );
     for ( sal_Int32 i = 0; i < nSize; i++ )
     {
         const AddonStatusbarItem& rItem = rAddonItems[i];
-        if ( !StatusbarMerger::IsCorrectContext( rItem.aContext, rModuleIdentifier ) )
+        if ( !StatusbarMerger::IsCorrectContext( rItem.aContext ) )
             continue;
 
         sal_uInt16 nInsPos = nPos + nModIndex + i;
@@ -126,16 +127,15 @@ bool lcl_MergeItems( StatusBar* pStatusbar,
 bool lcl_ReplaceItem( StatusBar* pStatusbar,
                              sal_uInt16 nPos,
                              sal_uInt16& rItemId,
-                            const ::rtl::OUString& rModuleIdentifier,
                              const AddonStatusbarItemContainer& rAddonToolbarItems )
 {
     pStatusbar->RemoveItem( pStatusbar->GetItemId( nPos ) );
-    return lcl_MergeItems( pStatusbar, nPos, 0, rItemId, rModuleIdentifier, rAddonToolbarItems );
+    return lcl_MergeItems( pStatusbar, nPos, 0, rItemId, rAddonToolbarItems );
 }
 
 bool lcl_RemoveItems( StatusBar* pStatusbar,
                              sal_uInt16 nPos,
-                             const ::rtl::OUString& rMergeCommandParameter )
+                             const OUString& rMergeCommandParameter )
 {
     sal_Int32 nCount = rMergeCommandParameter.toInt32();
     if ( nCount > 0 )
@@ -152,20 +152,19 @@ bool lcl_RemoveItems( StatusBar* pStatusbar,
 }
 
 bool StatusbarMerger::IsCorrectContext(
-    const OUString& rContext,
-    const OUString& rModuleIdentifier )
+    const OUString& rContext )
 {
-    return (( rContext.getLength() == 0 ) || ( rContext.indexOf( rModuleIdentifier ) >= 0 ));
+    return rContext.isEmpty();
 }
 
 bool StatusbarMerger::ConvertSeqSeqToVector(
     const Sequence< Sequence< PropertyValue > > &rSequence,
     AddonStatusbarItemContainer& rContainer )
 {
-    for ( sal_Int32 i = 0; i < rSequence.getLength(); i++ )
+    for ( auto const & i : rSequence )
     {
         AddonStatusbarItem aStatusBarItem;
-        lcl_ConvertSequenceToValues( rSequence[i], aStatusBarItem );
+        lcl_ConvertSequenceToValues( i, aStatusBarItem );
         rContainer.push_back( aStatusBarItem );
     }
 
@@ -178,7 +177,7 @@ sal_uInt16 StatusbarMerger::FindReferencePos(
 {
     for ( sal_uInt16 nPos = 0; nPos < pStatusbar->GetItemCount(); nPos++ )
     {
-        const ::rtl::OUString rCmd = pStatusbar->GetItemCommand( pStatusbar->GetItemId( nPos ) );
+        const OUString rCmd = pStatusbar->GetItemCommand( pStatusbar->GetItemId( nPos ) );
         if ( rReferencePoint == rCmd )
             return nPos;
     }
@@ -190,17 +189,16 @@ bool StatusbarMerger::ProcessMergeOperation(
     StatusBar* pStatusbar,
     sal_uInt16 nPos,
     sal_uInt16& rItemId,
-    const ::rtl::OUString& rModuleIdentifier,
-    const ::rtl::OUString& rMergeCommand,
-    const ::rtl::OUString& rMergeCommandParameter,
+    const OUString& rMergeCommand,
+    const OUString& rMergeCommandParameter,
     const AddonStatusbarItemContainer& rItems )
 {
     if ( rMergeCommand == MERGECOMMAND_ADDAFTER )
-        return lcl_MergeItems( pStatusbar, nPos, 1, rItemId, rModuleIdentifier, rItems );
+        return lcl_MergeItems( pStatusbar, nPos, 1, rItemId, rItems );
     else if ( rMergeCommand == MERGECOMMAND_ADDBEFORE )
-        return lcl_MergeItems( pStatusbar, nPos, 0, rItemId, rModuleIdentifier, rItems );
+        return lcl_MergeItems( pStatusbar, nPos, 0, rItemId, rItems );
     else if ( rMergeCommand == MERGECOMMAND_REPLACE )
-        return lcl_ReplaceItem( pStatusbar, nPos, rItemId, rModuleIdentifier, rItems );
+        return lcl_ReplaceItem( pStatusbar, nPos, rItemId, rItems );
     else if ( rMergeCommand == MERGECOMMAND_REMOVE )
         return lcl_RemoveItems( pStatusbar, nPos, rMergeCommandParameter );
 
@@ -210,9 +208,8 @@ bool StatusbarMerger::ProcessMergeOperation(
 bool StatusbarMerger::ProcessMergeFallback(
     StatusBar* pStatusbar,
     sal_uInt16& rItemId,
-    const ::rtl::OUString& rModuleIdentifier,
-    const ::rtl::OUString& rMergeCommand,
-    const ::rtl::OUString& rMergeFallback,
+    const OUString& rMergeCommand,
+    const OUString& rMergeFallback,
     const AddonStatusbarItemContainer& rItems )
 {
     // fallback IGNORE or REPLACE/REMOVE item not found
@@ -226,9 +223,9 @@ bool StatusbarMerger::ProcessMergeFallback(
              ( rMergeCommand == MERGECOMMAND_ADDAFTER ) )
     {
         if ( rMergeFallback == "AddFirst" )
-            return lcl_MergeItems( pStatusbar, 0, 0, rItemId, rModuleIdentifier, rItems );
+            return lcl_MergeItems( pStatusbar, 0, 0, rItemId, rItems );
         else if ( rMergeFallback == "AddLast" )
-            return lcl_MergeItems( pStatusbar, STATUSBAR_APPEND, 0, rItemId, rModuleIdentifier, rItems );
+            return lcl_MergeItems( pStatusbar, STATUSBAR_APPEND, 0, rItemId, rItems );
     }
 
     return false;

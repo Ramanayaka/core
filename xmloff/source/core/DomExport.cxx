@@ -18,25 +18,23 @@
  */
 
 
-#include "DomExport.hxx"
+#include <DomExport.hxx>
 
-#include <xmloff/nmspmap.hxx>
+#include <xmloff/namespacemap.hxx>
 #include <xmloff/xmlexp.hxx>
 #include <xmloff/xmlerror.hxx>
 
 #include <com/sun/star/uno/Reference.hxx>
 #include <com/sun/star/xml/dom/XAttr.hpp>
-#include <com/sun/star/xml/dom/XDocumentBuilder.hpp>
 #include <com/sun/star/xml/dom/XNode.hpp>
 #include <com/sun/star/xml/dom/XElement.hpp>
-#include <com/sun/star/xml/dom/XEntity.hpp>
-#include <com/sun/star/xml/dom/XNotation.hpp>
-#include <com/sun/star/xml/sax/XAttributeList.hpp>
 #include <com/sun/star/xml/dom/NodeType.hpp>
 #include <com/sun/star/xml/dom/XNamedNodeMap.hpp>
 
 #include <rtl/ustring.hxx>
 #include <rtl/ustrbuf.hxx>
+#include <sal/log.hxx>
+#include <osl/diagnose.h>
 
 
 #include <vector>
@@ -48,6 +46,7 @@ using std::vector;
 
 using namespace com::sun::star::xml::dom;
 
+namespace {
 
 class DomVisitor
 {
@@ -59,11 +58,13 @@ public:
     virtual void endElement( const Reference<XElement>& ) {}
 };
 
-void visit( DomVisitor&, const Reference<XDocument>& );
-void visit( DomVisitor&, const Reference<XNode>& );
+}
+
+static void visit( DomVisitor&, const Reference<XDocument>& );
+static void visit( DomVisitor&, const Reference<XNode>& );
 
 
-void visitNode( DomVisitor& rVisitor, const Reference<XNode>& xNode )
+static void visitNode( DomVisitor& rVisitor, const Reference<XNode>& xNode )
 {
     switch( xNode->getNodeType() )
     {
@@ -117,6 +118,7 @@ void visit( DomVisitor& rVisitor, const Reference<XNode>& xNode )
         rVisitor.endElement( Reference<XElement>( xNode, UNO_QUERY_THROW ) );
 }
 
+namespace {
 
 class DomExport: public DomVisitor
 {
@@ -140,6 +142,8 @@ public:
     virtual void endElement( const Reference<XElement>& ) override;
     virtual void character( const Reference<XCharacterData>& ) override;
 };
+
+}
 
 DomExport::DomExport( SvXMLExport& rExport ) :
     mrExport( rExport )

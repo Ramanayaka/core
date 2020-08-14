@@ -19,11 +19,12 @@
 #ifndef INCLUDED_SW_SOURCE_CORE_INC_RETRIEVEINPUTSTREAM_HXX
 #define INCLUDED_SW_SOURCE_CORE_INC_RETRIEVEINPUTSTREAM_HXX
 
-#include <observablethread.hxx>
+#include "observablethread.hxx"
+#include <rtl/ref.hxx>
 #include <rtl/ustring.hxx>
-#include <retrievedinputstreamdata.hxx>
+#include "retrievedinputstreamdata.hxx"
 
-/** class for a thread to retrieve an input stream given by an URL
+/** class for a thread to retrieve an input stream given by a URL
 
     OD 2007-01-29 #i73788#
 */

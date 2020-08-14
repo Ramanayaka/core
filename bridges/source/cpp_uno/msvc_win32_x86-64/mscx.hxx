@@ -19,11 +19,10 @@
 #ifndef INCLUDED_BRIDGES_SOURCE_CPP_UNO_MSVC_WIN32_X86_64_MSCX_HXX
 #define INCLUDED_BRIDGES_SOURCE_CPP_UNO_MSVC_WIN32_X86_64_MSCX_HXX
 
-#pragma warning(push, 1)
+#define WIN32_LEAN_AND_MEAN
 #include <windows.h>
-#pragma warning(pop)
 
-#include "rtl/ustring.hxx"
+#include <rtl/ustring.hxx>
 
 
 class type_info;
@@ -47,12 +46,6 @@ void mscx_raiseException(
     uno_Any * pUnoExc, uno_Mapping * pUno2Cpp );
 
 }
-
-//TODO: Work around missing __CxxDetectRethrow in clang-cl for now (predefined
-// in cl, <www.geoffchappell.com/studies/msvc/language/predefined/index.html>):
-#if defined __clang__
-extern "C" int __cdecl __CxxDetectRethrow(void *);
-#endif
 
 #endif
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

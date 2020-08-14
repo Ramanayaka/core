@@ -21,8 +21,7 @@
 #define INCLUDED_IDL_INC_BASOBJ_HXX
 
 #include <tools/ref.hxx>
-#include <bastype.hxx>
-#include <tools/pstm.hxx>
+#include "bastype.hxx"
 #include <functional>
 #include <vector>
 
@@ -82,11 +81,11 @@ public:
     }
 };
 
-class SvMetaObject : public SvRttiBase
+class SvMetaObject : public SvRefBase
 {
-protected:
     OString      aName;
 
+protected:
     bool         ReadNameSvIdl( SvTokenStream & rInStm );
             void DoReadContextSvIdl( SvIdlDataBase &, SvTokenStream & rInStm );
     virtual void ReadContextSvIdl( SvIdlDataBase &, SvTokenStream & rInStm );
@@ -102,13 +101,11 @@ public:
     void                      SetName( const OString& rName );
     virtual const OString &  GetName() const { return aName; }
 
-    virtual bool        Test( SvTokenStream & rInStm );
     virtual bool        ReadSvIdl( SvIdlDataBase &, SvTokenStream & rInStm );
 };
 
 class SvMetaReference : public SvMetaObject
 {
-protected:
     tools::SvRef<SvMetaReference>  aRef;
 public:
             SvMetaReference();

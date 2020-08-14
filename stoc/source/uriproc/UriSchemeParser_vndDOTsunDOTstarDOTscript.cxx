@@ -22,11 +22,7 @@
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/uno/Reference.hxx>
-#include <com/sun/star/uno/RuntimeException.hpp>
 #include <com/sun/star/uno/Sequence.hxx>
-#include <com/sun/star/uno/XComponentContext.hpp>
-#include <com/sun/star/uno/XInterface.hpp>
-#include <com/sun/star/uri/XUriReference.hpp>
 #include <com/sun/star/uri/XUriSchemeParser.hpp>
 #include <com/sun/star/uri/XVndSunStarScriptUrlReference.hpp>
 #include <cppuhelper/implbase.hxx>
@@ -39,7 +35,11 @@
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
 
-#include <exception>
+#include <string_view>
+
+namespace com::sun::star::uno { class XComponentContext; }
+namespace com::sun::star::uno { class XInterface; }
+namespace com::sun::star::uri { class XUriReference; }
 
 namespace {
 
@@ -66,7 +66,7 @@ int parseEscaped(OUString const & part, sal_Int32 * index) {
 OUString parsePart(
     OUString const & part, bool namePart, sal_Int32 * index)
 {
-    OUStringBuffer buf;
+    OUStringBuffer buf(64);
     while (*index < part.getLength()) {
         sal_Unicode c = part[*index];
         if (namePart ? c == '?' : c == '&' || c == '=') {
@@ -110,8 +110,8 @@ OUString parsePart(
                     }
                     encoded |= (n & 0x3F) << shift;
                 }
-                if (!utf8 || !rtl::isUnicodeCodePoint(encoded) || encoded < min
-                    || (encoded >= 0xD800 && encoded <= 0xDFFF))
+                if (!utf8 || !rtl::isUnicodeScalarValue(encoded)
+                    || encoded < min)
                 {
                     break;
                 }
@@ -135,8 +135,6 @@ OUString parsePart(
     return buf.makeStringAndClear();
 }
 
-namespace {
-
 OUString encodeNameOrParamFragment(OUString const & fragment) {
     static sal_Bool const nameOrParamFragment[] = {
         false, false, false, false, false, false, false, false,
@@ -158,8 +156,6 @@ OUString encodeNameOrParamFragment(OUString const & fragment) {
     return rtl::Uri::encode(
         fragment, nameOrParamFragment, rtl_UriEncodeIgnoreEscapes,
         RTL_TEXTENCODING_UTF8);
-}
-
 }
 
 bool parseSchemeSpecificPart(OUString const & part) {
@@ -195,7 +191,7 @@ class UrlReference:
 public:
     UrlReference(OUString const & scheme, OUString const & path):
         m_base(
-            scheme, false, false, OUString(), path, false, OUString())
+            scheme, false, OUString(), path, false, OUString())
     {}
 
     UrlReference(const UrlReference&) = delete;
@@ -265,7 +261,7 @@ public:
 private:
     virtual ~UrlReference() override {}
 
-    sal_Int32 findParameter(OUString const & key);
+    sal_Int32 findParameter(OUString const & key) const;
 
     stoc::uriproc::UriReference m_base;
 };
@@ -286,10 +282,9 @@ void SAL_CALL UrlReference::setName(OUString const & name)
     sal_Int32 i = 0;
     parsePart(m_base.m_path, true, &i);
 
-    OUStringBuffer newPath;
-    newPath.append(encodeNameOrParamFragment(name));
-    newPath.append(m_base.m_path.copy(i));
-    m_base.m_path = newPath.makeStringAndClear();
+    auto tmp = std::u16string_view(m_base.m_path).substr(i);
+    m_base.m_path = encodeNameOrParamFragment(name) +
+        rtl::OUStringView(tmp.data(), tmp.length());
 }
 
 sal_Bool UrlReference::hasParameter(OUString const & key)
@@ -318,8 +313,8 @@ void UrlReference::setParameter(OUString const & key, OUString const & value)
         i = m_base.m_path.getLength();
     }
 
-    OUStringBuffer newPath;
-    newPath.append(m_base.m_path.copy(0, i));
+    OUStringBuffer newPath(128);
+    newPath.append(std::u16string_view(m_base.m_path).substr(0, i));
     if (!bExistent) {
         newPath.append( m_base.m_path.indexOf('?') < 0 ? '?' : '&' );
         newPath.append(encodeNameOrParamFragment(key));
@@ -329,13 +324,13 @@ void UrlReference::setParameter(OUString const & key, OUString const & value)
     if (bExistent) {
         /*oldValue = */
         parsePart(m_base.m_path, false, &i); // skip key
-        newPath.append(m_base.m_path.copy(i));
+        newPath.append(std::u16string_view(m_base.m_path).substr(i));
     }
 
     m_base.m_path = newPath.makeStringAndClear();
 }
 
-sal_Int32 UrlReference::findParameter(OUString const & key) {
+sal_Int32 UrlReference::findParameter(OUString const & key) const {
     sal_Int32 i = 0;
     parsePart(m_base.m_path, true, &i); // skip name
     for (;;) {
@@ -379,7 +374,7 @@ private:
 
 OUString Parser::getImplementationName()
 {
-    return OUString("com.sun.star.comp.uri.UriSchemeParser_vndDOTsunDOTstarDOTscript");
+    return "com.sun.star.comp.uri.UriSchemeParser_vndDOTsunDOTstarDOTscript";
 }
 
 sal_Bool Parser::supportsService(OUString const & serviceName)
@@ -389,8 +384,7 @@ sal_Bool Parser::supportsService(OUString const & serviceName)
 
 css::uno::Sequence< OUString > Parser::getSupportedServiceNames()
 {
-    css::uno::Sequence< OUString > s { "com.sun.star.uri.UriSchemeParser_vndDOTsunDOTstarDOTscript" };
-    return s;
+    return { "com.sun.star.uri.UriSchemeParser_vndDOTsunDOTstarDOTscript" };
 }
 
 css::uno::Reference< css::uri::XUriReference >
@@ -405,7 +399,7 @@ Parser::parse(
 
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_comp_uri_UriSchemeParser_vndDOTsunDOTstarDOTscript_get_implementation(css::uno::XComponentContext*,
         css::uno::Sequence<css::uno::Any> const &)
 {

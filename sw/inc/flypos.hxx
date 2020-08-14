@@ -19,7 +19,7 @@
 #ifndef INCLUDED_SW_INC_FLYPOS_HXX
 #define INCLUDED_SW_INC_FLYPOS_HXX
 
-#include <swdllapi.h>
+#include "swdllapi.h"
 #include <memory>
 #include <set>
 
@@ -27,7 +27,7 @@ class SwFrameFormat;
 class SwNodeIndex;
 
 /// For querying current flys in document.
-class SW_DLLPUBLIC SwPosFlyFrame
+class SAL_DLLPUBLIC_RTTI SwPosFlyFrame final
 {
     const SwFrameFormat* m_pFrameFormat;    ///< FlyFrameFormat
     SwNodeIndex* m_pNodeIndex;        ///< Index for node is sufficient.

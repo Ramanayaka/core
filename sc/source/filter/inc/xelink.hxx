@@ -20,17 +20,15 @@
 #ifndef INCLUDED_SC_SOURCE_FILTER_INC_XELINK_HXX
 #define INCLUDED_SC_SOURCE_FILTER_INC_XELINK_HXX
 
-#include "markdata.hxx"
-#include "xllink.hxx"
 #include "xerecord.hxx"
-#include "xehelper.hxx"
-#include "xeformula.hxx"
-#include "externalrefmgr.hxx"
-#include <o3tl/typed_flags_set.hxx>
+#include "xeroot.hxx"
+#include <externalrefmgr.hxx>
 #include <memory>
+#include <o3tl/typed_flags_set.hxx>
 
 struct ScSingleRefData;
 struct ScComplexRefData;
+struct XclExpRefLogEntry;
 
 /* ============================================================================
 Classes for export of different kinds of internal/external references.
@@ -124,10 +122,10 @@ private:
         explicit     XclExpTabInfoEntry() : mnXclTab( 0 ), mnFlags( ExcTabBufFlags::NONE ) {}
     };
 
-    typedef ::std::vector< XclExpTabInfoEntry > XclExpTabInfoVec;
     typedef ::std::vector< SCTAB >              ScTabVec;
 
-    XclExpTabInfoVec    maTabInfoVec;       /// Array of Calc sheet index information.
+    std::vector< XclExpTabInfoEntry >
+                        maTabInfoVec;       /// Array of Calc sheet index information.
 
     SCTAB               mnScCnt;            /// Count of Calc sheets.
     sal_uInt16          mnXclCnt;           /// Count of Excel sheets to be exported.

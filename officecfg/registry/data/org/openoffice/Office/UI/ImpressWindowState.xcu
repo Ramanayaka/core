@@ -132,22 +132,17 @@
       </node>
       <node oor:name="private:resource/popupmenu/pagepanemaster" oor:op="replace">
         <prop oor:name="UIName" oor:type="xs:string">
-          <value xml:lang="en-US">Slide Master Sorter/Pane</value>
+          <value xml:lang="en-US">Master Slide Sorter/Pane</value>
         </prop>
       </node>
       <node oor:name="private:resource/popupmenu/pagepanenoselmaster" oor:op="replace">
         <prop oor:name="UIName" oor:type="xs:string">
-          <value xml:lang="en-US">Slide Master Sorter/Pane (no selection)</value>
+          <value xml:lang="en-US">Master Slide Sorter/Pane (no selection)</value>
         </prop>
       </node>
       <node oor:name="private:resource/popupmenu/table" oor:op="replace">
         <prop oor:name="UIName" oor:type="xs:string">
           <value xml:lang="en-US">Table</value>
-        </prop>
-      </node>
-      <node oor:name="private:resource/popupmenu/tabletext" oor:op="replace">
-        <prop oor:name="UIName" oor:type="xs:string">
-          <value xml:lang="en-US">Table Text</value>
         </prop>
       </node>
       <node oor:name="private:resource/popupmenu/textbox" oor:op="replace">
@@ -231,7 +226,7 @@
           <value>false</value>
         </prop>
         <prop oor:name="UIName" oor:type="xs:string">
-          <value xml:lang="en-US">Arrows</value>
+          <value xml:lang="en-US">Lines and Arrows</value>
         </prop>
         <prop oor:name="HideFromToolbarMenu" oor:type="xs:boolean">
           <value>true</value>
@@ -245,7 +240,7 @@
           <value>false</value>
         </prop>
         <prop oor:name="UIName" oor:type="xs:string">
-          <value xml:lang="en-US">Mode</value>
+          <value xml:lang="en-US">Transformations</value>
         </prop>
       </node>
       <node oor:name="private:resource/toolbar/commontaskbar" oor:op="replace">
@@ -402,20 +397,6 @@
           <value>false</value>
         </prop>
       </node>
-      <node oor:name="private:resource/toolbar/moreformcontrols" oor:op="replace">
-        <prop oor:name="UIName" oor:type="xs:string">
-          <value xml:lang="en-US">More Controls</value>
-        </prop>
-        <prop oor:name="Docked" oor:type="xs:boolean">
-          <value>false</value>
-        </prop>
-        <prop oor:name="Visible" oor:type="xs:boolean">
-          <value>false</value>
-        </prop>
-        <prop oor:name="HideFromToolbarMenu" oor:type="xs:boolean">
-          <value>true</value>
-        </prop>
-      </node>
       <node oor:name="private:resource/toolbar/formdesign" oor:op="replace">
         <prop oor:name="UIName" oor:type="xs:string">
           <value xml:lang="en-US">Form Design</value>
@@ -531,7 +512,7 @@
           <value>false</value>
         </prop>
         <prop oor:name="UIName" oor:type="xs:string">
-          <value xml:lang="en-US">Lines</value>
+          <value xml:lang="en-US">Curves and Polygons</value>
         </prop>
         <prop oor:name="Visible" oor:type="xs:boolean">
           <value>false</value>

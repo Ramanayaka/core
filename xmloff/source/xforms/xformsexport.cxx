@@ -21,27 +21,26 @@
 #include <xmloff/xformsexport.hxx>
 
 #include "XFormsModelExport.hxx"
-#include "xformsapi.hxx"
 
 #include <xmloff/xmlexp.hxx>
 #include <xmloff/xmltoken.hxx>
-#include <xmloff/xmlnmspe.hxx>
-#include <xmloff/nmspmap.hxx>
-#include "DomExport.hxx"
+#include <xmloff/xmlnamespace.hxx>
+#include <xmloff/namespacemap.hxx>
+#include <DomExport.hxx>
 
 #include <sax/tools/converter.hxx>
 
 #include <comphelper/processfactory.hxx>
 
-#include <tools/debug.hxx>
 #include <tools/diagnose_ex.h>
+#include <sal/log.hxx>
 #include <com/sun/star/container/XIndexAccess.hpp>
 #include <com/sun/star/container/XNameAccess.hpp>
 #include <com/sun/star/document/NamedPropertyValues.hpp>
+#include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/xml/dom/XDocument.hpp>
 #include <com/sun/star/form/binding/XBindableValue.hpp>
 #include <com/sun/star/form/binding/XListEntrySink.hpp>
-#include <com/sun/star/form/binding/XListEntrySource.hpp>
 #include <com/sun/star/form/submission/XSubmissionSupplier.hpp>
 #include <com/sun/star/xforms/XModel.hpp>
 #include <com/sun/star/xforms/XDataTypeRepository.hpp>
@@ -80,40 +79,44 @@ using com::sun::star::util::Duration;
 void exportXForms( SvXMLExport& rExport )
 {
     Reference<XFormsSupplier> xSupplier( rExport.GetModel(), UNO_QUERY );
-    if( xSupplier.is() )
-    {
-        Reference<XNameContainer> xForms = xSupplier->getXForms();
-        if( xForms.is() )
-        {
-            Sequence<OUString> aNames = xForms->getElementNames();
-            const OUString* pNames = aNames.getConstArray();
-            sal_Int32 nNames = aNames.getLength();
+    if( !xSupplier.is() )
+        return;
 
-            for( sal_Int32 n = 0; n < nNames; n++ )
-            {
-                Reference<XPropertySet> xModel( xForms->getByName( pNames[n] ),
-                                                UNO_QUERY );
-                exportXFormsModel( rExport, xModel );
-            }
+    Reference<XNameContainer> xForms = xSupplier->getXForms();
+    if( xForms.is() )
+    {
+        const Sequence<OUString> aNames = xForms->getElementNames();
+
+        for( const auto& rName : aNames )
+        {
+            Reference<XPropertySet> xModel( xForms->getByName( rName ),
+                                            UNO_QUERY );
+            exportXFormsModel( rExport, xModel );
         }
     }
 }
 
 
-void exportXFormsInstance( SvXMLExport&, const Sequence<PropertyValue>& );
-void exportXFormsBinding( SvXMLExport&, const Reference<XPropertySet>& );
-void exportXFormsSubmission( SvXMLExport&, const Reference<XPropertySet>& );
-void exportXFormsSchemas( SvXMLExport&, const Reference<css::xforms::XModel>& );
+static void exportXFormsInstance( SvXMLExport&, const Sequence<PropertyValue>& );
+static void exportXFormsBinding( SvXMLExport&, const Reference<XPropertySet>& );
+static void exportXFormsSubmission( SvXMLExport&, const Reference<XPropertySet>& );
+static void exportXFormsSchemas( SvXMLExport&, const Reference<css::xforms::XModel>& );
 
 
 typedef OUString (*convert_t)( const Any& );
-typedef struct
+
+namespace {
+
+struct ExportTable
 {
-    const sal_Char* pPropertyName;
-    sal_uInt16 nNamespace;
+    const char* pPropertyName;
+    sal_uInt16 const nNamespace;
     sal_uInt16 nToken;
-    convert_t aConverter;
-} ExportTable;
+    convert_t const aConverter;
+};
+
+}
+
 static void lcl_export( const Reference<XPropertySet>& rPropertySet,
                  SvXMLExport& rExport,
                  const ExportTable* pTable );
@@ -122,15 +125,15 @@ static void lcl_export( const Reference<XPropertySet>& rPropertySet,
 #define TABLE_END { nullptr, 0, 0, nullptr }
 
 // any conversion functions
-OUString xforms_string( const Any& );
-OUString xforms_bool( const Any& );
-OUString xforms_whitespace( const Any& );
-template<typename T, void (*FUNC)( OUStringBuffer&, T )> OUString xforms_convert( const Any& );
-template<typename T, void (*FUNC)( OUStringBuffer&, const T& )> OUString xforms_convertRef( const Any& );
+static OUString xforms_string( const Any& );
+static OUString xforms_bool( const Any& );
+static OUString xforms_whitespace( const Any& );
+template<typename T, void (*FUNC)( OUStringBuffer&, T )> static OUString xforms_convert( const Any& );
+template<typename T, void (*FUNC)( OUStringBuffer&, const T& )> static OUString xforms_convertRef( const Any& );
 
-void xforms_formatDate( OUStringBuffer& aBuffer, const util::Date& aDate );
-void xforms_formatTime( OUStringBuffer& aBuffer, const css::util::Time& aTime );
-void xforms_formatDateTime( OUStringBuffer& aBuffer, const util::DateTime& aDateTime );
+static void xforms_formatDate( OUStringBuffer& aBuffer, const util::Date& aDate );
+static void xforms_formatTime( OUStringBuffer& aBuffer, const css::util::Time& aTime );
+static void xforms_formatDateTime( OUStringBuffer& aBuffer, const util::DateTime& aDateTime );
 
 static void convertNumber(OUStringBuffer & b, sal_Int32 n) {
     b.append(n);
@@ -143,14 +146,14 @@ convert_t const xforms_date     = &xforms_convertRef<util::Date,&xforms_formatDa
 convert_t const xforms_time     = &xforms_convertRef<css::util::Time,&xforms_formatTime>;
 
 // other functions
-static OUString lcl_getXSDType( SvXMLExport& rExport,
+static OUString lcl_getXSDType( SvXMLExport const & rExport,
                          const Reference<XPropertySet>& xType );
 
 
 // the model
 
 
-static const ExportTable aXFormsModelTable[] =
+const ExportTable aXFormsModelTable[] =
 {
     TABLE_ENTRY( "ID", NONE, ID, xforms_string ),
     TABLE_ENTRY( "SchemaRef", NONE, SCHEMA, xforms_string ),
@@ -218,12 +221,10 @@ void exportXFormsInstance( SvXMLExport& rExport,
     OUString sURL;
     Reference<XDocument> xDoc;
 
-    const PropertyValue* pInstance = xInstance.getConstArray();
-    sal_Int32 nCount = xInstance.getLength();
-    for( sal_Int32 i = 0; i < nCount; i++ )
+    for( const auto& rProp : xInstance )
     {
-        OUString sName = pInstance[i].Name;
-        const Any& rAny = pInstance[i].Value;
+        OUString sName = rProp.Name;
+        const Any& rAny = rProp.Value;
         if ( sName == "ID" )
             rAny >>= sId;
         else if ( sName == "URL" )
@@ -251,7 +252,7 @@ void exportXFormsInstance( SvXMLExport& rExport,
 // the binding
 
 
-static const ExportTable aXFormsBindingTable[] =
+const ExportTable aXFormsBindingTable[] =
 {
     TABLE_ENTRY( "BindingID",            NONE, ID,         xforms_string ),
     TABLE_ENTRY( "BindingExpression",    NONE, NODESET,    xforms_string ),
@@ -275,11 +276,8 @@ void exportXFormsBinding( SvXMLExport& rExport,
         if( sName.isEmpty() )
         {
             // if we don't have a name yet, generate one on the fly
-            OUStringBuffer aBuffer;
-            aBuffer.append( "bind_" );
             sal_Int64 nId = reinterpret_cast<sal_uInt64>( xBinding.get() );
-            aBuffer.append( nId , 16 );
-            sName = aBuffer.makeStringAndClear();
+            sName = "bind_" + OUString::number( nId , 16 );
             xBinding->setPropertyValue( "BindingID", makeAny(sName));
         }
     }
@@ -302,9 +300,8 @@ void exportXFormsBinding( SvXMLExport& rExport,
                 xModel.is() ? xModel->getDataTypeRepository() : Reference<XDataTypeRepository>() );
             if( xRepository.is() )
             {
-                Reference<XPropertySet> xDataType(
-                    xRepository->getDataType( sTypeName ),
-                    UNO_QUERY );
+                Reference<XPropertySet> xDataType =
+                    xRepository->getDataType( sTypeName );
 
                 // if it's a basic data type, write out the XSD name
                 // for the XSD type class
@@ -335,12 +332,9 @@ void exportXFormsBinding( SvXMLExport& rExport,
     if( xNamespaces.is() )
     {
         // iterate over Prefixes for this binding
-        Sequence<OUString> aPrefixes = xNamespaces->getElementNames();
-        const OUString* pPrefixes = aPrefixes.getConstArray();
-        sal_Int32 nPrefixes = aPrefixes.getLength();
-        for( sal_Int32 i = 0; i < nPrefixes; i++ )
+        const Sequence<OUString> aPrefixes = xNamespaces->getElementNames();
+        for( const OUString& rPrefix : aPrefixes )
         {
-            const OUString& rPrefix = pPrefixes[i];
             OUString sURI;
             xNamespaces->getByName( rPrefix ) >>= sURI;
 
@@ -351,7 +345,15 @@ void exportXFormsBinding( SvXMLExport& rExport,
             if( nKey == XML_NAMESPACE_UNKNOWN  ||
                 rMap.GetNameByKey( nKey ) != sURI )
             {
-                rExport.AddAttribute( "xmlns:" + rPrefix, sURI );
+                // add declaration if it doesn't already exist
+                SvXMLAttributeList& rAttrList = rExport.GetAttrList();
+                OUString sName = "xmlns:" + rPrefix;
+                sal_Int16 nFound = rAttrList.GetIndexByName(sName);
+                // duplicate xmlns:script, http://openoffice.org/2000/script seen
+                assert(nFound == -1 || rAttrList.getValueByIndex(nFound) == sURI);
+                if (nFound != -1)
+                    continue;
+                rAttrList.AddAttribute(sName, sURI);
             }
         }
     }
@@ -364,7 +366,7 @@ void exportXFormsBinding( SvXMLExport& rExport,
 // the submission
 
 
-static const ExportTable aXFormsSubmissionTable[] =
+const ExportTable aXFormsSubmissionTable[] =
 {
     TABLE_ENTRY( "ID",         NONE, ID,        xforms_string ),
     TABLE_ENTRY( "Bind",       NONE, BIND,      xforms_string ),
@@ -396,7 +398,7 @@ void exportXFormsSubmission( SvXMLExport& rExport,
 // export data types as XSD schema
 
 
-static const ExportTable aDataTypeFacetTable[] =
+const ExportTable aDataTypeFacetTable[] =
 {
     TABLE_ENTRY( "Length",               XSD, LENGTH,         xforms_int32 ),
     TABLE_ENTRY( "MinLength",            XSD, MINLENGTH,      xforms_int32 ),
@@ -458,7 +460,7 @@ static void lcl_exportDataTypeFacets( SvXMLExport& rExport,
     }
 }
 
-static OUString lcl_getXSDType( SvXMLExport& rExport,
+static OUString lcl_getXSDType( SvXMLExport const & rExport,
                          const Reference<XPropertySet>& xType )
 {
     // we use string as default...
@@ -561,8 +563,7 @@ void exportXFormsSchemas( SvXMLExport& rExport,
                                         true, true );
 
         // now get data type repository, and export
-        Reference<XEnumerationAccess> xTypes( xModel->getDataTypeRepository(),
-                                              UNO_QUERY );
+        Reference<XEnumerationAccess> xTypes = xModel->getDataTypeRepository();
         if( xTypes.is() )
         {
             Reference<XEnumeration> xEnum = xTypes->createEnumeration();
@@ -658,9 +659,9 @@ OUString xforms_bool( const Any& rAny )
 
 void xforms_formatDate( OUStringBuffer& aBuffer, const util::Date& rDate )
 {
-    aBuffer.append(OUString::number(static_cast<sal_Int32>( rDate.Year ) )
-            + "-" + OUString::number(static_cast<sal_Int32>( rDate.Month ))
-            + "-" + OUString::number(static_cast<sal_Int32>( rDate.Day )) );
+    aBuffer.append(OUString::number(static_cast<sal_Int32>( rDate.Year ) ))
+            .append("-").append(OUString::number(static_cast<sal_Int32>( rDate.Month )))
+            .append("-").append(OUString::number(static_cast<sal_Int32>( rDate.Day )));
 }
 
 void xforms_formatTime( OUStringBuffer& aBuffer, const css::util::Time& rTime )
@@ -771,22 +772,19 @@ void getXFormsSettings( const Reference< XNameAccess >& _rXForms, Sequence< Prop
         // are the names of the XForm models, and which in turn provides named sequences of
         // PropertyValues - which denote the actual property values of the given named model.
 
-        Sequence< OUString > aModelNames( _rXForms->getElementNames() );
+        const Sequence< OUString > aModelNames( _rXForms->getElementNames() );
 
         Reference< XNameContainer > xModelSettings = document::NamedPropertyValues::create( comphelper::getProcessComponentContext() );
 
-        for (   const OUString* pModelName = aModelNames.getConstArray();
-                pModelName != aModelNames.getConstArray() + aModelNames.getLength();
-                ++pModelName
-            )
+        for ( auto const & modelName : aModelNames )
         {
-            Reference< XPropertySet > xModelProps( _rXForms->getByName( *pModelName ), UNO_QUERY_THROW );
+            Reference< XPropertySet > xModelProps( _rXForms->getByName( modelName ), UNO_QUERY_THROW );
 
             Sequence< PropertyValue > aModelSettings( 1 );
             aModelSettings[0].Name = "ExternalData";
             aModelSettings[0].Value = xModelProps->getPropertyValue( aModelSettings[0].Name );
 
-            xModelSettings->insertByName( *pModelName, makeAny( aModelSettings ) );
+            xModelSettings->insertByName( modelName, makeAny( aModelSettings ) );
         }
 
         if ( xModelSettings->hasElements() )
@@ -798,7 +796,7 @@ void getXFormsSettings( const Reference< XNameAccess >& _rXForms, Sequence< Prop
     }
     catch( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("xmloff");
     }
 }
 

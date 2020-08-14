@@ -17,16 +17,12 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "dsntypes.hxx"
-#include "dbamiscres.hrc"
+#include <dsntypes.hxx>
 #include <unotools/confignode.hxx>
 #include <osl/diagnose.h>
+#include <svtools/miscopt.hxx>
 #include <tools/wldcrd.hxx>
 #include <osl/file.hxx>
-#include "dbastrings.hrc"
-#include "core_resource.hxx"
-#include "core_resource.hrc"
-#include <comphelper/documentconstants.hxx>
 #include <comphelper/string.hxx>
 
 namespace dbaccess
@@ -43,15 +39,15 @@ namespace dbaccess
         {
             if ( comphelper::string::getTokenCount(_sUrl, ':') >= 2 )
             {
-                _sHostname      = _sUrl.getToken(0,':');
-                _nPortNumber    = _sUrl.getToken(1,':').toInt32();
+                sal_Int32 nPos {0};
+                _sHostname   = _sUrl.getToken(0, ':', nPos);
+                _nPortNumber = _sUrl.getToken(0, ':', nPos).toInt32();
             }
         }
     }
 // ODsnTypeCollection
 ODsnTypeCollection::ODsnTypeCollection(const css::uno::Reference< css::uno::XComponentContext >& _xContext)
 :m_aDriverConfig(_xContext)
-,m_xContext(_xContext)
 #if OSL_DEBUG_LEVEL > 0
 ,m_nLivingIterators(0)
 #endif
@@ -85,21 +81,22 @@ OUString ODsnTypeCollection::cutPrefix(const OUString& _sURL) const
 {
     OUString sRet;
     OUString sOldPattern;
-    StringVector::const_iterator aIter = m_aDsnPrefixes.begin();
-    StringVector::const_iterator aEnd = m_aDsnPrefixes.end();
 
-    for(;aIter != aEnd;++aIter)
+    // on Windows or with gen rendering, the urls may begin with an ~
+    const OUString& sCleanURL = comphelper::string::stripStart(_sURL, '~');
+
+    for (auto const& dsnPrefix : m_aDsnPrefixes)
     {
-        WildCard aWildCard(*aIter);
-        if ( sOldPattern.getLength() < aIter->getLength() && aWildCard.Matches(_sURL) )
+        WildCard aWildCard(dsnPrefix);
+        if ( sOldPattern.getLength() < dsnPrefix.getLength() && aWildCard.Matches(sCleanURL) )
         {
             // This relies on the fact that all patterns are of the form
             //   foo*
             // that is, the very concept of "prefix" applies.
-            OUString prefix(comphelper::string::stripEnd(*aIter, '*'));
-            OSL_ENSURE(prefix.getLength() <= _sURL.getLength(), "How can A match B when A shorter than B?");
-            sRet = _sURL.copy(prefix.getLength());
-            sOldPattern = *aIter;
+            OUString prefix(comphelper::string::stripEnd(dsnPrefix, '*'));
+            OSL_ENSURE(prefix.getLength() <= sCleanURL.getLength(), "How can A match B when A shorter than B?");
+            sRet = sCleanURL.copy(prefix.getLength());
+            sOldPattern = dsnPrefix;
         }
     }
 
@@ -110,47 +107,43 @@ OUString ODsnTypeCollection::getPrefix(const OUString& _sURL) const
 {
     OUString sRet;
     OUString sOldPattern;
-    StringVector::const_iterator aIter = m_aDsnPrefixes.begin();
-    StringVector::const_iterator aEnd = m_aDsnPrefixes.end();
-    for(;aIter != aEnd;++aIter)
+    for (auto const& dsnPrefix : m_aDsnPrefixes)
     {
-        WildCard aWildCard(*aIter);
-        if ( sOldPattern.getLength() < aIter->getLength() && aWildCard.Matches(_sURL) )
+        WildCard aWildCard(dsnPrefix);
+        if ( sOldPattern.getLength() < dsnPrefix.getLength() && aWildCard.Matches(_sURL) )
         {
             // This relies on the fact that all patterns are of the form
             //   foo*
             // that is, the very concept of "prefix" applies.
-            sRet = comphelper::string::stripEnd(*aIter, '*');
+            sRet = comphelper::string::stripEnd(dsnPrefix, '*');
             OSL_ENSURE(sRet.getLength() <= _sURL.getLength(), "How can A match B when A shorter than B?");
-            sOldPattern = *aIter;
+            sOldPattern = dsnPrefix;
         }
     }
 
     return sRet;
 }
 
-bool ODsnTypeCollection::hasDriver( const sal_Char* _pAsciiPattern ) const
+bool ODsnTypeCollection::hasDriver( const char* _pAsciiPattern ) const
 {
     OUString sPrefix( getPrefix( OUString::createFromAscii( _pAsciiPattern ) ) );
-    return ( sPrefix.getLength() > 0 );
+    return !sPrefix.isEmpty();
 }
 
 bool ODsnTypeCollection::isConnectionUrlRequired(const OUString& _sURL) const
 {
     OUString sRet;
     OUString sOldPattern;
-    StringVector::const_iterator aIter = m_aDsnPrefixes.begin();
-    StringVector::const_iterator aEnd = m_aDsnPrefixes.end();
-    for(;aIter != aEnd;++aIter)
+    for (auto const& dsnPrefix : m_aDsnPrefixes)
     {
-        WildCard aWildCard(*aIter);
-        if ( sOldPattern.getLength() < aIter->getLength() && aWildCard.Matches(_sURL) )
+        WildCard aWildCard(dsnPrefix);
+        if ( sOldPattern.getLength() < dsnPrefix.getLength() && aWildCard.Matches(_sURL) )
         {
-            sRet = *aIter;
-            sOldPattern = *aIter;
+            sRet = dsnPrefix;
+            sOldPattern = dsnPrefix;
         }
     }
-    return sRet.getLength() > 0 && sRet[sRet.getLength()-1] == '*';
+    return !sRet.isEmpty() && sRet[sRet.getLength()-1] == '*';
 }
 
 OUString ODsnTypeCollection::getMediaType(const OUString& _sURL) const
@@ -181,7 +174,7 @@ OUString ODsnTypeCollection::getDatasourcePrefixFromMediaType(const OUString& _s
         }
     }
 
-    if ( !sURL.getLength() && sFallbackURL.getLength() )
+    if ( sURL.isEmpty() && !sFallbackURL.isEmpty() )
         sURL = sFallbackURL;
 
     sURL = comphelper::string::stripEnd(sURL, '*');
@@ -208,14 +201,15 @@ void ODsnTypeCollection::extractHostNamePort(const OUString& _rDsn,OUString& _sD
     if ( _rDsn.startsWithIgnoreAsciiCase("jdbc:oracle:thin:") )
     {
         lcl_extractHostAndPort(sUrl,_rsHostname,_nPortNumber);
-        if ( !_rsHostname.getLength() && comphelper::string::getTokenCount(sUrl, ':') == 2 )
+        const sal_Int32 nUrlTokens {comphelper::string::getTokenCount(sUrl, ':')};
+        if ( _rsHostname.isEmpty() && nUrlTokens == 2 )
         {
             _nPortNumber = -1;
             _rsHostname = sUrl.getToken(0,':');
         }
-        if ( _rsHostname.getLength() )
-            _rsHostname = _rsHostname.getToken(comphelper::string::getTokenCount(_rsHostname, '@') - 1, '@');
-        _sDatabaseName = sUrl.getToken(comphelper::string::getTokenCount(sUrl, ':') - 1, ':');
+        if ( !_rsHostname.isEmpty() )
+            _rsHostname = _rsHostname.copy(_rsHostname.lastIndexOf('@')+1);
+        _sDatabaseName = sUrl.copy(sUrl.lastIndexOf(':')+1);
     }
     else if ( _rDsn.startsWithIgnoreAsciiCase("sdbc:address:ldap:") )
     {
@@ -226,9 +220,10 @@ void ODsnTypeCollection::extractHostNamePort(const OUString& _rDsn,OUString& _sD
     {
         lcl_extractHostAndPort(sUrl,_rsHostname,_nPortNumber);
 
-        if ( _nPortNumber == -1 && !_rsHostname.getLength() && comphelper::string::getTokenCount(sUrl, '/') == 2 )
+        const sal_Int32 nUrlTokens {comphelper::string::getTokenCount(sUrl, '/')};
+        if ( _nPortNumber == -1 && _rsHostname.isEmpty() && nUrlTokens == 2 )
             _rsHostname = sUrl.getToken(0,'/');
-        _sDatabaseName = sUrl.getToken(comphelper::string::getTokenCount(sUrl, '/') - 1, '/');
+        _sDatabaseName = sUrl.copy(sUrl.lastIndexOf('/')+1);
     }
     else if ( _rDsn.startsWithIgnoreAsciiCase("sdbc:ado:access:Provider=Microsoft.ACE.OLEDB.12.0;DATA SOURCE=")
            || _rDsn.startsWithIgnoreAsciiCase("sdbc:ado:access:PROVIDER=Microsoft.Jet.OLEDB.4.0;DATA SOURCE=") )
@@ -288,25 +283,13 @@ bool ODsnTypeCollection::isEmbeddedDatabase( const OUString& _sURL )
     return _sURL.startsWith( "sdbc:embedded:" );
 }
 
-OUString ODsnTypeCollection::getEmbeddedDatabase() const
+OUString ODsnTypeCollection::getEmbeddedDatabase()
 {
-    OUString sEmbeddedDatabaseURL;
-    const ::utl::OConfigurationTreeRoot aInstalled = ::utl::OConfigurationTreeRoot::createWithComponentContext(m_xContext, "org.openoffice.Office.DataAccess", -1, ::utl::OConfigurationTreeRoot::CM_READONLY);
-    if ( aInstalled.isValid() )
-    {
-        if ( aInstalled.hasByName("EmbeddedDatabases/DefaultEmbeddedDatabase/Value") )
-        {
-            static const OUStringLiteral s_sValue = "EmbeddedDatabases/DefaultEmbeddedDatabase/Value";
-
-            aInstalled.getNodeValue(s_sValue) >>= sEmbeddedDatabaseURL;
-            if ( !sEmbeddedDatabaseURL.isEmpty() )
-                aInstalled.getNodeValue(s_sValue + "/" + sEmbeddedDatabaseURL + "/URL") >>= sEmbeddedDatabaseURL;
-        }
-    }
-    if ( sEmbeddedDatabaseURL.isEmpty() )
-        sEmbeddedDatabaseURL = "sdbc:embedded:hsqldb";
-
-    return sEmbeddedDatabaseURL;
+    SvtMiscOptions aMiscOptions;
+    if (aMiscOptions.IsExperimentalMode())
+        return "sdbc:embedded:firebird";
+    else
+        return "sdbc:embedded:hsqldb";
 }
 
 
@@ -387,6 +370,7 @@ DATASOURCE_TYPE ODsnTypeCollection::determineType(const OUString& _rDsn) const
     const KnownPrefix aKnowPrefixes[] =
     {
         KnownPrefix( "sdbc:calc:",          DST_CALC,               false ),
+        KnownPrefix( "sdbc:writer:",        DST_WRITER,             false ),
         KnownPrefix( "sdbc:flat:",          DST_FLAT,               false ),
         KnownPrefix( "sdbc:odbc:",          DST_ODBC,               false ),
         KnownPrefix( "sdbc:dbase:",         DST_DBASE,              false ),
@@ -435,7 +419,8 @@ void ODsnTypeCollection::fillPageIds(const OUString& _sURL,std::vector<sal_Int16
             _rOutPathIds.push_back(PAGE_DBSETUPWIZARD_TEXT);
             break;
         case DST_CALC:
-            _rOutPathIds.push_back(PAGE_DBSETUPWIZARD_SPREADSHEET);
+        case DST_WRITER:
+            _rOutPathIds.push_back(PAGE_DBSETUPWIZARD_DOCUMENT_OR_SPREADSHEET);
             break;
         case DST_ODBC:
             _rOutPathIds.push_back(PAGE_DBSETUPWIZARD_ODBC);
@@ -486,14 +471,12 @@ void ODsnTypeCollection::fillPageIds(const OUString& _sURL,std::vector<sal_Int16
 OUString ODsnTypeCollection::getType(const OUString& _sURL) const
 {
     OUString sOldPattern;
-    StringVector::const_iterator aIter = m_aDsnPrefixes.begin();
-    StringVector::const_iterator aEnd = m_aDsnPrefixes.end();
-    for(;aIter != aEnd;++aIter)
+    for (auto const& dsnPrefix : m_aDsnPrefixes)
     {
-        WildCard aWildCard(*aIter);
-        if ( sOldPattern.getLength() < aIter->getLength() && aWildCard.Matches(_sURL) )
+        WildCard aWildCard(dsnPrefix);
+        if ( sOldPattern.getLength() < dsnPrefix.getLength() && aWildCard.Matches(_sURL) )
         {
-            sOldPattern = *aIter;
+            sOldPattern = dsnPrefix;
         }
     }
     return sOldPattern;
@@ -503,16 +486,16 @@ sal_Int32 ODsnTypeCollection::getIndexOf(const OUString& _sURL) const
 {
     sal_Int32 nRet = -1;
     OUString sOldPattern;
-    StringVector::const_iterator aIter = m_aDsnPrefixes.begin();
-    StringVector::const_iterator aEnd = m_aDsnPrefixes.end();
-    for(sal_Int32 i = 0;aIter != aEnd;++aIter,++i)
+    sal_Int32 i = 0;
+    for (auto const& dsnPrefix : m_aDsnPrefixes)
     {
-        WildCard aWildCard(*aIter);
-        if ( sOldPattern.getLength() < aIter->getLength() && aWildCard.Matches(_sURL) )
+        WildCard aWildCard(dsnPrefix);
+        if ( sOldPattern.getLength() < dsnPrefix.getLength() && aWildCard.Matches(_sURL) )
         {
             nRet = i;
-            sOldPattern = *aIter;
+            sOldPattern = dsnPrefix;
         }
+        ++i;
     }
 
     return nRet;
@@ -550,22 +533,22 @@ ODsnTypeCollection::TypeIterator::~TypeIterator()
 #endif
 }
 
-OUString ODsnTypeCollection::TypeIterator::getDisplayName() const
+OUString const & ODsnTypeCollection::TypeIterator::getDisplayName() const
 {
-    OSL_ENSURE(m_nPosition < (sal_Int32)m_pContainer->m_aDsnTypesDisplayNames.size(), "ODsnTypeCollection::TypeIterator::getDisplayName : invalid position!");
+    OSL_ENSURE(m_nPosition < static_cast<sal_Int32>(m_pContainer->m_aDsnTypesDisplayNames.size()), "ODsnTypeCollection::TypeIterator::getDisplayName : invalid position!");
     return m_pContainer->m_aDsnTypesDisplayNames[m_nPosition];
 }
 
-OUString ODsnTypeCollection::TypeIterator::getURLPrefix() const
+OUString const & ODsnTypeCollection::TypeIterator::getURLPrefix() const
 {
-    OSL_ENSURE(m_nPosition < (sal_Int32)m_pContainer->m_aDsnPrefixes.size(), "ODsnTypeCollection::TypeIterator::getDisplayName : invalid position!");
+    OSL_ENSURE(m_nPosition < static_cast<sal_Int32>(m_pContainer->m_aDsnPrefixes.size()), "ODsnTypeCollection::TypeIterator::getDisplayName : invalid position!");
     return m_pContainer->m_aDsnPrefixes[m_nPosition];
 }
 
 const ODsnTypeCollection::TypeIterator& ODsnTypeCollection::TypeIterator::operator++()
 {
-    OSL_ENSURE(m_nPosition < (sal_Int32)m_pContainer->m_aDsnTypesDisplayNames.size(), "ODsnTypeCollection::TypeIterator::operator++ : invalid position!");
-    if (m_nPosition < (sal_Int32)m_pContainer->m_aDsnTypesDisplayNames.size())
+    OSL_ENSURE(m_nPosition < static_cast<sal_Int32>(m_pContainer->m_aDsnTypesDisplayNames.size()), "ODsnTypeCollection::TypeIterator::operator++ : invalid position!");
+    if (m_nPosition < static_cast<sal_Int32>(m_pContainer->m_aDsnTypesDisplayNames.size()))
         ++m_nPosition;
     return *this;
 }

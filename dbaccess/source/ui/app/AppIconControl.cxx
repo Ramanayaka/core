@@ -18,17 +18,14 @@
  */
 
 #include "AppIconControl.hxx"
-#include "dbaccess_helpid.hrc"
-#include "moduledbu.hxx"
-#include "dbu_app.hrc"
-#include "bitmaps.hlst"
+#include <core_resource.hxx>
+#include <strings.hrc>
+#include <bitmaps.hlst>
 #include <vcl/image.hxx>
-#include "callbacks.hxx"
-#include "AppElementType.hxx"
-#include <memory>
+#include <callbacks.hxx>
+#include <AppElementType.hxx>
 
 using namespace ::dbaui;
-// class OApplicationIconControl
 OApplicationIconControl::OApplicationIconControl(vcl::Window* _pParent)
     : SvtIconChoiceCtrl(_pParent,WB_ICON | WB_NOCOLUMNHEADER | WB_HIGHLIGHTFRAME | /*!WB_NOSELECTION |*/
                                 WB_TABSTOP | WB_CLIPCHILDREN | WB_NOVSCROLL | WB_SMART_ARRANGE | WB_NOHSCROLL | WB_CENTER)
@@ -36,9 +33,9 @@ OApplicationIconControl::OApplicationIconControl(vcl::Window* _pParent)
     ,m_pActionListener(nullptr)
 {
 
-    const struct CategoryDescriptor
+    static const struct CategoryDescriptor
     {
-        sal_uInt16 nLabelResId;
+        const char* pLabelResId;
         ElementType eType;
         const char* aImageResId;
     }   aCategories[] = {
@@ -50,8 +47,8 @@ OApplicationIconControl::OApplicationIconControl(vcl::Window* _pParent)
     for (const CategoryDescriptor& aCategorie : aCategories)
     {
         SvxIconChoiceCtrlEntry* pEntry = InsertEntry(
-            OUString( ModuleRes( aCategorie.nLabelResId ) ) ,
-            Image(BitmapEx(OUString::createFromAscii(aCategorie.aImageResId))));
+            DBA_RES(aCategorie.pLabelResId) ,
+            Image(StockImage::Yes, OUString::createFromAscii(aCategorie.aImageResId)));
         if ( pEntry )
             pEntry->SetUserData( new ElementType( aCategorie.eType ) );
     }
@@ -67,13 +64,13 @@ OApplicationIconControl::~OApplicationIconControl()
 
 void OApplicationIconControl::dispose()
 {
-    sal_uLong nCount = GetEntryCount();
-    for ( sal_uLong i = 0; i < nCount; ++i )
+    sal_Int32 nCount = GetEntryCount();
+    for ( sal_Int32 i = 0; i < nCount; ++i )
     {
         SvxIconChoiceCtrlEntry* pEntry = GetEntry( i );
         if ( pEntry )
         {
-            std::unique_ptr<ElementType> aType(static_cast<ElementType*>(pEntry->GetUserData()));
+            delete static_cast<ElementType*>(pEntry->GetUserData());
             pEntry->SetUserData(nullptr);
         }
     }
@@ -92,7 +89,6 @@ sal_Int8 OApplicationIconControl::AcceptDrop( const AcceptDropEvent& _rEvt )
         {
             SetCursor(pEntry);
             nDropOption = m_pActionListener->queryDrop( _rEvt, GetDataFlavorExVector() );
-            m_aMousePos = _rEvt.maPosPixel;
         }
     }
 

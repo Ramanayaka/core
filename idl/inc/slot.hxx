@@ -20,8 +20,8 @@
 #ifndef INCLUDED_IDL_INC_SLOT_HXX
 #define INCLUDED_IDL_INC_SLOT_HXX
 
-#include <types.hxx>
-#include <command.hxx>
+#include "types.hxx"
+#include "command.hxx"
 
 class SvMetaSlot : public SvMetaAttribute
 {
@@ -119,8 +119,8 @@ public:
     virtual bool        ReadSvIdl( SvIdlDataBase &, SvTokenStream & rInStm ) override;
     virtual void        Insert( SvSlotElementList& ) override;
     void                WriteSlotStubs( const OString& rShellName,
-                                    ByteStringList & rList,
-                                    SvStream & rOutStm );
+                                    std::vector<OString> & rList,
+                                    SvStream & rOutStm ) const;
     sal_uInt16          WriteSlotMap( const OString& rShellName,
                                     sal_uInt16 nCount,
                                     SvSlotElementList&,
@@ -128,7 +128,7 @@ public:
                                     SvIdlDataBase & rBase,
                                     SvStream & rOutStm );
     sal_uInt16          WriteSlotParamArray( SvIdlDataBase & rBase,
-                                            SvStream & rOutStm );
+                                            SvStream & rOutStm ) const;
 };
 
 #endif // INCLUDED_IDL_INC_SLOT_HXX

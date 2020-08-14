@@ -23,13 +23,14 @@
 
 #include <com/sun/star/document/XDocumentPropertiesSupplier.hpp>
 #include <com/sun/star/document/XDocumentProperties.hpp>
+#include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/frame/XStorable.hpp>
 #include <com/sun/star/frame/XTitle.hpp>
 
 #include <cppuhelper/exc_hlp.hxx>
 
 #include <osl/diagnose.h>
-#include <osl/thread.h>
+#include <sal/log.hxx>
 
 namespace comphelper {
 
@@ -100,8 +101,7 @@ namespace comphelper {
             if ( xDPS.is() )
             {
                 Reference< XDocumentProperties > xDocProps (
-                    xDPS->getDocumentProperties(), UNO_QUERY_THROW );
-                OSL_ENSURE(xDocProps.is(), "no DocumentProperties");
+                    xDPS->getDocumentProperties(), css::uno::UNO_SET_THROW );
                 sTitle = xDocProps->getTitle();
                 if ( !sTitle.isEmpty() )
                     return sTitle;
@@ -116,7 +116,7 @@ namespace comphelper {
             // 5. try the last segment of the document URL
             // this formerly was an INetURLObject::getName( LAST_SEGMENT, true, DecodeMechanism::WithCharset ),
             // but since we moved this code to comphelper, we do not have access to an INetURLObject anymore
-            // This heuristics here should be sufficient - finally, we will get an UNO title API in a not
+            // This heuristics here should be sufficient - finally, we will get a UNO title API in a not
             // too distant future (hopefully), then  this complete class is superfluous)
             if ( sDocURL.isEmpty() )
             {
@@ -146,17 +146,32 @@ namespace comphelper {
         }
         catch ( const Exception& )
         {
+            // Cannot use tools::exceptionToString here, because the tools module depends on the comphelper module
             css::uno::Any caught( ::cppu::getCaughtException() );
             css::uno::Exception exception;
             caught >>= exception;
             SAL_WARN( "comphelper", "caught an exception!\ntype   : " << caught.getValueTypeName()
-                                    << "\nmessage: " << exception.Message
+                                    << "\nmessage: " << exception
                                     << "\nin function:\n" << OSL_THIS_FUNC);
         }
 
         return sTitle;
     }
 
+    void DocumentInfo::notifyMacroEventRead(const css::uno::Reference<css::frame::XModel>& rModel)
+    {
+        if (!rModel.is())
+            return;
+
+        // like BreakMacroSignature of XMLScriptContext use XModel::attachResource
+        // to propagate this notification
+        css::uno::Sequence<css::beans::PropertyValue> aMedDescr = rModel->getArgs();
+        sal_Int32 nNewLen = aMedDescr.getLength() + 1;
+        aMedDescr.realloc(nNewLen);
+        aMedDescr[nNewLen-1].Name = "MacroEventRead";
+        aMedDescr[nNewLen-1].Value <<= true;
+        rModel->attachResource(rModel->getURL(), aMedDescr);
+    }
 
 } // namespace comphelper
 

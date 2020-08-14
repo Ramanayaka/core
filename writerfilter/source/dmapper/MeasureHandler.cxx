@@ -16,16 +16,14 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#include <MeasureHandler.hxx>
-#include <PropertyMap.hxx>
-#include <ConversionHelper.hxx>
+#include "MeasureHandler.hxx"
+#include "ConversionHelper.hxx"
 #include <ooxml/resourceids.hxx>
 #include <osl/diagnose.h>
 #include <com/sun/star/text/SizeType.hpp>
 #include <comphelper/sequence.hxx>
 
-namespace writerfilter {
-namespace dmapper {
+namespace writerfilter::dmapper {
 
 using namespace ::com::sun::star;
 
@@ -49,7 +47,7 @@ void MeasureHandler::lcl_attribute(Id rName, Value & rVal)
     sal_Int32 nIntValue = rVal.getInt();
     switch( rName )
     {
-        case NS_ooxml::LN_CT_TblWidth_type:// = 90668;
+        case NS_ooxml::LN_CT_TblWidth_type:
         {
             //can be: NS_ooxml::LN_Value_ST_TblWidth_nil, NS_ooxml::LN_Value_ST_TblWidth_pct,
             //        NS_ooxml::LN_Value_ST_TblWidth_dxa, NS_ooxml::LN_Value_ST_TblWidth_auto;
@@ -70,14 +68,14 @@ void MeasureHandler::lcl_attribute(Id rName, Value & rVal)
             }
         }
         break;
-        case NS_ooxml::LN_CT_Height_hRule: // 90666;
+        case NS_ooxml::LN_CT_Height_hRule:
         {
             OUString sHeightType = rVal.getString();
             if ( sHeightType == "exact" )
                 m_nRowHeightSizeType = text::SizeType::FIX;
         }
         break;
-        case NS_ooxml::LN_CT_TblWidth_w:// = 90667;
+        case NS_ooxml::LN_CT_TblWidth_w:
             m_nMeasureValue = nIntValue;
             if (!m_aInteropGrabBagName.isEmpty())
             {
@@ -87,7 +85,7 @@ void MeasureHandler::lcl_attribute(Id rName, Value & rVal)
                 m_aInteropGrabBag.push_back(aValue);
             }
         break;
-        case NS_ooxml::LN_CT_Height_val: // 90665 -- a string value
+        case NS_ooxml::LN_CT_Height_val: // a string value
         {
             m_nUnit = NS_ooxml::LN_Value_ST_TblWidth_dxa;
             OUString sHeight = rVal.getString();
@@ -133,7 +131,6 @@ beans::PropertyValue MeasureHandler::getInteropGrabBag()
     return aRet;
 }
 
-} //namespace dmapper
-} //namespace writerfilter
+} //namespace writerfilter::dmapper
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -20,17 +20,12 @@
 #include "xmlColumn.hxx"
 #include "xmlfilter.hxx"
 #include <xmloff/xmltoken.hxx>
-#include <xmloff/xmluconv.hxx>
-#include <xmloff/xmlnmspe.hxx>
-#include <xmloff/nmspmap.hxx>
-#include "xmlEnums.hxx"
-#include "xmlstrings.hrc"
+#include <strings.hxx>
 #include <com/sun/star/sdbcx/XDataDescriptorFactory.hpp>
 #include <com/sun/star/sdbcx/XAppend.hpp>
-#include <com/sun/star/beans/PropertyValue.hpp>
-#include <com/sun/star/container/XNameContainer.hpp>
-#include <com/sun/star/container/XChild.hpp>
 #include "xmlStyleImport.hxx"
+#include <osl/diagnose.h>
+#include <sal/log.hxx>
 
 namespace dbaxml
 {
@@ -41,59 +36,50 @@ namespace dbaxml
     using namespace ::com::sun::star::xml::sax;
 
 OXMLColumn::OXMLColumn( ODBFilter& rImport
-                ,sal_uInt16 nPrfx
-                ,const OUString& _sLocalName
-                ,const Reference< XAttributeList > & _xAttrList
+                ,const Reference< XFastAttributeList > & _xAttrList
                 ,const Reference< XNameAccess >& _xParentContainer
                 ,const Reference< XPropertySet >& _xTable
                 ) :
-    SvXMLImportContext( rImport, nPrfx, _sLocalName )
+    SvXMLImportContext( rImport )
     ,m_xParentContainer(_xParentContainer)
     ,m_xTable(_xTable)
     ,m_bHidden(false)
 {
-
-    OSL_ENSURE(_xAttrList.is(),"Attribute list is NULL!");
-    const SvXMLNamespaceMap& rMap = rImport.GetNamespaceMap();
-    const SvXMLTokenMap& rTokenMap = rImport.GetColumnElemTokenMap();
-
-    sal_Int16 nLength = (_xAttrList.is()) ? _xAttrList->getLength() : 0;
     OUString sType;
-    for(sal_Int16 i = 0; i < nLength; ++i)
+    for (auto &aIter : sax_fastparser::castToFastAttributeList( _xAttrList ))
     {
-        OUString sLocalName;
-        OUString sAttrName = _xAttrList->getNameByIndex( i );
-        sal_uInt16 nPrefix = rMap.GetKeyByAttrName( sAttrName,&sLocalName );
-        OUString sValue = _xAttrList->getValueByIndex( i );
+        OUString sValue = aIter.toString();
 
-        switch( rTokenMap.Get( nPrefix, sLocalName ) )
+        switch( aIter.getToken() & TOKEN_MASK )
         {
-            case XML_TOK_COLUMN_NAME:
+            case XML_NAME:
                 m_sName = sValue;
                 break;
-            case XML_TOK_COLUMN_STYLE_NAME:
+            case XML_STYLE_NAME:
                 m_sStyleName = sValue;
                 break;
-            case XML_TOK_COLUMN_HELP_MESSAGE:
+            case XML_HELP_MESSAGE:
                 m_sHelpMessage = sValue;
                 break;
-            case XML_TOK_COLUMN_VISIBILITY:
+            case XML_VISIBILITY:
                 m_bHidden = sValue != "visible";
                 break;
-            case XML_TOK_COLUMN_TYPE_NAME:
+            case XML_TYPE_NAME:
                 sType = sValue;
                 OSL_ENSURE(!sType.isEmpty(),"No type name set");
                 break;
-            case XML_TOK_COLUMN_DEFAULT_VALUE:
+            case XML_DEFAULT_VALUE:
                 if ( !(sValue.isEmpty() || sType.isEmpty()) )
                     m_aDefaultValue <<= sValue;
                 break;
-            case XML_TOK_COLUMN_VISIBLE:
+            case XML_VISIBLE:
                 m_bHidden = sValue == "false";
                 break;
-            case XML_TOK_DEFAULT_CELL_STYLE_NAME:
+            case XML_DEFAULT_CELL_STYLE_NAME:
                 m_sCellStyleName = sValue;
                 break;
+            default:
+                SAL_WARN("dbaccess", "unknown attribute " << SvXMLImport::getPrefixAndNameFromToken(aIter.getToken()) << " value=" << aIter.toString());
         }
     }
 }
@@ -103,7 +89,7 @@ OXMLColumn::~OXMLColumn()
 
 }
 
-void OXMLColumn::EndElement()
+void OXMLColumn::endFastElement(sal_Int32 )
 {
     Reference<XDataDescriptorFactory> xFac(m_xParentContainer,UNO_QUERY);
     if ( xFac.is() && !m_sName.isEmpty() )
@@ -130,7 +116,7 @@ void OXMLColumn::EndElement()
                 if ( pAutoStyles )
                 {
                     OTableStyleContext* pAutoStyle = const_cast<OTableStyleContext*>(
-                        dynamic_cast< const OTableStyleContext* >(pAutoStyles->FindStyleChildContext(XML_STYLE_FAMILY_TABLE_COLUMN,m_sStyleName)));
+                        dynamic_cast< const OTableStyleContext* >(pAutoStyles->FindStyleChildContext(XmlStyleFamily::TABLE_COLUMN,m_sStyleName)));
                     if ( pAutoStyle )
                     {
                         pAutoStyle->FillPropertySet(xProp);
@@ -142,7 +128,7 @@ void OXMLColumn::EndElement()
                 const SvXMLStylesContext* pAutoStyles = GetOwnImport().GetAutoStyles();
                 if ( pAutoStyles )
                 {
-                    OTableStyleContext* pAutoStyle = const_cast<OTableStyleContext*>(dynamic_cast<const OTableStyleContext* >(pAutoStyles->FindStyleChildContext(XML_STYLE_FAMILY_TABLE_CELL,m_sCellStyleName)));
+                    OTableStyleContext* pAutoStyle = const_cast<OTableStyleContext*>(dynamic_cast<const OTableStyleContext* >(pAutoStyles->FindStyleChildContext(XmlStyleFamily::TABLE_CELL,m_sCellStyleName)));
                     if ( pAutoStyle )
                     {
                         pAutoStyle->FillPropertySet(xProp);
@@ -159,7 +145,7 @@ void OXMLColumn::EndElement()
         const SvXMLStylesContext* pAutoStyles = GetOwnImport().GetAutoStyles();
         if ( pAutoStyles )
         {
-            OTableStyleContext* pAutoStyle = const_cast<OTableStyleContext*>(dynamic_cast< const OTableStyleContext* >(pAutoStyles->FindStyleChildContext(XML_STYLE_FAMILY_TABLE_CELL,m_sCellStyleName)));
+            OTableStyleContext* pAutoStyle = const_cast<OTableStyleContext*>(dynamic_cast< const OTableStyleContext* >(pAutoStyles->FindStyleChildContext(XmlStyleFamily::TABLE_CELL,m_sCellStyleName)));
             if ( pAutoStyle )
             {
                 // we also have to do this on the table to import text-properties

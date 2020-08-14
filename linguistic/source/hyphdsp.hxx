@@ -21,12 +21,8 @@
 #define INCLUDED_LINGUISTIC_SOURCE_HYPHDSP_HXX
 
 
-#include <com/sun/star/lang/XComponent.hpp>
-#include <com/sun/star/lang/XInitialization.hpp>
-#include <com/sun/star/lang/XServiceDisplayName.hpp>
 #include <com/sun/star/linguistic2/XHyphenator.hpp>
 #include <com/sun/star/linguistic2/XPossibleHyphens.hpp>
-#include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/linguistic2/XSearchableDictionaryList.hpp>
 
 #include <cppuhelper/implbase.hxx>
@@ -34,8 +30,7 @@
 #include <map>
 #include <memory>
 
-#include "lngopt.hxx"
-#include "linguistic/misc.hxx"
+#include <linguistic/misc.hxx>
 #include "defs.hxx"
 
 class LngSvcMgr;
@@ -91,18 +86,18 @@ public:
         hyphenate( const OUString& aWord,
                 const css::lang::Locale& aLocale,
                 sal_Int16 nMaxLeading,
-                const css::beans::PropertyValues& aProperties ) override;
+                const css::uno::Sequence< ::css::beans::PropertyValue >& aProperties ) override;
     virtual css::uno::Reference< css::linguistic2::XHyphenatedWord > SAL_CALL
         queryAlternativeSpelling( const OUString& aWord,
                 const css::lang::Locale& aLocale,
                 sal_Int16 nIndex,
-                const css::beans::PropertyValues& aProperties ) override;
+                const css::uno::Sequence< ::css::beans::PropertyValue >& aProperties ) override;
     virtual css::uno::Reference<
             css::linguistic2::XPossibleHyphens > SAL_CALL
         createPossibleHyphens(
                 const OUString& aWord,
                 const css::lang::Locale& aLocale,
-                const css::beans::PropertyValues& aProperties ) override;
+                const css::uno::Sequence< ::css::beans::PropertyValue >& aProperties ) override;
 
     // LinguDispatcher
     virtual void
@@ -116,16 +111,18 @@ public:
 inline css::uno::Reference< css::linguistic2::XLinguProperties >
         HyphenatorDispatcher::GetPropSet()
 {
-    return xPropSet.is() ?
-                xPropSet : xPropSet = ::linguistic::GetLinguProperties();
+    if (!xPropSet.is())
+        xPropSet = ::linguistic::GetLinguProperties();
+    return xPropSet;
 }
 
 
 inline css::uno::Reference< css::linguistic2::XSearchableDictionaryList >
         HyphenatorDispatcher::GetDicList()
 {
-    return xDicList.is() ?
-                xDicList : xDicList = ::linguistic::GetDictionaryList();
+    if (!xDicList.is())
+        xDicList = ::linguistic::GetDictionaryList();
+    return xDicList;
 }
 
 

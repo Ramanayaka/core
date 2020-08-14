@@ -17,15 +17,14 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "oox/ole/axbinaryreader.hxx"
+#include <oox/ole/axbinaryreader.hxx>
 
 #include <oox/ole/axfontdata.hxx>
-#include "oox/ole/olehelper.hxx"
+#include <oox/ole/olehelper.hxx>
 
 #include <osl/diagnose.h>
 
-namespace oox {
-namespace ole {
+namespace oox::ole {
 
 namespace {
 
@@ -149,7 +148,7 @@ bool AxBinaryPropertyReader::ArrayStringProperty::readProperty( AxAlignedInputSt
         if( !lclReadString( rInStrm, aString, rInStrm.readuInt32(), true ) )
             return false;
         mrArray.push_back( aString );
-        // every array string is aligned on 4 byte boundries
+        // every array string is aligned on 4 byte boundaries
         rInStrm.align( 4 );
     }
     return true;
@@ -168,7 +167,7 @@ bool AxBinaryPropertyReader::FontProperty::readProperty( AxAlignedInputStream& r
 
 bool AxBinaryPropertyReader::PictureProperty::readProperty( AxAlignedInputStream& rInStrm )
 {
-    return OleHelper::importStdPic( mrPicData, rInStrm, true );
+    return OleHelper::importStdPic( mrPicData, rInStrm );
 }
 
 AxBinaryPropertyReader::AxBinaryPropertyReader( BinaryInputStream& rInStrm, bool b64BitPropFlags ) :
@@ -196,7 +195,7 @@ void AxBinaryPropertyReader::readBoolProperty( bool& orbValue, bool bReverse )
 void AxBinaryPropertyReader::readPairProperty( AxPairData& orPairData )
 {
     if( startNextProperty() )
-        maLargeProps.push_back( ComplexPropVector::value_type( new PairProperty( orPairData ) ) );
+        maLargeProps.push_back( ComplexPropVector::value_type( std::make_shared<PairProperty>( orPairData ) ) );
 }
 
 void AxBinaryPropertyReader::readStringProperty( OUString& orValue )
@@ -204,7 +203,7 @@ void AxBinaryPropertyReader::readStringProperty( OUString& orValue )
     if( startNextProperty() )
     {
         sal_uInt32 nSize = maInStrm.readAligned< sal_uInt32 >();
-        maLargeProps.push_back( ComplexPropVector::value_type( new StringProperty( orValue, nSize ) ) );
+        maLargeProps.push_back( ComplexPropVector::value_type( std::make_shared<StringProperty>( orValue, nSize ) ) );
     }
 }
 
@@ -213,14 +212,14 @@ void AxBinaryPropertyReader::readArrayStringProperty( std::vector<OUString>& orV
     if( startNextProperty() )
     {
         sal_uInt32 nSize = maInStrm.readAligned< sal_uInt32 >();
-        maLargeProps.push_back( ComplexPropVector::value_type( new ArrayStringProperty( orValue, nSize ) ) );
+        maLargeProps.push_back( ComplexPropVector::value_type( std::make_shared<ArrayStringProperty>( orValue, nSize ) ) );
     }
 }
 
 void AxBinaryPropertyReader::readGuidProperty( OUString& orGuid )
 {
     if( startNextProperty() )
-        maLargeProps.push_back( ComplexPropVector::value_type( new GuidProperty( orGuid ) ) );
+        maLargeProps.push_back( ComplexPropVector::value_type( std::make_shared<GuidProperty>( orGuid ) ) );
 }
 
 void AxBinaryPropertyReader::readFontProperty( AxFontData& orFontData )
@@ -229,7 +228,7 @@ void AxBinaryPropertyReader::readFontProperty( AxFontData& orFontData )
     {
         sal_Int16 nData = maInStrm.readAligned< sal_Int16 >();
         if( ensureValid( nData == -1 ) )
-            maStreamProps.push_back( ComplexPropVector::value_type( new FontProperty( orFontData ) ) );
+            maStreamProps.push_back( ComplexPropVector::value_type( std::make_shared<FontProperty>( orFontData ) ) );
     }
 }
 
@@ -239,7 +238,7 @@ void AxBinaryPropertyReader::readPictureProperty( StreamDataSequence& orPicData 
     {
         sal_Int16 nData = maInStrm.readAligned< sal_Int16 >();
         if( ensureValid( nData == -1 ) )
-            maStreamProps.push_back( ComplexPropVector::value_type( new PictureProperty( orPicData ) ) );
+            maStreamProps.push_back( ComplexPropVector::value_type( std::make_shared<PictureProperty>( orPicData ) ) );
     }
 }
 
@@ -247,20 +246,28 @@ bool AxBinaryPropertyReader::finalizeImport()
 {
     // read large properties
     maInStrm.align( 4 );
-    if( ensureValid( mnPropFlags == 0 ) && !maLargeProps.empty() )
+    if( ensureValid( mnPropFlags == 0 ) )
     {
-        for( ComplexPropVector::iterator aIt = maLargeProps.begin(), aEnd = maLargeProps.end(); ensureValid() && (aIt != aEnd); ++aIt )
+        for (auto const& largeProp : maLargeProps)
         {
-            ensureValid( (*aIt)->readProperty( maInStrm ) );
+            if (!ensureValid())
+                break;
+            ensureValid( largeProp->readProperty( maInStrm ) );
             maInStrm.align( 4 );
         }
     }
     maInStrm.seek( mnPropsEnd );
 
     // read stream properties (no stream alignment between properties!)
-    if( ensureValid() && !maStreamProps.empty() )
-        for( ComplexPropVector::iterator aIt = maStreamProps.begin(), aEnd = maStreamProps.end(); ensureValid() && (aIt != aEnd); ++aIt )
-            ensureValid( (*aIt)->readProperty( maInStrm ) );
+    if( ensureValid() )
+    {
+        for (auto const& streamProp : maStreamProps)
+        {
+            if (!ensureValid())
+                break;
+            ensureValid( streamProp->readProperty( maInStrm ) );
+        }
+    }
 
     return mbValid;
 }
@@ -279,7 +286,6 @@ bool AxBinaryPropertyReader::startNextProperty()
     return ensureValid() && bHasProp;
 }
 
-} // namespace ole
-} // namespace oox
+} // namespace oox::ole
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

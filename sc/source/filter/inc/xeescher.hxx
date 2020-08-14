@@ -24,16 +24,17 @@
 #include <filter/msfilter/escherex.hxx>
 #include "xcl97rec.hxx"
 #include "xlescher.hxx"
-#include <com/sun/star/chart/XChartDocument.hpp>
+#include "xlformula.hxx"
 #include <svx/sdtaitm.hxx>
 #include <rtl/ustring.hxx>
 #include <memory>
 
 class ScPostIt;
 
-namespace com { namespace sun { namespace star {
-    namespace script { struct ScriptEventDescriptor; }
-} } }
+namespace utl { class TempFile; }
+namespace com::sun::star::chart { class XChartDocument; }
+namespace com::sun::star::script { struct ScriptEventDescriptor; }
+
 
 // DFF client anchor ==========================================================
 
@@ -187,11 +188,12 @@ private:
     XclTokenArrayRef    mxCellLink;     /// Formula for linked cell.
     XclTokenArrayRef    mxSrcRange;     /// Formula for source data range.
     sal_uInt16          mnEntryCount;   /// Number of entries in source range.
+protected:
+    ScAddress mxCellLinkAddress;
 };
 
 class XclMacroHelper : public XclExpControlHelper
 {
-protected:
     XclTokenArrayRef    mxMacroLink;    /// Token array containing a link to an attached macro.
 
 public:
@@ -242,7 +244,7 @@ private:
 
 //#else
 
-/** Represents an OBJ record for an TBX form control. */
+/** Represents an OBJ record for a TBX form control. */
 class XclExpTbxControlObj : public XclObj, public XclMacroHelper
 {
 public:
@@ -255,6 +257,13 @@ public:
         @return  true = The passed event descriptor was valid, macro name has been found. */
     bool                SetMacroLink( const css::script::ScriptEventDescriptor& rEvent );
 
+    virtual void        SaveXml( XclExpXmlStream& rStrm ) override;
+
+    OUString SaveControlPropertiesXml(XclExpXmlStream& rStrm) const;
+    void SaveSheetXml(XclExpXmlStream& rStrm, const OUString& aIdFormControlPr) const;
+
+    void setShapeId(sal_Int32 aShapeId);
+
 private:
     virtual void        WriteSubRecs( XclExpStream& rStrm ) override;
 
@@ -264,6 +273,7 @@ private:
     void                WriteSbs( XclExpStream& rStrm );
 
 private:
+    const css::uno::Reference< css::drawing::XShape > mxShape;
     ScfInt16Vec         maMultiSel;     /// Indexes of all selected entries in a multi selection.
     XclTbxEventType     meEventType;    /// Type of supported macro event.
     sal_Int32           mnHeight;       /// Height of the control.
@@ -279,6 +289,13 @@ private:
     bool                mbFlatBorder;   /// False = 3D border style; True = Flat border style.
     bool                mbMultiSel;     /// true = Multi selection in listbox.
     bool                mbScrollHor;    /// Scrollbar: true = horizontal.
+    bool                mbPrint;
+    bool                mbVisible;
+    OUString            msCtrlName;
+    OUString            msLabel;
+    sal_Int32           mnShapeId;
+    tools::Rectangle    maAreaFrom;
+    tools::Rectangle    maAreaTo;
 };
 
 //#endif
@@ -292,7 +309,8 @@ public:
     explicit            XclExpChartObj(
                             XclExpObjectManager& rObjMgr,
                             css::uno::Reference< css::drawing::XShape > const & xShape,
-                            const tools::Rectangle* pChildAnchor );
+                            const tools::Rectangle* pChildAnchor,
+                            ScDocument* pDoc );
     virtual             ~XclExpChartObj() override;
 
     /** Writes the OBJ record and the entire chart substream. */
@@ -306,6 +324,7 @@ private:
     XclExpChartRef                                    mxChart;        /// The chart itself (BOF/EOF substream data).
     css::uno::Reference< css::drawing::XShape >       mxShape;
     css::uno::Reference< css::chart::XChartDocument > mxChartDoc;
+    ScDocument*                                       mpDoc;
 };
 
 /** Represents a NOTE record containing the relevant data of a cell note.
@@ -343,8 +362,8 @@ private:
     virtual void        WriteBody( XclExpStream& rStrm ) override;
 
 private:
+    const XclExpRoot&   mrRoot;
     XclExpString        maAuthor;       /// Name of the author.
-    OUString            maOrigNoteText; /// Original main text of the note.
     OString             maNoteText;     /// Main text of the note (<=BIFF7).
     XclExpStringRef     mpNoteContents; /// Text and formatting data (OOXML)
     ScAddress           maScPos;        /// Calc cell address of the note.
@@ -364,16 +383,13 @@ private:
 class XclExpComments : public XclExpRecord
 {
 public:
-    typedef XclExpRecordList< XclExpNote >
-                        XclExpNoteList;
-
-                        XclExpComments( SCTAB nTab, XclExpNoteList& rNotes );
+                        XclExpComments( SCTAB nTab, XclExpRecordList< XclExpNote >& rNotes );
 
     virtual void        SaveXml( XclExpXmlStream& rStrm ) override;
 
 private:
     SCTAB               mnTab;
-    XclExpNoteList&     mrNotes;
+    XclExpRecordList< XclExpNote >& mrNotes;
 };
 
 // object manager =============================================================
@@ -390,17 +406,17 @@ public:
 
     /** Creates and returns the MSODRAWINGGROUP record containing global DFF
         data in the DGGCONTAINER. */
-    std::shared_ptr< XclExpRecordBase > CreateDrawingGroup();
+    rtl::Reference< XclExpRecordBase > CreateDrawingGroup();
 
     /** Initializes the object manager for a new sheet. */
     void                StartSheet();
 
     /** Processes a drawing page and returns the record block containing all
         related records (MSODRAWING, OBJ, TXO, charts, etc.). */
-    std::shared_ptr< XclExpRecordBase > ProcessDrawing( SdrPage* pSdrPage );
+    rtl::Reference< XclExpRecordBase > ProcessDrawing( const SdrPage* pSdrPage );
     /** Processes a collection of UNO shapes and returns the record block
         containing all related records (MSODRAWING, OBJ, TXO, charts, etc.). */
-    std::shared_ptr< XclExpRecordBase > ProcessDrawing( const css::uno::Reference< css::drawing::XShapes >& rxShapes );
+    rtl::Reference< XclExpRecordBase > ProcessDrawing( const css::uno::Reference< css::drawing::XShapes >& rxShapes );
 
     /** Finalizes the object manager after conversion of all sheets. */
     void                EndDocument();
@@ -408,8 +424,8 @@ public:
     XclEscherEx& GetEscherEx() { return *mxEscherEx; }
     XclExpMsoDrawing*   GetMsodrawingPerSheet();
     bool                HasObj() const;
-    sal_uInt16          AddObj( XclObj* pObjRec );
-    XclObj*             RemoveLastObj();
+    sal_uInt16          AddObj( std::unique_ptr<XclObj> pObjRec );
+    std::unique_ptr<XclObj> RemoveLastObj();
 
 protected:
     explicit            XclExpObjectManager( const XclExpObjectManager& rParent );
@@ -419,9 +435,9 @@ private:
 
 private:
     std::shared_ptr< ::utl::TempFile > mxTempFile;
-    std::shared_ptr< SvStream >  mxDffStrm;
+    std::unique_ptr< SvStream >  mxDffStrm;
     std::shared_ptr< XclEscherEx > mxEscherEx;
-    std::shared_ptr< XclExpObjList > mxObjList;
+    rtl::Reference< XclExpObjList > mxObjList;
 };
 
 class XclExpEmbeddedObjectManager : public XclExpObjectManager

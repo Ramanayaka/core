@@ -17,29 +17,21 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_UNOCONTROLS_SOURCE_INC_OCONNECTIONPOINTHELPER_HXX
-#define INCLUDED_UNOCONTROLS_SOURCE_INC_OCONNECTIONPOINTHELPER_HXX
+#pragma once
 
-#include <com/sun/star/lang/XConnectionPointContainer.hpp>
 #include <com/sun/star/lang/XConnectionPoint.hpp>
 #include <cppuhelper/weak.hxx>
 #include <cppuhelper/weakref.hxx>
-#include <cppuhelper/propshlp.hxx>
 
-#include "OConnectionPointContainerHelper.hxx"
+namespace com::sun::star::lang { class XConnectionPointContainer; }
+namespace unocontrols { class OConnectionPointContainerHelper; }
 
-//  namespaces
+namespace unocontrols {
 
-namespace unocontrols{
-
-//  class declaration OConnectionPointHelper
-
-class OConnectionPointHelper    :   public  css::lang::XConnectionPoint
+class OConnectionPointHelper final :   public  css::lang::XConnectionPoint
                                 ,   public  ::cppu::OWeakObject
 {
-
 public:
-
     OConnectionPointHelper( ::osl::Mutex&                       aMutex                      ,
                             OConnectionPointContainerHelper*    pContainerImplementation    ,
                             css::uno::Type const &              aType                       );
@@ -48,7 +40,7 @@ public:
 
     //  XInterface
 
-    /**_______________________________________________________________________________________________________
+    /**
         @short      give answer, if interface is supported
         @descr      The interfaces are searched by type.
 
@@ -63,7 +55,7 @@ public:
 
     virtual css::uno::Any SAL_CALL queryInterface( const css::uno::Type& aType ) override;
 
-    /**_______________________________________________________________________________________________________
+    /**
         @short      increment refcount
         @seealso    XInterface
         @seealso    release()
@@ -72,7 +64,7 @@ public:
 
     virtual void SAL_CALL acquire() throw() override;
 
-    /**_______________________________________________________________________________________________________
+    /**
         @short      decrement refcount
         @seealso    XInterface
         @seealso    acquire()
@@ -96,7 +88,6 @@ public:
     virtual css::uno::Sequence< css::uno::Reference< css::uno::XInterface > > SAL_CALL getConnections() override;
 
 private:
-
     bool impl_LockContainer();
 
     void impl_UnlockContainer();
@@ -109,11 +100,9 @@ private:
     OConnectionPointContainerHelper*                                  m_pContainerImplementation;
     css::uno::Type                                                    m_aInterfaceType;
     css::uno::Reference< css::uno::XInterface >                       m_xLock;
+};
 
-};  // class OConnectionPointHelper
+}
 
-}   // namespace unocontrols
-
-#endif // INCLUDED_UNOCONTROLS_SOURCE_INC_OCONNECTIONPOINTHELPER_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

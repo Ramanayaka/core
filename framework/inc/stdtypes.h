@@ -20,13 +20,6 @@
 #ifndef INCLUDED_FRAMEWORK_INC_STDTYPES_H
 #define INCLUDED_FRAMEWORK_INC_STDTYPES_H
 
-#include <algorithm>
-#include <queue>
-#include <unordered_map>
-#include <vector>
-
-#include "general.h"
-
 #include <com/sun/star/awt/KeyEvent.hpp>
 
 #include <cppuhelper/interfacecontainer.hxx>
@@ -42,7 +35,7 @@ struct KeyEventHashCode
 {
     size_t operator()( const css::awt::KeyEvent& aEvent ) const
     {
-        return (size_t)(aEvent.KeyCode  +
+        return static_cast<size_t>(aEvent.KeyCode  +
                         //aEvent.KeyChar  +
                         //aEvent.KeyFunc  +
                         aEvent.Modifiers);
@@ -62,12 +55,6 @@ struct KeyEventEqualsFunc
                );
     }
 };
-
-/**
-    Basic OUString hash.
-    Key and values are OUStrings.
-*/
-typedef std::unordered_map<OUString, OUString, OUStringHash> OUStringHashMap;
 
 /**
     It can be used to map names (e.g. of properties) to her corresponding handles.

@@ -22,8 +22,7 @@
 
 #include <svtools/genericunodialog.hxx>
 #include <com/sun/star/sdbc/XConnection.hpp>
-#include "dsntypes.hxx"
-#include "moduledbu.hxx"
+#include <dsntypes.hxx>
 
 class SfxItemSet;
 class SfxItemPool;
@@ -37,13 +36,12 @@ typedef ::svt::OGenericUnoDialog ODatabaseAdministrationDialogBase;
 class ODatabaseAdministrationDialog
         :public ODatabaseAdministrationDialogBase
 {
-    OModuleClient           m_aModuleClient;
 protected:
-    SfxItemSet*             m_pDatasourceItems;     // item set for the dialog
+    std::unique_ptr<SfxItemSet> m_pDatasourceItems; // item set for the dialog
     SfxItemPool*            m_pItemPool;            // item pool for the item set for the dialog
     std::vector<SfxPoolItem*>*
                             m_pItemPoolDefaults;    // pool defaults
-    ::dbaccess::ODsnTypeCollection*
+    std::unique_ptr<::dbaccess::ODsnTypeCollection>
                             m_pCollection;          // datasource type collection
 
     css::uno::Any           m_aInitialSelection;

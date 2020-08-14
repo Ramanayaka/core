@@ -1,8 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Generated with glade 3.18.3 -->
-<interface>
-  <requires lib="gtk+" version="3.0"/>
-  <requires lib="LibreOffice" version="1.0"/>
+<!-- Generated with glade 3.22.1 -->
+<interface domain="sd">
+  <requires lib="gtk+" version="3.18"/>
+  <object class="GtkAdjustment" id="adjustment1">
+    <property name="upper">10000</property>
+    <property name="step_increment">1</property>
+    <property name="page_increment">10</property>
+  </object>
   <object class="GtkImage" id="image1">
     <property name="visible">True</property>
     <property name="can_focus">False</property>
@@ -41,9 +45,10 @@
                       <object class="GtkLabel" id="prop_label1">
                         <property name="visible">True</property>
                         <property name="can_focus">False</property>
-                        <property name="label" translatable="yes">_Direction:</property>
+                        <property name="valign">center</property>
+                        <property name="label" translatable="yes" context="customanimationeffecttab|prop_label1">_Direction:</property>
+                        <property name="xalign">0</property>
                         <property name="use_underline">True</property>
-                        <property name="mnemonic_widget">prop_list1</property>
                       </object>
                       <packing>
                         <property name="expand">False</property>
@@ -52,19 +57,13 @@
                       </packing>
                     </child>
                     <child>
-                      <object class="GtkBox" id="placeholder">
+                      <object class="GtkGrid" id="placeholder">
                         <property name="visible">True</property>
                         <property name="can_focus">False</property>
+                        <property name="hexpand">True</property>
+                        <property name="vexpand">True</property>
                         <child>
-                          <object class="sdlo-PropertyControl" id="prop_list1">
-                            <property name="visible">True</property>
-                            <property name="can_focus">False</property>
-                          </object>
-                          <packing>
-                            <property name="expand">True</property>
-                            <property name="fill">True</property>
-                            <property name="position">0</property>
-                          </packing>
+                          <placeholder/>
                         </child>
                       </object>
                       <packing>
@@ -87,9 +86,10 @@
                     <property name="spacing">18</property>
                     <child>
                       <object class="GtkCheckButton" id="smooth_start">
-                        <property name="label" translatable="yes">Accelerated start</property>
+                        <property name="label" translatable="yes" context="customanimationeffecttab|smooth_start">Accelerated start</property>
                         <property name="can_focus">True</property>
                         <property name="receives_default">False</property>
+                        <property name="use_underline">True</property>
                         <property name="xalign">0</property>
                         <property name="draw_indicator">True</property>
                       </object>
@@ -101,9 +101,10 @@
                     </child>
                     <child>
                       <object class="GtkCheckButton" id="smooth_end">
-                        <property name="label" translatable="yes">Decelerated end</property>
+                        <property name="label" translatable="yes" context="customanimationeffecttab|smooth_end">Decelerated end</property>
                         <property name="can_focus">True</property>
                         <property name="receives_default">False</property>
+                        <property name="use_underline">True</property>
                         <property name="xalign">0</property>
                         <property name="draw_indicator">True</property>
                       </object>
@@ -128,7 +129,7 @@
           <object class="GtkLabel" id="label3">
             <property name="visible">True</property>
             <property name="can_focus">False</property>
-            <property name="label" translatable="yes">Settings</property>
+            <property name="label" translatable="yes" context="customanimationeffecttab|label3">Settings</property>
             <attributes>
               <attribute name="weight" value="bold"/>
             </attributes>
@@ -165,10 +166,10 @@
                   <object class="GtkLabel" id="aeffect_label">
                     <property name="visible">True</property>
                     <property name="can_focus">False</property>
-                    <property name="halign">end</property>
-                    <property name="label" translatable="yes">A_fter animation:</property>
+                    <property name="label" translatable="yes" context="customanimationeffecttab|aeffect_label">A_fter animation:</property>
                     <property name="use_underline">True</property>
                     <property name="mnemonic_widget">aeffect_list</property>
+                    <property name="xalign">0</property>
                   </object>
                   <packing>
                     <property name="left_attach">0</property>
@@ -179,10 +180,10 @@
                   <object class="GtkLabel" id="sound_label">
                     <property name="visible">True</property>
                     <property name="can_focus">False</property>
-                    <property name="halign">end</property>
-                    <property name="label" translatable="yes">_Sound:</property>
+                    <property name="label" translatable="yes" context="customanimationeffecttab|sound_label">_Sound:</property>
                     <property name="use_underline">True</property>
                     <property name="mnemonic_widget">sound_list</property>
+                    <property name="xalign">0</property>
                   </object>
                   <packing>
                     <property name="left_attach">0</property>
@@ -193,10 +194,10 @@
                   <object class="GtkLabel" id="text_animation_label">
                     <property name="visible">True</property>
                     <property name="can_focus">False</property>
-                    <property name="halign">end</property>
-                    <property name="label" translatable="yes">_Text animation:</property>
+                    <property name="label" translatable="yes" context="customanimationeffecttab|text_animation_label">_Text animation:</property>
                     <property name="use_underline">True</property>
                     <property name="mnemonic_widget">text_animation_list</property>
+                    <property name="xalign">0</property>
                   </object>
                   <packing>
                     <property name="left_attach">0</property>
@@ -207,10 +208,10 @@
                   <object class="GtkLabel" id="dim_color_label">
                     <property name="visible">True</property>
                     <property name="can_focus">False</property>
-                    <property name="halign">end</property>
-                    <property name="label" translatable="yes">Di_m color:</property>
+                    <property name="label" translatable="yes" context="customanimationeffecttab|dim_color_label">Di_m color:</property>
                     <property name="use_underline">True</property>
                     <property name="mnemonic_widget">dim_color_list</property>
+                    <property name="xalign">0</property>
                   </object>
                   <packing>
                     <property name="left_attach">0</property>
@@ -223,10 +224,11 @@
                     <property name="can_focus">False</property>
                     <property name="spacing">6</property>
                     <child>
-                      <object class="GtkComboBox" id="sound_list">
+                      <object class="GtkComboBoxText" id="sound_list">
                         <property name="visible">True</property>
                         <property name="can_focus">False</property>
                         <property name="valign">center</property>
+                        <property name="hexpand">True</property>
                       </object>
                       <packing>
                         <property name="expand">False</property>
@@ -239,6 +241,7 @@
                         <property name="visible">True</property>
                         <property name="can_focus">True</property>
                         <property name="receives_default">True</property>
+                        <property name="valign">center</property>
                         <property name="image">image1</property>
                       </object>
                       <packing>
@@ -254,9 +257,18 @@
                   </packing>
                 </child>
                 <child>
-                  <object class="svxcorelo-SvxColorListBox" id="dim_color_list">
+                  <object class="GtkMenuButton" id="dim_color_list">
                     <property name="visible">True</property>
-                    <property name="can_focus">False</property>
+                    <property name="can_focus">True</property>
+                    <property name="receives_default">False</property>
+                    <property name="valign">center</property>
+                    <property name="hexpand">True</property>
+                    <property name="xalign">0</property>
+                    <property name="draw_indicator">True</property>
+                    <property name="label" translatable="no"></property>
+                    <child>
+                      <placeholder/>
+                    </child>
                   </object>
                   <packing>
                     <property name="left_attach">1</property>
@@ -269,11 +281,12 @@
                     <property name="can_focus">False</property>
                     <property name="spacing">12</property>
                     <child>
-                      <object class="GtkSpinButton" id="text_delay:0.0%">
+                      <object class="GtkLabel" id="text_delay_label">
                         <property name="visible">True</property>
-                        <property name="can_focus">True</property>
-                        <property name="invisible_char">●</property>
-                        <property name="digits">1</property>
+                        <property name="can_focus">False</property>
+                        <property name="label" translatable="yes" context="customanimationeffecttab|text_delay_label">delay between characters</property>
+                        <property name="use_underline">True</property>
+                        <property name="mnemonic_widget">text_delay</property>
                       </object>
                       <packing>
                         <property name="expand">False</property>
@@ -282,10 +295,13 @@
                       </packing>
                     </child>
                     <child>
-                      <object class="GtkLabel" id="text_delay_label">
+                      <object class="GtkSpinButton" id="text_delay">
                         <property name="visible">True</property>
-                        <property name="can_focus">False</property>
-                        <property name="label" translatable="yes">delay between characters</property>
+                        <property name="can_focus">True</property>
+                        <property name="hexpand">True</property>
+                        <property name="activates_default">True</property>
+                        <property name="adjustment">adjustment1</property>
+                        <property name="digits">1</property>
                       </object>
                       <packing>
                         <property name="expand">False</property>
@@ -295,19 +311,22 @@
                     </child>
                   </object>
                   <packing>
-                    <property name="left_attach">1</property>
+                    <property name="left_attach">0</property>
                     <property name="top_attach">4</property>
+                    <property name="width">2</property>
                   </packing>
                 </child>
                 <child>
                   <object class="GtkComboBoxText" id="aeffect_list">
                     <property name="visible">True</property>
                     <property name="can_focus">False</property>
+                    <property name="valign">center</property>
+                    <property name="hexpand">True</property>
                     <items>
-                      <item translatable="yes">Don't dim</item>
-                      <item translatable="yes">Dim with color</item>
-                      <item translatable="yes">Hide after animation</item>
-                      <item translatable="yes">Hide on next animation</item>
+                      <item translatable="yes" context="customanimationeffecttab|aeffect_list">Don't dim</item>
+                      <item translatable="yes" context="customanimationeffecttab|aeffect_list">Dim with color</item>
+                      <item translatable="yes" context="customanimationeffecttab|aeffect_list">Hide after animation</item>
+                      <item translatable="yes" context="customanimationeffecttab|aeffect_list">Hide on next animation</item>
                     </items>
                   </object>
                   <packing>
@@ -319,19 +338,18 @@
                   <object class="GtkComboBoxText" id="text_animation_list">
                     <property name="visible">True</property>
                     <property name="can_focus">False</property>
+                    <property name="valign">center</property>
+                    <property name="hexpand">True</property>
                     <items>
-                      <item translatable="yes">All at once</item>
-                      <item translatable="yes">Word by word</item>
-                      <item translatable="yes">Letter by letter</item>
+                      <item translatable="yes" context="customanimationeffecttab|text_animation_list">All at once</item>
+                      <item translatable="yes" context="customanimationeffecttab|text_animation_list">Word by word</item>
+                      <item translatable="yes" context="customanimationeffecttab|text_animation_list">Letter by letter</item>
                     </items>
                   </object>
                   <packing>
                     <property name="left_attach">1</property>
                     <property name="top_attach">3</property>
                   </packing>
-                </child>
-                <child>
-                  <placeholder/>
                 </child>
               </object>
             </child>
@@ -341,7 +359,7 @@
           <object class="GtkLabel" id="label4">
             <property name="visible">True</property>
             <property name="can_focus">False</property>
-            <property name="label" translatable="yes">Enhancement</property>
+            <property name="label" translatable="yes" context="customanimationeffecttab|label4">Enhancement</property>
             <attributes>
               <attribute name="weight" value="bold"/>
             </attributes>
@@ -354,5 +372,14 @@
         <property name="position">1</property>
       </packing>
     </child>
+  </object>
+  <object class="GtkSizeGroup" id="sizegroupLabel">
+    <widgets>
+      <widget name="prop_label1"/>
+      <widget name="aeffect_label"/>
+      <widget name="sound_label"/>
+      <widget name="text_animation_label"/>
+      <widget name="dim_color_label"/>
+    </widgets>
   </object>
 </interface>

@@ -21,30 +21,31 @@
 #define INCLUDED_VCL_INC_FONTSELECT_HXX
 
 #include <i18nlangtag/lang.h>
+#include <vcl/vclenum.hxx>
 
 #include "fontattributes.hxx"
 
-#include <unordered_map>
+#include <ostream>
 
 namespace vcl { class Font; }
 
-class PhysicalFontFace;
 class LogicalFontInstance;
+class PhysicalFontFace;
 class Size;
 
-class FontSelectPatternAttributes : public FontAttributes
+class VCL_DLLPUBLIC FontSelectPattern : public FontAttributes
 {
 public:
-                    FontSelectPatternAttributes( const vcl::Font&, const OUString& rSearchName,
-                                                 const Size&, float fExactHeight );
+    FontSelectPattern(const vcl::Font&, const OUString& rSearchName,
+                      const Size&, float fExactHeight, bool bNonAntialias = false);
 #ifdef _WIN32
-                    FontSelectPatternAttributes( const PhysicalFontFace&, const Size&,
+                    FontSelectPattern( const PhysicalFontFace&, const Size&,
                                                  float fExactHeight, int nOrientation, bool bVertical );
 #endif
 
     size_t          hashCode() const;
-    bool operator==(const FontSelectPatternAttributes& rOther) const;
-    bool operator!=(const FontSelectPatternAttributes& rOther) const
+    bool operator==(const FontSelectPattern& rOther) const;
+    bool operator!=(const FontSelectPattern& rOther) const
     {
         return !(*this == rOther);
     }
@@ -58,7 +59,7 @@ public:
     int             mnWidth;                    // width of font in pixel units
     int             mnHeight;                   // height of font in pixel units
     float           mfExactHeight;              // requested height (in pixels with subpixel details)
-    int             mnOrientation;              // text orientation in 3600 system
+    int             mnOrientation;              // text orientation in 1/10 degree (0-3600)
     LanguageType    meLanguage;                 // text language
     bool            mbVertical;                 // vertical mode of requested font
     bool            mbNonAntialiased;           // true if antialiasing is disabled
@@ -67,24 +68,15 @@ public:
     ItalicMatrix    maItalicMatrix;             // Force matrix for slant
 };
 
-
-class FontSelectPattern : public FontSelectPatternAttributes
+template< typename charT, typename traits >
+inline std::basic_ostream<charT, traits> & operator <<(
+    std::basic_ostream<charT, traits> & stream, const FontSelectPattern & rFSP)
 {
-public:
-                    FontSelectPattern( const vcl::Font&, const OUString& rSearchName,
-                                       const Size&, float fExactHeight );
-#ifdef _WIN32
-// ifdeffed to prevent it going into unusedcode.easy
-                    FontSelectPattern( const PhysicalFontFace&, const Size&,
-                                       float fExactHeight, int nOrientation, bool bVertical );
-#endif
-
-public: // TODO: change to private
-    const PhysicalFontFace* mpFontData;         // a matching PhysicalFontFace object
-    LogicalFontInstance*  mpFontInstance;                // pointer to the resulting FontCache entry
-
-    void            copyAttributes(const FontSelectPatternAttributes &rAttributes);
-};
+    stream << (rFSP.maTargetName.isEmpty() ? "<default>" : rFSP.maTargetName)
+           << " (" << rFSP.maSearchName << ") w: " << rFSP.mnWidth << " h: "
+           << rFSP.mnHeight << " alias: " << rFSP.mbNonAntialiased;
+    return stream;
+}
 
 #endif // INCLUDED_VCL_INC_FONTSELECT_HXX
 

@@ -8,19 +8,20 @@
  *
  */
 
-#include "opengl/LineRenderUtils.hxx"
+#include <opengl/LineRenderUtils.hxx>
+#include <opengl/VertexUtils.hxx>
 
 namespace vcl
 {
 
 LineBuilder::LineBuilder(std::vector<Vertex>& rVertices, std::vector<GLuint>& rIndices,
-                SalColor nColor, GLfloat fTransparency,
+                Color nColor, GLfloat fTransparency,
                 GLfloat fLineWidth, bool bUseAA)
     : mrVertices(rVertices)
     , mrIndices(rIndices)
-    , mR(SALCOLOR_RED(nColor))
-    , mG(SALCOLOR_GREEN(nColor))
-    , mB(SALCOLOR_BLUE(nColor))
+    , mR(nColor.GetRed())
+    , mG(nColor.GetGreen())
+    , mB(nColor.GetBlue())
     , mA((1.0f - fTransparency) * 255.0f)
     , mfLineWidth(fLineWidth)
     , mfLineWidthAndAA(bUseAA ? fLineWidth : -fLineWidth)
@@ -93,7 +94,8 @@ void LineBuilder::appendAndConnectLinePoint(const glm::vec2& rPoint, const glm::
     }
 }
 
-void LineBuilder::appendMiterJoint(glm::vec2 const & point, glm::vec2 prevLineVector, glm::vec2 const & nextLineVector)
+void LineBuilder::appendMiterJoint(glm::vec2 const& point, const glm::vec2& prevLineVector,
+                                   glm::vec2 const& nextLineVector)
 {
     // With miter join we calculate the extrusion vector by adding normals of
     // previous and next line segment. The vector shows the way but we also
@@ -111,21 +113,23 @@ void LineBuilder::appendMiterJoint(glm::vec2 const & point, glm::vec2 prevLineVe
     appendAndConnectLinePoint(point, extrusionVector, length);
 }
 
-void LineBuilder::appendBevelJoint(glm::vec2 const & point, glm::vec2 prevLineVector, glm::vec2 nextLineVector)
+void LineBuilder::appendBevelJoint(glm::vec2 const& point, const glm::vec2& prevLineVector,
+                                   const glm::vec2& nextLineVector)
 {
     // For bevel join we just add 2 additional vertices and use previous
     // line segment normal and next line segment normal as extrusion vector.
     // All the magic is done by the fact that we draw triangle strips, so we
     // cover the joins correctly.
 
-    glm::vec2 prevNormal = glm::vec2(-prevLineVector.y, prevLineVector.x);
-    glm::vec2 nextNormal = glm::vec2(-nextLineVector.y, nextLineVector.x);
+    glm::vec2 prevNormal(-prevLineVector.y, prevLineVector.x);
+    glm::vec2 nextNormal(-nextLineVector.y, nextLineVector.x);
 
     appendAndConnectLinePoint(point, prevNormal, 1.0f);
     appendAndConnectLinePoint(point, nextNormal, 1.0f);
 }
 
-void LineBuilder::appendRoundJoint(glm::vec2 const & point, glm::vec2 prevLineVector, glm::vec2 nextLineVector)
+void LineBuilder::appendRoundJoint(glm::vec2 const& point, const glm::vec2& prevLineVector,
+                                   const glm::vec2& nextLineVector)
 {
     // For round join we do a similar thing as in bevel, we add more intermediate
     // vertices and add normals to get extrusion vectors in the between the
@@ -135,8 +139,8 @@ void LineBuilder::appendRoundJoint(glm::vec2 const & point, glm::vec2 prevLineVe
     // line joins look round. Ideally the number of vectors could be
     // calculated.
 
-    glm::vec2 prevNormal = glm::vec2(-prevLineVector.y, prevLineVector.x);
-    glm::vec2 nextNormal = glm::vec2(-nextLineVector.y, nextLineVector.x);
+    glm::vec2 prevNormal(-prevLineVector.y, prevLineVector.x);
+    glm::vec2 nextNormal(-nextLineVector.y, nextLineVector.x);
 
     glm::vec2 middle = vcl::vertex::normalize(prevNormal + nextNormal);
     glm::vec2 middleLeft  = vcl::vertex::normalize(prevNormal + middle);
@@ -154,7 +158,7 @@ void LineBuilder::appendRoundLineCapVertices(const glm::vec2& rPoint1, const glm
     constexpr int nRoundCapIteration = 12;
 
     glm::vec2 lineVector = vcl::vertex::normalize(rPoint2 - rPoint1);
-    glm::vec2 normal = glm::vec2(-lineVector.y, lineVector.x);
+    glm::vec2 normal(-lineVector.y, lineVector.x);
     glm::vec2 previousRoundNormal = normal;
 
     for (int nFactor = 1; nFactor <= nRoundCapIteration; nFactor++)
@@ -172,7 +176,7 @@ void LineBuilder::appendRoundLineCapVertices(const glm::vec2& rPoint1, const glm
 void LineBuilder::appendSquareLineCapVertices(const glm::vec2& rPoint1, const glm::vec2& rPoint2)
 {
     glm::vec2 lineVector = vcl::vertex::normalize(rPoint2 - rPoint1);
-    glm::vec2 normal = glm::vec2(-lineVector.y, lineVector.x);
+    glm::vec2 normal(-lineVector.y, lineVector.x);
 
     glm::vec2 extrudedPoint = rPoint1 + -lineVector * (mfLineWidth / 2.0f);
 

@@ -17,29 +17,27 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <config_folders.h>
-
 #include <osl/thread.h>
-#include <osl/process.h>
 #include <osl/file.hxx>
 #include <rtl/strbuf.hxx>
-#include <rtl/ustrbuf.hxx>
+#include <sal/log.hxx>
 
-#include <rtl/uri.hxx>
 #include "shellexec.hxx"
 #include <com/sun/star/system/SystemShellExecuteException.hpp>
 #include <com/sun/star/system/SystemShellExecuteFlags.hpp>
 
-#include <com/sun/star/util/theMacroExpander.hpp>
+#include <com/sun/star/lang/IllegalArgumentException.hpp>
 #include <com/sun/star/uri/ExternalUriReferenceTranslator.hpp>
 #include <com/sun/star/uri/UriReferenceFactory.hpp>
 #include <cppuhelper/supportsservice.hxx>
-
-#include "uno/current_context.hxx"
+#include <comphelper/lok.hxx>
 
 #include <string.h>
 #include <errno.h>
-#include <unistd.h>
+
+#if defined MACOSX
+#include <sys/stat.h>
+#endif
 
 using com::sun::star::system::XSystemShellExecute;
 using com::sun::star::system::SystemShellExecuteException;
@@ -51,19 +49,13 @@ using namespace cppu;
 
 namespace
 {
-    Sequence< OUString > SAL_CALL ShellExec_getSupportedServiceNames()
-    {
-        Sequence< OUString > aRet { "com.sun.star.system.SystemShellExecute" };
-        return aRet;
-    }
-
     void escapeForShell( OStringBuffer & rBuffer, const OString & rURL)
     {
         sal_Int32 nmax = rURL.getLength();
         for(sal_Int32 n=0; n < nmax; ++n)
         {
             // escape every non alpha numeric characters (excluding a few "known good") by prepending a '\'
-            sal_Char c = rURL[n];
+            char c = rURL[n];
             if( ( c < 'A' || c > 'Z' ) && ( c < 'a' || c > 'z' ) && ( c < '0' || c > '9' )  && c != '/' && c != '.' )
                 rBuffer.append( '\\' );
 
@@ -76,26 +68,17 @@ ShellExec::ShellExec( const Reference< XComponentContext >& xContext ) :
     WeakImplHelper< XSystemShellExecute, XServiceInfo >(),
     m_xContext(xContext)
 {
-    try {
-        Reference< XCurrentContext > xCurrentContext(getCurrentContext());
-
-        if (xCurrentContext.is())
-        {
-            Any aValue = xCurrentContext->getValueByName( "system.desktop-environment" );
-
-            OUString aDesktopEnvironment;
-            if (aValue >>= aDesktopEnvironment)
-            {
-                m_aDesktopEnvironment = OUStringToOString(aDesktopEnvironment, RTL_TEXTENCODING_ASCII_US);
-            }
-        }
-    } catch (const RuntimeException &) {
-    }
 }
 
 void SAL_CALL ShellExec::execute( const OUString& aCommand, const OUString& aParameter, sal_Int32 nFlags )
 {
     OStringBuffer aBuffer, aLaunchBuffer;
+
+    if (comphelper::LibreOfficeKit::isActive())
+    {
+        SAL_WARN("shell", "Unusual - shell attempt to launch " << aCommand << " with params " << aParameter << " under lok");
+        return;
+    }
 
     // DESKTOP_LAUNCH, see http://freedesktop.org/pipermail/xdg/2004-August/004489.html
     static const char *pDesktopLaunch = getenv( "DESKTOP_LAUNCH" );
@@ -105,7 +88,7 @@ void SAL_CALL ShellExec::execute( const OUString& aCommand, const OUString& aPar
         css::uri::UriReferenceFactory::create(m_xContext)->parse(aCommand));
     if (uri.is() && uri->isAbsolute())
     {
-        // It seems to be a url ..
+        // It seems to be a URL...
         // We need to re-encode file urls because osl_getFileURLFromSystemPath converts
         // to UTF-8 before encoding non ascii characters, which is not what other apps
         // expect.
@@ -120,6 +103,42 @@ void SAL_CALL ShellExec::execute( const OUString& aCommand, const OUString& aPar
         }
 
 #ifdef MACOSX
+        bool dir = false;
+        if (uri->getScheme().equalsIgnoreAsciiCase("file")) {
+            OUString pathname;
+            auto const e1 = osl::FileBase::getSystemPathFromFileURL(aCommand, pathname);
+            if (e1 != osl::FileBase::E_None) {
+                throw css::lang::IllegalArgumentException(
+                    ("XSystemShellExecute.execute, getSystemPathFromFileURL <" + aCommand
+                     + "> failed with " + OUString::number(e1)),
+                    {}, 0);
+            }
+            OString pathname8;
+            if (!pathname.convertToString(
+                    &pathname8, RTL_TEXTENCODING_UTF8,
+                    (RTL_UNICODETOTEXT_FLAGS_UNDEFINED_ERROR
+                     | RTL_UNICODETOTEXT_FLAGS_INVALID_ERROR)))
+            {
+                throw css::lang::IllegalArgumentException(
+                    "XSystemShellExecute.execute, cannot convert \"" + pathname + "\" to UTF-8", {},
+                    0);
+            }
+            struct stat st;
+            auto const e2 = stat(pathname8.getStr(), &st);
+            if (e2 != 0) {
+                auto const e3 = errno;
+                SAL_INFO("shell", "stat(" << pathname8 << ") failed with errno " << e3);
+            }
+            if (e2 == 0 && S_ISDIR(st.st_mode)) {
+                dir = true;
+            } else if (e2 != 0 || !S_ISREG(st.st_mode)
+                       || (st.st_mode & (S_IXUSR | S_IXGRP | S_IXOTH)) != 0)
+            {
+                throw css::lang::IllegalArgumentException(
+                    "XSystemShellExecute.execute, cannot process <" + aCommand + ">", {}, 0);
+            }
+        }
+
         //TODO: Using open(1) with an argument that syntactically is an absolute
         // URI reference does not necessarily give expected results:
         // 1  If the given URI reference matches a supported scheme (e.g.,
@@ -142,7 +161,11 @@ void SAL_CALL ShellExec::execute( const OUString& aCommand, const OUString& aPar
         // 2.4  If it does not match an exitsting pathname (relative to CWD):
         //  Results in "The file /.../foo:bar does not exits." (where "/..." is
         //  the CWD) on stderr and SystemShellExecuteException.
-        aBuffer.append("open --");
+        aBuffer.append("open");
+        if (dir) {
+            aBuffer.append(" -R");
+        }
+        aBuffer.append(" --");
 #else
         // Just use xdg-open on non-Mac
         aBuffer.append("/usr/bin/xdg-open");
@@ -152,7 +175,7 @@ void SAL_CALL ShellExec::execute( const OUString& aCommand, const OUString& aPar
 
         if ( pDesktopLaunch && *pDesktopLaunch )
         {
-            aLaunchBuffer.append( OString(pDesktopLaunch) + " ");
+            aLaunchBuffer.append( pDesktopLaunch + OStringLiteral(" "));
             escapeForShell(aLaunchBuffer, OUStringToOString(aURL, osl_getThreadTextEncoding()));
         }
     } else if ((nFlags & css::system::SystemShellExecuteFlags::URIS_ONLY) != 0)
@@ -207,7 +230,7 @@ void SAL_CALL ShellExec::execute( const OUString& aCommand, const OUString& aPar
 
 OUString SAL_CALL ShellExec::getImplementationName(  )
 {
-    return OUString("com.sun.star.comp.system.SystemShellExecute");
+    return "com.sun.star.comp.system.SystemShellExecute";
 }
 
 sal_Bool SAL_CALL ShellExec::supportsService( const OUString& ServiceName )
@@ -217,7 +240,15 @@ sal_Bool SAL_CALL ShellExec::supportsService( const OUString& ServiceName )
 
 Sequence< OUString > SAL_CALL ShellExec::getSupportedServiceNames(   )
 {
-    return ShellExec_getSupportedServiceNames();
+    return { "com.sun.star.system.SystemShellExecute" };
 }
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+shell_ShellExec_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const&)
+{
+    return cppu::acquire(new ShellExec(context));
+}
+
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

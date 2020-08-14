@@ -21,21 +21,17 @@
 #define INCLUDED_SC_INC_COLCONTAINER_HXX
 
 #include "types.hxx"
-#include "address.hxx"
+#include "column.hxx"
 
+#include <memory>
 #include <vector>
-
-class ScColumn;
-class ScDocument;
 
 class ScColContainer
 {
-    typedef std::vector<ScColumn*> ScColumnVector;
-    ScColumnVector    aCols;
-    ScDocument*       pDocument;
-
 public:
-    ScColContainer( ScDocument* pDoc, const size_t nSize );
+    typedef std::vector<std::unique_ptr<ScColumn, o3tl::default_delete<ScColumn>>> ScColumnVector;
+
+    ScColContainer( const size_t nSize );
     ~ScColContainer() COVERITY_NOEXCEPT_FALSE;
 
     const ScColumn& operator[] ( const size_t nIndex ) const
@@ -73,6 +69,12 @@ public:
         assert(aCols.size() > 0);
         return *aCols.back();
     }
+
+    ScColumnVector::const_iterator begin() const { return aCols.begin(); }
+    ScColumnVector::const_iterator end() const { return aCols.end(); }
+
+private:
+    ScColumnVector    aCols;
 };
 
 

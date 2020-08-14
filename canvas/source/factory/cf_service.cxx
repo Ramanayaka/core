@@ -18,31 +18,29 @@
  */
 
 #include <sal/config.h>
+#include <sal/log.hxx>
 
 #include <algorithm>
 #include <utility>
 #include <vector>
 
-#include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/configuration/theDefaultProvider.hpp>
-#include <com/sun/star/container/XContentEnumerationAccess.hpp>
 #include <com/sun/star/container/XHierarchicalNameAccess.hpp>
 #include <com/sun/star/container/XNameAccess.hpp>
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/lang/XSingleComponentFactory.hpp>
+#include <com/sun/star/lang/XServiceName.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
-#include <cppuhelper/factory.hxx>
+#include <comphelper/propertysequence.hxx>
 #include <cppuhelper/implbase.hxx>
-#include <cppuhelper/implementationentry.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <osl/mutex.hxx>
-#include <osl/process.h>
 #include <o3tl/functional.hxx>
 #include <config_features.h>
 #if HAVE_FEATURE_OPENGL
 #include <vcl/opengl/OpenGLWrapper.hxx>
 #endif
+#include <vcl/skia/SkiaHelper.hxx>
 #include <unotools/configmgr.hxx>
 
 using namespace ::com::sun::star;
@@ -124,7 +122,7 @@ CanvasFactory::CanvasFactory( Reference<XComponentContext> const & xContext ) :
     m_bCacheHasUseAcceleratedEntry(),
     m_bCacheHasUseAAEntry()
 {
-    if (!utl::ConfigManager::IsAvoidConfig())
+    if (!utl::ConfigManager::IsFuzzing())
     {
         try
         {
@@ -132,28 +130,24 @@ CanvasFactory::CanvasFactory( Reference<XComponentContext> const & xContext ) :
             Reference<lang::XMultiServiceFactory> xConfigProvider(
                 configuration::theDefaultProvider::get( m_xContext ) );
 
-            Any propValue(
-                Any( beans::PropertyValue(
-                             "nodepath", -1,
-                             Any( OUString("/org.openoffice.Office.Canvas") ),
-                             beans::PropertyState_DIRECT_VALUE ) ) );
-
+            uno::Sequence<uno::Any> aArgs(comphelper::InitAnyPropertySequence(
+            {
+                {"nodepath", uno::Any(OUString("/org.openoffice.Office.Canvas"))}
+            }));
             m_xCanvasConfigNameAccess.set(
                 xConfigProvider->createInstanceWithArguments(
                     "com.sun.star.configuration.ConfigurationAccess",
-                    Sequence<Any>( &propValue, 1 ) ),
+                    aArgs ),
                 UNO_QUERY_THROW );
 
-            propValue <<=
-                beans::PropertyValue(
-                    "nodepath", -1,
-                    Any( OUString("/org.openoffice.Office.Canvas/CanvasServiceList") ),
-                    beans::PropertyState_DIRECT_VALUE );
-
+            uno::Sequence<uno::Any> aArgs2(comphelper::InitAnyPropertySequence(
+            {
+                {"nodepath", uno::Any(OUString("/org.openoffice.Office.Canvas/CanvasServiceList"))}
+            }));
             Reference<container::XNameAccess> xNameAccess(
                 xConfigProvider->createInstanceWithArguments(
                     "com.sun.star.configuration.ConfigurationAccess",
-                    Sequence<Any>( &propValue, 1 ) ), UNO_QUERY_THROW );
+                    aArgs2 ), UNO_QUERY_THROW );
             Reference<container::XHierarchicalNameAccess> xHierarchicalNameAccess(
                 xNameAccess, UNO_QUERY_THROW);
 
@@ -169,17 +163,17 @@ CanvasFactory::CanvasFactory( Reference<XComponentContext> const & xContext ) :
                 if( xEntryNameAccess.is() )
                 {
                     Sequence<OUString> implementationList;
-                    if( (xEntryNameAccess->getByName("PreferredImplementations") >>= implementationList) )
+                    if( xEntryNameAccess->getByName("PreferredImplementations") >>= implementationList )
                     {
-                        m_aAvailableImplementations.push_back( std::make_pair(*pCurr,implementationList) );
+                        m_aAvailableImplementations.emplace_back(*pCurr,implementationList );
                     }
-                    if( (xEntryNameAccess->getByName("AcceleratedImplementations") >>= implementationList) )
+                    if( xEntryNameAccess->getByName("AcceleratedImplementations") >>= implementationList )
                     {
-                        m_aAcceleratedImplementations.push_back( std::make_pair(*pCurr,implementationList) );
+                        m_aAcceleratedImplementations.emplace_back(*pCurr,implementationList );
                     }
-                    if( (xEntryNameAccess->getByName("AntialiasingImplementations") >>= implementationList) )
+                    if( xEntryNameAccess->getByName("AntialiasingImplementations") >>= implementationList )
                     {
-                        m_aAAImplementations.push_back( std::make_pair(*pCurr,implementationList) );
+                        m_aAAImplementations.emplace_back(*pCurr,implementationList );
                     }
 
                 }
@@ -201,12 +195,12 @@ CanvasFactory::CanvasFactory( Reference<XComponentContext> const & xContext ) :
         // Ugh. Looks like configuration is borked. Fake minimal
         // setup.
         Sequence<OUString> aServices { "com.sun.star.comp.rendering.Canvas.VCL" };
-        m_aAvailableImplementations.push_back( std::make_pair(OUString("com.sun.star.rendering.Canvas"),
-                                                              aServices) );
+        m_aAvailableImplementations.emplace_back(OUString("com.sun.star.rendering.Canvas"),
+                                                              aServices );
 
         aServices[0] = "com.sun.star.comp.rendering.SpriteCanvas.VCL";
-        m_aAvailableImplementations.push_back( std::make_pair(OUString("com.sun.star.rendering.SpriteCanvas"),
-                                                              aServices) );
+        m_aAvailableImplementations.emplace_back(OUString("com.sun.star.rendering.SpriteCanvas"),
+                                                              aServices );
     }
 }
 
@@ -218,7 +212,7 @@ CanvasFactory::~CanvasFactory()
 // XServiceInfo
 OUString CanvasFactory::getImplementationName()
 {
-    return OUString("com.sun.star.comp.rendering.CanvasFactory");
+    return "com.sun.star.comp.rendering.CanvasFactory";
 }
 
 sal_Bool CanvasFactory::supportsService( OUString const & serviceName )
@@ -310,6 +304,8 @@ Reference<XInterface> CanvasFactory::lookupAndUse(
     if( OpenGLWrapper::isVCLOpenGLEnabled() )
         bForceLastEntry = true;
 #endif
+    if( SkiaHelper::isVCLSkiaEnabled() )
+        bForceLastEntry = true;
 
     // use anti-aliasing canvas, if config flag set (or not existing)
     bool bUseAAEntry(true);
@@ -325,13 +321,13 @@ Reference<XInterface> CanvasFactory::lookupAndUse(
 
     // try to reuse last working implementation for given service name
     const CacheVector::iterator aEnd(m_aCachedImplementations.end());
-    CacheVector::iterator aMatch;
-    if( (aMatch=std::find_if(
+    auto aMatch = std::find_if(
                     m_aCachedImplementations.begin(),
                     aEnd,
                     [&serviceName](CachePair const& cp)
-                    { return serviceName.equals(cp.first); }
-                    )) != aEnd) {
+                    { return serviceName == cp.first; }
+                    );
+    if( aMatch != aEnd ) {
         Reference<XInterface> xCanvas( use( aMatch->second, args, xContext ) );
         if(xCanvas.is())
             return xCanvas;
@@ -339,52 +335,48 @@ Reference<XInterface> CanvasFactory::lookupAndUse(
 
     // lookup in available service list
     const AvailVector::const_iterator aAvailEnd(m_aAvailableImplementations.end());
-    AvailVector::const_iterator aAvailImplsMatch;
-    if( (aAvailImplsMatch=std::find_if(
+    auto aAvailImplsMatch = std::find_if(
                     m_aAvailableImplementations.begin(),
                     aAvailEnd,
                     [&serviceName](AvailPair const& ap)
-                    { return serviceName.equals(ap.first); }
-                    )) == aAvailEnd ) {
+                    { return serviceName == ap.first; }
+                    );
+    if( aAvailImplsMatch == aAvailEnd ) {
         return Reference<XInterface>();
     }
 
     const AvailVector::const_iterator aAAEnd(m_aAAImplementations.end());
-    AvailVector::const_iterator aAAImplsMatch;
-    if( (aAAImplsMatch=std::find_if(
+    auto aAAImplsMatch = std::find_if(
                     m_aAAImplementations.begin(),
                     aAAEnd,
                     [&serviceName](AvailPair const& ap)
-                    { return serviceName.equals(ap.first); }
-                    )) == aAAEnd) {
+                    { return serviceName == ap.first; }
+                    );
+    if( aAAImplsMatch == aAAEnd ) {
         return Reference<XInterface>();
     }
 
     const AvailVector::const_iterator aAccelEnd(m_aAcceleratedImplementations.end());
-    AvailVector::const_iterator aAccelImplsMatch;
-    if( (aAccelImplsMatch=std::find_if(
+    auto aAccelImplsMatch = std::find_if(
                     m_aAcceleratedImplementations.begin(),
                     aAccelEnd,
                     [&serviceName](AvailPair const& ap)
-                    { return serviceName.equals(ap.first); }
-                    )) == aAccelEnd ) {
+                    { return serviceName == ap.first; }
+                    );
+    if( aAccelImplsMatch == aAccelEnd ) {
         return Reference<XInterface>();
     }
 
     const Sequence<OUString> aPreferredImpls( aAvailImplsMatch->second );
-    const OUString* pCurrImpl = aPreferredImpls.getConstArray();
-    const OUString* const pEndImpl = pCurrImpl + aPreferredImpls.getLength();
+    const OUString* pCurrImpl = aPreferredImpls.begin();
+    const OUString* const pEndImpl = aPreferredImpls.end();
 
     const Sequence<OUString> aAAImpls( aAAImplsMatch->second );
-    const OUString* const pFirstAAImpl = aAAImpls.getConstArray();
-    const OUString* const pEndAAImpl = pFirstAAImpl + aAAImpls.getLength();
 
     const Sequence<OUString> aAccelImpls( aAccelImplsMatch->second );
-    const OUString* const pFirstAccelImpl = aAccelImpls.getConstArray();
-    const OUString* const pEndAccelImpl = pFirstAccelImpl + aAccelImpls.getLength();
 
     // force last entry from impl list, if config flag set
-    if( bForceLastEntry )
+    if (bForceLastEntry && pCurrImpl != pEndImpl)
         pCurrImpl = pEndImpl-1;
 
     while( pCurrImpl != pEndImpl )
@@ -394,19 +386,17 @@ Reference<XInterface> CanvasFactory::lookupAndUse(
         // check whether given canvas service is listed in the
         // sequence of "accelerated canvas implementations"
         const bool bIsAcceleratedImpl(
-            std::any_of(pFirstAccelImpl,
-                         pEndAccelImpl,
+            std::any_of(aAccelImpls.begin(), aAccelImpls.end(),
                          [&aCurrName](OUString const& src)
-                         { return aCurrName.equals(src.trim()); }
+                         { return aCurrName == src.trim(); }
                 ));
 
         // check whether given canvas service is listed in the
         // sequence of "antialiasing canvas implementations"
         const bool bIsAAImpl(
-            std::any_of(pFirstAAImpl,
-                         pEndAAImpl,
+            std::any_of(aAAImpls.begin(), aAAImpls.end(),
                          [&aCurrName](OUString const& src)
-                         { return aCurrName.equals(src.trim()); }
+                         { return aCurrName == src.trim(); }
                 ));
 
         // try to instantiate canvas *only* if either accel and AA
@@ -417,8 +407,7 @@ Reference<XInterface> CanvasFactory::lookupAndUse(
         // http://en.wikipedia.org/wiki/Truth_table#Logical_implication
         if( (!bIsAAImpl || bUseAAEntry) && (!bIsAcceleratedImpl || bUseAcceleratedEntry) )
         {
-            Reference<XInterface> xCanvas(
-                use( pCurrImpl->trim(), args, xContext ) );
+            Reference<XInterface> xCanvas(use(aCurrName, args, xContext));
 
             if(xCanvas.is())
             {
@@ -426,13 +415,12 @@ Reference<XInterface> CanvasFactory::lookupAndUse(
                 {
                     // cache entry exists, replace dysfunctional
                     // implementation name
-                    aMatch->second = pCurrImpl->trim();
+                    aMatch->second = aCurrName;
                 }
                 else
                 {
                     // new service name, add new cache entry
-                    m_aCachedImplementations.push_back(std::make_pair(serviceName,
-                                                                      pCurrImpl->trim()));
+                    m_aCachedImplementations.emplace_back(serviceName, aCurrName);
                 }
 
                 return xCanvas;
@@ -450,13 +438,18 @@ Reference<XInterface> CanvasFactory::createInstanceWithArgumentsAndContext(
     OUString const & preferredOne, Sequence<Any> const & args,
     Reference<XComponentContext> const & xContext )
 {
-    Reference<XInterface> xCanvas(
-        lookupAndUse( preferredOne, args, xContext ) );
-    if(xCanvas.is())
-        return xCanvas;
+    Reference<XInterface> xCanvas(lookupAndUse(preferredOne, args, xContext));
+    if (!xCanvas.is())
+        // last resort: try service name directly
+        xCanvas = use(preferredOne, args, xContext);
 
-    // last resort: try service name directly
-    return use( preferredOne, args, xContext );
+    if (xCanvas.is())
+    {
+        Reference<lang::XServiceName> xServiceName(xCanvas, uno::UNO_QUERY);
+        SAL_INFO("canvas", "using " << (xServiceName.is() ? xServiceName->getServiceName()
+                                                          : OUString("(unknown)")));
+    }
+    return xCanvas;
 }
 
 // XMultiServiceFactory
@@ -478,7 +471,7 @@ Reference<XInterface> CanvasFactory::createInstanceWithArguments(
 } // anon namespace
 
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_comp_rendering_CanvasFactory_get_implementation(css::uno::XComponentContext* context,
                                                              css::uno::Sequence<css::uno::Any> const &)
 {

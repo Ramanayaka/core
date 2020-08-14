@@ -20,22 +20,19 @@
 #ifndef INCLUDED_WRITERFILTER_SOURCE_DMAPPER_PROPERTYMAPHELPER_HXX
 #define INCLUDED_WRITERFILTER_SOURCE_DMAPPER_PROPERTYMAPHELPER_HXX
 
-#include "PropertyMap.hxx"
 #include <com/sun/star/beans/PropertyValues.hpp>
 
-namespace writerfilter
-{
-namespace dmapper
+namespace writerfilter::dmapper
 {
 
 void lcl_DumpTableColumnSeparators(const css::uno::Any & rTableColumnSeparators);
-#ifdef DEBUG_WRITERFILTER
-void lcl_DumpPropertyValues(css::beans::PropertyValues & rValues);
+#ifdef DBG_UTIL
+void lcl_DumpPropertyValues(css::beans::PropertyValues const & rValues);
 
-void lcl_DumpPropertyValueSeq(css::uno::Sequence<css::beans::PropertyValues> & rPropValSeq);
-#endif // DEBUG_WRITERFILTER
+void lcl_DumpPropertyValueSeq(css::uno::Sequence<css::beans::PropertyValues> const & rPropValSeq);
+#endif // DBG_UTIL
 }
-}
+
 
 #endif // INCLUDED_WRITERFILTER_SOURCE_DMAPPER_PROPERTYMAPHELPER_HXX
 

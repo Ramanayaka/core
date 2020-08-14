@@ -53,16 +53,14 @@ namespace stringresource
 typedef std::unordered_map
 <
     OUString,
-    OUString,
-    OUStringHash
+    OUString
 >
 IdToStringMap;
 
 typedef std::unordered_map
 <
     OUString,
-    sal_Int32,
-    OUStringHash
+    sal_Int32
 >
 IdToIndexMap;
 
@@ -84,9 +82,7 @@ struct LocaleItem
     {}
 };
 
-typedef std::vector< LocaleItem* > LocaleItemVector;
-typedef std::vector< LocaleItem* >::iterator LocaleItemVectorIt;
-typedef std::vector< LocaleItem* >::const_iterator LocaleItemVectorConstIt;
+typedef std::vector< std::unique_ptr<LocaleItem> > LocaleItemVector;
 
 typedef ::cppu::WeakImplHelper<
     css::lang::XServiceInfo,
@@ -103,8 +99,8 @@ protected:
 
     ::comphelper::OInterfaceContainerHelper2                        m_aListenerContainer;
 
-    LocaleItemVector                                          m_aLocaleItemVector;
-    LocaleItemVector                                          m_aDeletedLocaleItemVector;
+    std::vector< std::unique_ptr<LocaleItem> >                m_aLocaleItemVector;
+    std::vector< std::unique_ptr<LocaleItem> >                m_aDeletedLocaleItemVector;
     LocaleItemVector                                          m_aChangedDefaultLocaleVector;
 
     bool                                                      m_bModified;
@@ -118,7 +114,7 @@ protected:
 
     // Checks read only status and throws exception if it's true
     /// @throws css::lang::NoSupportException
-    void implCheckReadOnly( const sal_Char* pExceptionMsg );
+    void implCheckReadOnly( const char* pExceptionMsg );
 
     // Returns the LocalItem for a given locale, if it exists, otherwise NULL
     // This method compares the locales exactly, no closest match search is performed
@@ -138,7 +134,7 @@ protected:
 
     //=== Impl methods for ...ForLocale methods ===
     /// @throws css::resource::MissingResourceException
-    OUString SAL_CALL implResolveString( const OUString& ResourceID, LocaleItem* pLocaleItem );
+    OUString implResolveString( const OUString& ResourceID, LocaleItem* pLocaleItem );
     bool implHasEntryForId( const OUString& ResourceID, LocaleItem* pLocaleItem );
     css::uno::Sequence< OUString > implGetResourceIDs( LocaleItem* pLocaleItem );
     void implSetString( const OUString& ResourceID,
@@ -209,7 +205,7 @@ protected:
 
     /// @throws css::uno::Exception
     /// @throws css::uno::RuntimeException
-    void SAL_CALL implInitializeCommonParameters( const css::uno::Sequence< css::uno::Any >& aArguments );
+    void implInitializeCommonParameters( const css::uno::Sequence< css::uno::Any >& aArguments );
 
     // Scan locale properties files
     virtual void implScanLocales();
@@ -223,14 +219,14 @@ protected:
     virtual void implLoadAllLocales() override;
 
     void implScanLocaleNames( const css::uno::Sequence< OUString >& aContentSeq );
-    static OUString implGetFileNameForLocaleItem( LocaleItem* pLocaleItem, const OUString& aNameBase );
-    static OUString implGetPathForLocaleItem( LocaleItem* pLocaleItem, const OUString& aNameBase,
+    static OUString implGetFileNameForLocaleItem( LocaleItem const * pLocaleItem, const OUString& aNameBase );
+    static OUString implGetPathForLocaleItem( LocaleItem const * pLocaleItem, const OUString& aNameBase,
         const OUString& aLocation, bool bDefaultFile=false );
 
     bool implReadPropertiesFile( LocaleItem* pLocaleItem,
         const css::uno::Reference< css::io::XInputStream >& xInput );
 
-    bool implWritePropertiesFile( LocaleItem* pLocaleItem,
+    bool implWritePropertiesFile( LocaleItem const * pLocaleItem,
               const css::uno::Reference< css::io::XOutputStream >& xOutputStream,
               const OUString& aComment );
 
@@ -425,7 +421,7 @@ class StringResourceWithLocationImpl : public StringResourceWithLocationImpl_BAS
     css::uno::Reference< css::ucb::XSimpleFileAccess3 >   m_xSFI;
     css::uno::Reference< css::task::XInteractionHandler > m_xInteractionHandler;
 
-    const css::uno::Reference< css::ucb::XSimpleFileAccess3 > getFileAccess();
+    const css::uno::Reference< css::ucb::XSimpleFileAccess3 > & getFileAccess();
 
     virtual void implScanLocales() override;
     virtual bool implLoadLocale( LocaleItem* pLocaleItem ) override;

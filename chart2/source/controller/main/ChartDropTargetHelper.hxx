@@ -19,13 +19,13 @@
 #ifndef INCLUDED_CHART2_SOURCE_CONTROLLER_MAIN_CHARTDROPTARGETHELPER_HXX
 #define INCLUDED_CHART2_SOURCE_CONTROLLER_MAIN_CHARTDROPTARGETHELPER_HXX
 
-#include <svtools/transfer.hxx>
+#include <vcl/transfer.hxx>
 
-namespace com { namespace sun { namespace star {
-namespace chart2 {
-    class XChartDocument;
+namespace com::sun::star {
+    namespace chart2 {
+        class XChartDocument;
+    }
 }
-}}}
 
 namespace chart
 {

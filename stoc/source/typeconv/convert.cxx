@@ -20,9 +20,8 @@
 #include <sal/config.h>
 
 #include <o3tl/any.hxx>
+#include <o3tl/safeint.hxx>
 #include <osl/diagnose.h>
-#include <cppuhelper/factory.hxx>
-#include <cppuhelper/implementationentry.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/supportsservice.hxx>
 
@@ -36,54 +35,24 @@
 #endif
 #include <float.h>
 
+#include <com/sun/star/lang/IllegalArgumentException.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/script/CannotConvertException.hpp>
 #include <com/sun/star/script/XTypeConverter.hpp>
 #include <com/sun/star/script/FailReason.hpp>
-#include <com/sun/star/container/XSet.hpp>
-#include <com/sun/star/registry/XRegistryKey.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
+
+namespace com::sun::star::uno { class XComponentContext; }
 
 using namespace css::uno;
 using namespace css::lang;
 using namespace css::script;
-using namespace css::registry;
 using namespace cppu;
 using namespace osl;
 
 namespace stoc_tcv
 {
 
-static const sal_uInt64 SAL_UINT64_MAX =
-    ((((sal_uInt64)0xffffffff) << 32) | (sal_uInt64)0xffffffff);
-static const sal_Int64 SAL_INT64_MAX =
-    (sal_Int64)((((sal_uInt64)0x7fffffff) << 32) | (sal_uInt64)0xffffffff);
-static const sal_Int64 SAL_INT64_MIN =
-    (sal_Int64)(((sal_uInt64)0x80000000) << 32);
-
-/* MS Visual C++ no conversion from unsigned __int64 to double */
-#ifdef _MSC_VER
-static const double DOUBLE_SAL_UINT64_MAX = ((((double)SAL_INT64_MAX) * 2) + 1);
-
-static inline double unsigned_int64_to_double( sal_uInt64 n )
-{
-    sal_uInt64 n2 = (n / 3);
-    n -= (2 * n2);
-    return (((double)(sal_Int64)n2) * 2.0) + ((double)(sal_Int64)n);
-}
-#else
-static const double DOUBLE_SAL_UINT64_MAX =
-    (double)((((sal_uInt64)0xffffffff) << 32) | (sal_uInt64)0xffffffff);
-
-static inline double unsigned_int64_to_double( sal_uInt64 n )
-{
-    return (double)n;
-}
-#endif
-
-
-static inline double round( double aVal )
+static double round( double aVal )
 {
     bool bPos   = (aVal >= 0.0);
     aVal            = ::fabs( aVal );
@@ -142,7 +111,7 @@ static bool getNumericValue( double & rfVal, const OUString & rStr )
                 }
             }
 
-            rfVal = (bNeg ? -(double)nRet : (double)nRet);
+            rfVal = (bNeg ? -static_cast<double>(nRet) : static_cast<double>(nRet));
             return true;
         }
 
@@ -231,22 +200,23 @@ static bool getHyperValue( sal_Int64 & rnVal, const OUString & rStr )
 
     double fVal;
     if (getNumericValue( fVal, rStr ) &&
-        fVal >= (double)SAL_INT64_MIN &&
-        fVal <= DOUBLE_SAL_UINT64_MAX)
+        fVal >= double(SAL_MIN_INT64) &&
+        fVal <= double(SAL_MAX_UINT64))
     {
-        rnVal = (sal_Int64)round( fVal );
+        rnVal = static_cast<sal_Int64>(round( fVal ));
         return true;
     }
     return false;
 }
 
+namespace {
 
 class TypeConverter_Impl : public WeakImplHelper< XTypeConverter, XServiceInfo >
 {
     // ...misc helpers...
     /// @throws CannotConvertException
     static sal_Int64 toHyper(
-        const Any& rAny, sal_Int64 min, sal_uInt64 max = SAL_UINT64_MAX );
+        const Any& rAny, sal_Int64 min, sal_uInt64 max = SAL_MAX_UINT64 );
     /// @throws CannotConvertException
     static double toDouble( const Any& rAny, double min = -DBL_MAX, double max = DBL_MAX );
 
@@ -263,12 +233,14 @@ public:
     virtual Any SAL_CALL convertToSimpleType( const Any& aFrom, TypeClass aDestinationType ) override;
 };
 
+}
+
 TypeConverter_Impl::TypeConverter_Impl() {}
 
 // XServiceInfo
 OUString TypeConverter_Impl::getImplementationName()
 {
-    return OUString("com.sun.star.comp.stoc.TypeConverter");
+    return "com.sun.star.comp.stoc.TypeConverter";
 }
 
 // XServiceInfo
@@ -280,8 +252,7 @@ sal_Bool TypeConverter_Impl::supportsService(const OUString& ServiceName)
 // XServiceInfo
 Sequence< OUString > TypeConverter_Impl::getSupportedServiceNames()
 {
-    Sequence< OUString > seqNames { "com.sun.star.script.Converter" };
-    return seqNames;
+    return { "com.sun.star.script.Converter" };
 }
 
 
@@ -330,11 +301,11 @@ sal_Int64 TypeConverter_Impl::toHyper( const Any& rAny, sal_Int64 min, sal_uInt6
     // UNSIGNED HYPER
     case TypeClass_UNSIGNED_HYPER:
     {
-        nRet = static_cast<sal_Int64>(*o3tl::forceAccess<sal_uInt64>(rAny));
-        if ((min < 0 || (sal_uInt64)nRet >= (sal_uInt64)min) && // lower bound
-            (sal_uInt64)nRet <= max)                            // upper bound
+        auto const n = *o3tl::forceAccess<sal_uInt64>(rAny);
+        if ((min < 0 || n >= o3tl::make_unsigned(min)) && // lower bound
+            n <= max)                            // upper bound
         {
-            return nRet;
+            return static_cast<sal_Int64>(n);
         }
         throw CannotConvertException(
             "UNSIGNED HYPER out of range!",
@@ -345,9 +316,9 @@ sal_Int64 TypeConverter_Impl::toHyper( const Any& rAny, sal_Int64 min, sal_uInt6
     case TypeClass_FLOAT:
     {
         double fVal = round( *o3tl::forceAccess<float>(rAny) );
-        nRet = (fVal > SAL_INT64_MAX ? (sal_Int64)(sal_uInt64)fVal : (sal_Int64)fVal);
-        if (fVal >= min && fVal <= unsigned_int64_to_double( max ))
+        if (fVal >= min && fVal <= max)
         {
+            nRet = (fVal >= 0.0 ? static_cast<sal_Int64>(static_cast<sal_uInt64>(fVal)) : static_cast<sal_Int64>(fVal));
             return nRet;
         }
         throw CannotConvertException(
@@ -357,9 +328,9 @@ sal_Int64 TypeConverter_Impl::toHyper( const Any& rAny, sal_Int64 min, sal_uInt6
     case TypeClass_DOUBLE:
     {
         double fVal = round( *o3tl::forceAccess<double>(rAny) );
-        nRet = (fVal > SAL_INT64_MAX ? (sal_Int64)(sal_uInt64)fVal : (sal_Int64)fVal);
-        if (fVal >= min && fVal <= unsigned_int64_to_double( max ))
+        if (fVal >= min && fVal <= max)
         {
+            nRet = (fVal >= 0.0 ? static_cast<sal_Int64>(static_cast<sal_uInt64>(fVal)) : static_cast<sal_Int64>(fVal));
             return nRet;
         }
         throw CannotConvertException(
@@ -378,7 +349,7 @@ sal_Int64 TypeConverter_Impl::toHyper( const Any& rAny, sal_Int64 min, sal_uInt6
                 Reference<XInterface>(), aDestinationClass, FailReason::IS_NOT_NUMBER, 0 );
         }
         nRet = nVal;
-        if (nVal >= min && (nVal < 0 || ((sal_uInt64)nVal) <= max))
+        if (nVal >= min && (nVal < 0 || o3tl::make_unsigned(nVal) <= max))
             return nRet;
         throw CannotConvertException(
             "STRING value out of range!",
@@ -391,7 +362,7 @@ sal_Int64 TypeConverter_Impl::toHyper( const Any& rAny, sal_Int64 min, sal_uInt6
             Reference<XInterface>(), aDestinationClass, FailReason::TYPE_NOT_SUPPORTED, 0 );
     }
 
-    if (nRet >= min && (nRet < 0 || (sal_uInt64)nRet <= max))
+    if (nRet >= min && (nRet < 0 || o3tl::make_unsigned(nRet) <= max))
         return nRet;
     throw CannotConvertException(
         "VALUE is out of range!",
@@ -439,11 +410,11 @@ double TypeConverter_Impl::toDouble( const Any& rAny, double min, double max )
         break;
     // HYPER
     case TypeClass_HYPER:
-        fRet = (double)*o3tl::forceAccess<sal_Int64>(rAny);
+        fRet = static_cast<double>(*o3tl::forceAccess<sal_Int64>(rAny));
         break;
     // UNSIGNED HYPER
     case TypeClass_UNSIGNED_HYPER:
-        fRet = unsigned_int64_to_double( *o3tl::forceAccess<sal_uInt64>(rAny) );
+        fRet = static_cast<double>(*o3tl::forceAccess<sal_uInt64>(rAny));
         break;
     // FLOAT, DOUBLE
     case TypeClass_FLOAT:
@@ -507,17 +478,14 @@ Any SAL_CALL TypeConverter_Impl::convertTo( const Any& rVal, const Type& aDestTy
         // same types or destination type is derived source type?
         TypeDescription aSourceTD( aSourceType );
         TypeDescription aDestTD( aDestType );
-        if (typelib_typedescription_isAssignableFrom( aDestTD.get(), aSourceTD.get() ))
-        {
-            aRet.setValue( rVal.getValue(), aDestTD.get() ); // evtl. .uP.cAsT.
-        }
-        else
+        if (!typelib_typedescription_isAssignableFrom( aDestTD.get(), aSourceTD.get() ))
         {
             throw CannotConvertException(
                 "value is not of same or derived type!",
                 Reference< XInterface >(), aDestinationClass,
                 FailReason::SOURCE_IS_NO_DERIVED_TYPE, 0 );
         }
+        aRet.setValue( rVal.getValue(), aDestTD.get() ); // evtl. .uP.cAsT.
         break;
     }
     // --- to INTERFACE -------------------------------------------------------------------------
@@ -539,7 +507,8 @@ Any SAL_CALL TypeConverter_Impl::convertTo( const Any& rVal, const Type& aDestTy
                 "value is not interface",
                 Reference< XInterface >(), aDestinationClass, FailReason::NO_SUCH_INTERFACE, 0 );
         }
-        if (! (aRet = (*ifc)->queryInterface(aDestType )).hasValue())
+        aRet = (*ifc)->queryInterface(aDestType );
+        if (! aRet.hasValue())
         {
             throw CannotConvertException(
                 "value does not implement " + aDestType.getTypeName(),
@@ -628,7 +597,7 @@ Any SAL_CALL TypeConverter_Impl::convertTo( const Any& rVal, const Type& aDestTy
                  aSourceClass!=TypeClass_BOOLEAN &&
                  aSourceClass!=TypeClass_CHAR)
         {
-            sal_Int32 nEnumValue = (sal_Int32)toHyper( rVal, -(sal_Int64)0x80000000, 0x7fffffff );
+            sal_Int32 nEnumValue = static_cast<sal_Int32>(toHyper( rVal, -sal_Int64(0x80000000), 0x7fffffff ));
             for ( nPos = reinterpret_cast<typelib_EnumTypeDescription *>(aEnumTD.get())->nEnumValues; nPos--; )
             {
                 if (nEnumValue == reinterpret_cast<typelib_EnumTypeDescription *>(aEnumTD.get())->pEnumValues[nPos])
@@ -636,18 +605,17 @@ Any SAL_CALL TypeConverter_Impl::convertTo( const Any& rVal, const Type& aDestTy
             }
         }
 
-        if (nPos >= 0)
-        {
-            aRet.setValue(
-                &reinterpret_cast<typelib_EnumTypeDescription *>(aEnumTD.get())->pEnumValues[nPos],
-                aEnumTD.get() );
-        }
-        else
+        if (nPos < 0)
         {
             throw CannotConvertException(
                 "value cannot be converted to demanded ENUM!",
                 Reference< XInterface >(), aDestinationClass, FailReason::IS_NOT_ENUM, 0 );
         }
+
+        aRet.setValue(
+            &reinterpret_cast<typelib_EnumTypeDescription *>(aEnumTD.get())->pEnumValues[nPos],
+            aEnumTD.get() );
+
         break;
     }
 
@@ -696,7 +664,7 @@ Any TypeConverter_Impl::convertToSimpleType( const Any& rVal, TypeClass aDestina
     default:
         throw IllegalArgumentException(
             "destination type is not simple!",
-            Reference< XInterface >(), (sal_Int16) 1 );
+            Reference< XInterface >(), sal_Int16(1) );
     }
 
     const Type& aSourceType = rVal.getValueType();
@@ -765,36 +733,36 @@ Any TypeConverter_Impl::convertToSimpleType( const Any& rVal, TypeClass aDestina
         break;
     }
     case TypeClass_BYTE:
-        aRet <<= (sal_Int8)( toHyper( rVal, -(sal_Int64)0x80, 0x7f ) );
+        aRet <<= static_cast<sal_Int8>( toHyper( rVal, -sal_Int64(0x80), 0x7f ) );
         break;
 
     // --- to SHORT, UNSIGNED SHORT -------------------------------------------------------------
     case TypeClass_SHORT:
-        aRet <<= (sal_Int16)( toHyper( rVal, -(sal_Int64)0x8000, 0x7fff ) );
+        aRet <<= static_cast<sal_Int16>( toHyper( rVal, -sal_Int64(0x8000), 0x7fff ) );
         break;
     case TypeClass_UNSIGNED_SHORT:
-        aRet <<= (sal_uInt16)( toHyper( rVal, 0, 0xffff ) );
+        aRet <<= static_cast<sal_uInt16>( toHyper( rVal, 0, 0xffff ) );
         break;
 
     // --- to LONG, UNSIGNED LONG ---------------------------------------------------------------
     case TypeClass_LONG:
-        aRet <<= (sal_Int32)( toHyper( rVal, -(sal_Int64)0x80000000, 0x7fffffff ) );
+        aRet <<= static_cast<sal_Int32>( toHyper( rVal, -sal_Int64(0x80000000), 0x7fffffff ) );
         break;
     case TypeClass_UNSIGNED_LONG:
-        aRet <<= (sal_uInt32)( toHyper( rVal, 0, 0xffffffff ) );
+        aRet <<= static_cast<sal_uInt32>( toHyper( rVal, 0, 0xffffffff ) );
         break;
 
     // --- to HYPER, UNSIGNED HYPER--------------------------------------------
     case TypeClass_HYPER:
-        aRet <<= toHyper( rVal, SAL_INT64_MIN, SAL_INT64_MAX );
+        aRet <<= toHyper( rVal, SAL_MIN_INT64, SAL_MAX_INT64 );
         break;
     case TypeClass_UNSIGNED_HYPER:
-        aRet <<= (sal_uInt64)( toHyper( rVal, 0 ) );
+        aRet <<= static_cast<sal_uInt64>( toHyper( rVal, 0 ) );
         break;
 
     // --- to FLOAT, DOUBLE ---------------------------------------------------------------------
     case TypeClass_FLOAT:
-        aRet <<= (float)( toDouble( rVal, -FLT_MAX, FLT_MAX ) );
+        aRet <<= static_cast<float>( toDouble( rVal, -FLT_MAX, FLT_MAX ) );
         break;
     case TypeClass_DOUBLE:
         aRet <<= toDouble( rVal, -DBL_MAX, DBL_MAX );
@@ -815,17 +783,16 @@ Any TypeConverter_Impl::convertToSimpleType( const Any& rVal, TypeClass aDestina
                 if (nEnumValue == reinterpret_cast<typelib_EnumTypeDescription *>(aEnumTD.get())->pEnumValues[nPos])
                     break;
             }
-            if (nPos >= 0)
-            {
-                aRet <<= OUString::unacquired(
-                    &reinterpret_cast<typelib_EnumTypeDescription *>(aEnumTD.get())->ppEnumNames[nPos]);
-            }
-            else
+            if (nPos < 0)
             {
                 throw CannotConvertException(
                     "value is not ENUM!",
                     Reference< XInterface >(), aDestinationClass, FailReason::IS_NOT_ENUM, 0 );
             }
+
+            aRet <<= OUString::unacquired(
+                &reinterpret_cast<typelib_EnumTypeDescription *>(aEnumTD.get())->ppEnumNames[nPos]);
+
             break;
         }
 
@@ -881,7 +848,7 @@ Any TypeConverter_Impl::convertToSimpleType( const Any& rVal, TypeClass aDestina
 
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_comp_stoc_TypeConverter_get_implementation(css::uno::XComponentContext*,
         css::uno::Sequence<css::uno::Any> const &)
 {

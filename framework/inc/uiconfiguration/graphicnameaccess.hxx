@@ -20,15 +20,15 @@
 #ifndef INCLUDED_FRAMEWORK_INC_UICONFIGURATION_GRAPHICNAMEACCESS_HXX
 #define INCLUDED_FRAMEWORK_INC_UICONFIGURATION_GRAPHICNAMEACCESS_HXX
 
-#include <stdtypes.h>
+#include <unordered_map>
 
-#include <com/sun/star/container/XNameContainer.hpp>
+#include <com/sun/star/container/XNameAccess.hpp>
 #include <com/sun/star/graphic/XGraphic.hpp>
 #include <cppuhelper/implbase.hxx>
 
 namespace framework
 {
-    class GraphicNameAccess : public ::cppu::WeakImplHelper< css::container::XNameAccess >
+    class GraphicNameAccess final : public ::cppu::WeakImplHelper< css::container::XNameAccess >
     {
         public:
             GraphicNameAccess();
@@ -46,7 +46,7 @@ namespace framework
             virtual css::uno::Type SAL_CALL getElementType(  ) override;
 
         private:
-            typedef std::unordered_map<OUString, css::uno::Reference< css::graphic::XGraphic >, OUStringHash> NameGraphicHashMap;
+            typedef std::unordered_map<OUString, css::uno::Reference< css::graphic::XGraphic >> NameGraphicHashMap;
             NameGraphicHashMap              m_aNameToElementMap;
             css::uno::Sequence< OUString >  m_aSeq;
     };

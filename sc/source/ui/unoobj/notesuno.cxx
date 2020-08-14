@@ -17,24 +17,24 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "notesuno.hxx"
+#include <notesuno.hxx>
 
 #include <vcl/svapp.hxx>
 #include <svl/hint.hxx>
+#include <editeng/unoipset.hxx>
 #include <editeng/unotext.hxx>
 #include <editeng/unoprnms.hxx>
 #include <svx/svdpool.hxx>
 #include <svx/svdobj.hxx>
-#include <svx/unoshape.hxx>
 #include <svx/svdocapt.hxx>
 
-#include "postit.hxx"
-#include "cellsuno.hxx"
-#include "docsh.hxx"
-#include "docfunc.hxx"
-#include "hints.hxx"
-#include "editsrc.hxx"
-#include "miscuno.hxx"
+#include <postit.hxx>
+#include <cellsuno.hxx>
+#include <docsh.hxx>
+#include <docfunc.hxx>
+#include <hints.hxx>
+#include <editsrc.hxx>
+#include <miscuno.hxx>
 
 using namespace com::sun::star;
 
@@ -46,7 +46,7 @@ static const SvxItemPropertySet* lcl_GetAnnotationPropertySet()
         SVX_UNOEDIT_FONT_PROPERTIES,
         SVX_UNOEDIT_PARA_PROPERTIES,
         SVX_UNOEDIT_NUMBERING_PROPERTIE,    // for completeness of service ParagraphProperties
-        { OUString(), 0, css::uno::Type(), 0, 0 }
+        { "", 0, css::uno::Type(), 0, 0 }
     };
     static SvxItemPropertySet aAnnotationPropertySet_Impl( aAnnotationPropertyMap_Impl, SdrObject::GetGlobalDrawObjectItemPool() );
     return &aAnnotationPropertySet_Impl;
@@ -229,7 +229,7 @@ SvxUnoText& ScAnnotationObj::GetUnoText()
         pUnoText = new SvxUnoText( &aEditSource, lcl_GetAnnotationPropertySet(),
                                     uno::Reference<text::XText>() );
     }
-    return *pUnoText.get();
+    return *pUnoText;
 }
 
 const ScPostIt* ScAnnotationObj::ImplGetNote() const

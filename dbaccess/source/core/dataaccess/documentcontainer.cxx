@@ -18,8 +18,9 @@
  */
 
 #include "documentcontainer.hxx"
-#include "dbastrings.hrc"
+#include <stringconstants.hxx>
 #include "documentdefinition.hxx"
+#include <ModelImpl.hxx>
 #include <com/sun/star/ucb/OpenCommandArgument2.hpp>
 #include <com/sun/star/ucb/OpenMode.hpp>
 #include <connectivity/dbtools.hxx>
@@ -29,14 +30,13 @@
 #include <com/sun/star/ucb/InsertCommandArgument.hpp>
 #include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <com/sun/star/sdb/ErrorCondition.hpp>
-#include "datasource.hxx"
-#include <comphelper/classids.hxx>
 #include <comphelper/mimeconfighelper.hxx>
-#include <comphelper/processfactory.hxx>
 #include <connectivity/sqlerror.hxx>
-#include "core_resource.hxx"
-#include "core_resource.hrc"
+#include <core_resource.hxx>
+#include <strings.hrc>
 #include <comphelper/namedvaluecollection.hxx>
+#include <comphelper/propertysequence.hxx>
+#include <comphelper/servicehelper.hxx>
 #include <com/sun/star/lang/WrappedTargetRuntimeException.hpp>
 
 #include <vcl/svapp.hxx>
@@ -58,21 +58,20 @@ using namespace ::cppu;
 namespace dbaccess
 {
 
+namespace {
+
 // LocalNameApproval
 class LocalNameApproval : public IContainerApprove
 {
     ::connectivity::SQLError    m_aErrors;
 
 public:
-    explicit LocalNameApproval( const Reference< XComponentContext >& _rxContext )
-        :m_aErrors( _rxContext )
-    {
-    }
-
-    void SAL_CALL   approveElement( const OUString& _rName, const Reference< XInterface >& _rxElement ) override;
+    void approveElement( const OUString& _rName ) override;
 };
 
-void SAL_CALL LocalNameApproval::approveElement( const OUString& _rName, const Reference< XInterface >& /*_rxElement*/ )
+}
+
+void LocalNameApproval::approveElement( const OUString& _rName )
 {
     if ( _rName.indexOf( '/' ) != -1 )
         throw IllegalArgumentException(
@@ -96,7 +95,7 @@ ODocumentContainer::ODocumentContainer(const Reference< XComponentContext >& _xO
     registerProperty(PROPERTY_NAME, PROPERTY_ID_NAME, PropertyAttribute::BOUND | PropertyAttribute::READONLY | PropertyAttribute::CONSTRAINED,
                     &m_pImpl->m_aProps.aTitle, cppu::UnoType<decltype(m_pImpl->m_aProps.aTitle)>::get());
 
-    setElementApproval( PContainerApprove( new LocalNameApproval ( _xORB ) ) );
+    setElementApproval( std::make_shared<LocalNameApproval>() );
 }
 
 ODocumentContainer::~ODocumentContainer()
@@ -123,9 +122,7 @@ IMPLEMENT_PROPERTYCONTAINER_DEFAULTS(ODocumentContainer)
 
 Sequence< OUString > SAL_CALL ODocumentContainer::getSupportedServiceNames(  )
 {
-    Sequence< OUString > aSupported(1);
-    aSupported[0] = m_bFormsContainer ? OUString(SERVICE_NAME_FORM_COLLECTION) : OUString(SERVICE_NAME_REPORT_COLLECTION);
-    return aSupported;
+    return { m_bFormsContainer ? OUString(SERVICE_NAME_FORM_COLLECTION) : OUString(SERVICE_NAME_REPORT_COLLECTION) };
 }
 
 OUString ODocumentContainer::determineContentType() const
@@ -214,11 +211,11 @@ Reference< XInterface > SAL_CALL ODocumentContainer::createInstanceWithArguments
         if ( bNew )
         {
             sPersistentName = "Obj" + OUString::number(rDefinitions.size() + 1);
-            Reference<XNameAccess> xElements(getContainerStorage(),UNO_QUERY);
+            Reference<XNameAccess> xElements = getContainerStorage();
             if ( xElements.is() )
                 sPersistentName = ::dbtools::createUniqueName(xElements,sPersistentName);
 
-            const bool bNeedClassID = (0 == aClassID.getLength()) && sURL.isEmpty() ;
+            const bool bNeedClassID = !aClassID.hasElements() && sURL.isEmpty() ;
             if ( xCopyFrom.is() )
             {
                 Sequence<Any> aIni(2);
@@ -258,7 +255,7 @@ Reference< XInterface > SAL_CALL ODocumentContainer::createInstanceWithArguments
         TContentPtr pElementImpl;
         if ( bNew || ( aFind == rDefinitions.end() ) )
         {
-            pElementImpl.reset( new OContentHelper_Impl );
+            pElementImpl = std::make_shared<OContentHelper_Impl>();
             if ( !bNew )
                 pElementImpl->m_aProps.aTitle = sName;
 
@@ -270,13 +267,13 @@ Reference< XInterface > SAL_CALL ODocumentContainer::createInstanceWithArguments
             pElementImpl = aFind->second;
 
         ::rtl::Reference< ODocumentDefinition > pDocDef = new ODocumentDefinition( *this, m_aContext, pElementImpl, m_bFormsContainer );
-        if ( aClassID.getLength() )
+        if ( aClassID.hasElements() )
         {
             pDocDef->initialLoad( aClassID, aCreationArgs, xConnection );
         }
         else
         {
-            OSL_ENSURE( aCreationArgs.getLength() == 0, "ODocumentContainer::createInstance: additional creation args are lost, if you do not provide a class ID." );
+            OSL_ENSURE( !aCreationArgs.hasElements(), "ODocumentContainer::createInstance: additional creation args are lost, if you do not provide a class ID." );
         }
         xContent = pDocDef.get();
 
@@ -319,7 +316,7 @@ Reference< XInterface > SAL_CALL ODocumentContainer::createInstanceWithArguments
         TContentPtr pElementImpl;
         if ( aFind == rDefinitions.end() )
         {
-            pElementImpl.reset(new ODefinitionContainer_Impl);
+            pElementImpl = std::make_shared<ODefinitionContainer_Impl>();
             pElementImpl->m_aProps.aTitle = sName;
             pElementImpl->m_pDataSource = m_pImpl->m_pDataSource;
         }
@@ -343,20 +340,12 @@ Reference< XInterface > SAL_CALL ODocumentContainer::createInstanceWithArguments
                 for(;elements != elementsEnd;++elements)
                 {
                     xCopyFrom->getByName(*elements) >>= xObjectToCopy;
-                    Sequence< Any > aArguments(3);
-                    PropertyValue aArgument;
-                    // set as folder
-                    aArgument.Name = "Name";
-                    aArgument.Value <<= *elements;
-                    aArguments[0] <<= aArgument;
-                    //parent
-                    aArgument.Name = "Parent";
-                    aArgument.Value <<= xContent;
-                    aArguments[1] <<= aArgument;
-
-                    aArgument.Name = PROPERTY_EMBEDDEDOBJECT;
-                    aArgument.Value <<= xObjectToCopy;
-                    aArguments[2] <<= aArgument;
+                    Sequence<Any> aArguments(comphelper::InitAnyPropertySequence(
+                    {
+                        {"Name", Any(*elements)}, // set as folder
+                        {"Parent", Any(xContent)},
+                        {PROPERTY_EMBEDDEDOBJECT, Any(xObjectToCopy)},
+                    }));
 
                     OUString sServiceName;
                     if ( Reference< XNameAccess >( xObjectToCopy, UNO_QUERY ).is() )
@@ -397,7 +386,7 @@ Any SAL_CALL ODocumentContainer::execute( const Command& aCommand, sal_Int32 Com
     {
         // open command for a folder content
         OpenCommandArgument2 aOpenCommand;
-          if ( !( aCommand.Argument >>= aOpenCommand ) )
+        if ( !( aCommand.Argument >>= aOpenCommand ) )
         {
             OSL_FAIL( "Wrong argument type!" );
             ucbhelper::cancelCommandExecution(
@@ -441,9 +430,9 @@ Any SAL_CALL ODocumentContainer::execute( const Command& aCommand, sal_Int32 Com
         // insert
 
         InsertCommandArgument arg;
-          if ( !( aCommand.Argument >>= arg ) )
+        if ( !( aCommand.Argument >>= arg ) )
         {
-              OSL_FAIL( "Wrong argument type!" );
+            OSL_FAIL( "Wrong argument type!" );
             ucbhelper::cancelCommandExecution(
                 makeAny( IllegalArgumentException(
                                     OUString(),
@@ -478,7 +467,8 @@ namespace
         bool bRet = _xNameContainer->hasByName(sName);
         if ( bRet )
         {
-            _rRet = _xNameContainer->getByName(_sSimpleName = sName);
+            _sSimpleName = sName;
+            _rRet = _xNameContainer->getByName(_sSimpleName);
             while ( nIndex != -1 && bRet )
             {
                 sName = _sName.getToken(0,'/',nIndex);
@@ -577,7 +567,7 @@ void SAL_CALL ODocumentContainer::insertByHierarchicalName( const OUString& _sNa
     if ( !xContent.is() )
         throw IllegalArgumentException();
 
-    ClearableMutexGuard aGuard(m_aMutex);
+    MutexGuard aGuard(m_aMutex);
     Any aContent;
     Reference< XNameContainer > xNameContainer(this);
     OUString sName;
@@ -601,7 +591,7 @@ void SAL_CALL ODocumentContainer::removeByHierarchicalName( const OUString& _sNa
     if ( _sName.isEmpty() )
         throw NoSuchElementException(_sName,*this);
 
-    ClearableMutexGuard aGuard(m_aMutex);
+    MutexGuard aGuard(m_aMutex);
     Any aContent;
     OUString sName;
     Reference< XNameContainer > xNameContainer(this);
@@ -618,7 +608,7 @@ void SAL_CALL ODocumentContainer::replaceByHierarchicalName( const OUString& _sN
     if ( !xContent.is() )
         throw IllegalArgumentException();
 
-    ClearableMutexGuard aGuard(m_aMutex);
+    MutexGuard aGuard(m_aMutex);
     Any aContent;
     OUString sName;
     Reference< XNameContainer > xNameContainer(this);
@@ -642,12 +632,10 @@ OUString SAL_CALL ODocumentContainer::composeHierarchicalName( const OUString& i
 
 ::rtl::Reference<OContentHelper> ODocumentContainer::getContent(const OUString& _sName) const
 {
-    ::rtl::Reference<OContentHelper> pContent = nullptr;
+    ::rtl::Reference<OContentHelper> pContent;
     try
     {
-        Reference<XUnoTunnel> xUnoTunnel(const_cast<ODocumentContainer*>(this)->implGetByName( _sName, true ), UNO_QUERY );
-        if ( xUnoTunnel.is() )
-            pContent = reinterpret_cast<OContentHelper*>(xUnoTunnel->getSomething(OContentHelper::getUnoTunnelImplementationId()));
+        pContent = comphelper::getUnoTunnelImplementation<OContentHelper>(const_cast<ODocumentContainer*>(this)->implGetByName( _sName, true ));
     }
     catch(const Exception&)
     {
@@ -663,11 +651,9 @@ void ODocumentContainer::getPropertyDefaultByHandle( sal_Int32 /*_nHandle*/, Any
 void SAL_CALL ODocumentContainer::commit(  )
 {
     MutexGuard aGuard(m_aMutex);
-    Documents::const_iterator aIter = m_aDocumentMap.begin();
-    Documents::const_iterator aEnd = m_aDocumentMap.end();
-    for (; aIter != aEnd ; ++aIter)
+    for (auto const& elem : m_aDocumentMap)
     {
-        Reference<XTransactedObject> xTrans(aIter->second.get(),UNO_QUERY);
+        Reference<XTransactedObject> xTrans(elem.second.get(),UNO_QUERY);
         if ( xTrans.is() )
             xTrans->commit();
     }
@@ -679,11 +665,9 @@ void SAL_CALL ODocumentContainer::commit(  )
 void SAL_CALL ODocumentContainer::revert(  )
 {
     MutexGuard aGuard(m_aMutex);
-    Documents::const_iterator aIter = m_aDocumentMap.begin();
-    Documents::const_iterator aEnd = m_aDocumentMap.end();
-    for (; aIter != aEnd ; ++aIter)
+    for (auto const& elem : m_aDocumentMap)
     {
-        Reference<XTransactedObject> xTrans(aIter->second.get(),UNO_QUERY);
+        Reference<XTransactedObject> xTrans(elem.second.get(),UNO_QUERY);
         if ( xTrans.is() )
             xTrans->revert();
     }
@@ -730,7 +714,7 @@ void SAL_CALL ODocumentContainer::rename( const OUString& newName )
     try
     {
         osl::ClearableGuard< osl::Mutex > aGuard(m_aMutex);
-        if ( newName.equals( m_pImpl->m_aProps.aTitle ) )
+        if ( newName == m_pImpl->m_aProps.aTitle )
             return;
 
         sal_Int32 nHandle = PROPERTY_ID_NAME;

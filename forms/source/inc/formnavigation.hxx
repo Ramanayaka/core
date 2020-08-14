@@ -22,9 +22,7 @@
 
 #include <com/sun/star/frame/XDispatchProviderInterception.hpp>
 #include <com/sun/star/frame/XStatusListener.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
-#include <com/sun/star/util/XURLTransformer.hpp>
 #include <cppuhelper/implbase2.hxx>
 #include "featuredispatcher.hxx"
 #include <vector>
@@ -79,7 +77,7 @@ namespace frm
 
         // XComponent
         /// @throws css::uno::RuntimeException
-        void SAL_CALL dispose(  );
+        void dispose(  );
 
         // XDispatchProviderInterception
         virtual void SAL_CALL registerDispatchProviderInterceptor( const css::uno::Reference< css::frame::XDispatchProviderInterceptor >& Interceptor ) override;
@@ -93,7 +91,7 @@ namespace frm
 
         // IFeatureDispatcher
         virtual void            dispatch( sal_Int16 _nFeatureId ) const override;
-        virtual void            dispatchWithArgument( sal_Int16 _nFeatureId, const sal_Char* _pParamName, const css::uno::Any& _rParamValue ) const override;
+        virtual void            dispatchWithArgument( sal_Int16 _nFeatureId, const char* _pParamName, const css::uno::Any& _rParamValue ) const override;
         virtual bool            isEnabled( sal_Int16 _nFeatureId ) const override;
         virtual bool            getBooleanState( sal_Int16 _nFeatureId ) const override;
         virtual OUString getStringState( sal_Int16 _nFeatureId ) const override;
@@ -190,7 +188,7 @@ namespace frm
         */
         static const char* getFeatureURLAscii( sal_Int16 _nFeatureId );
 
-        /** retrieves the feature URL belonging to an feature id
+        /** retrieves the feature URL belonging to a feature id
 
             @complexity O(log n), with n being the number of all potentially known URLs
             @return
@@ -199,7 +197,7 @@ namespace frm
         */
         bool        getFeatureURL( sal_Int16 _nFeatureId, css::util::URL& /* [out] */ _rURL );
 
-        /** retrieves the feature id belonging to an feature URL
+        /** retrieves the feature id belonging to a feature URL
 
             @complexity O(n), with n being the number of all potentially known URLs
             @return

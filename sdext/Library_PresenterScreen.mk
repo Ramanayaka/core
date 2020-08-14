@@ -11,7 +11,7 @@ $(eval $(call gb_Library_Library,PresenterScreen))
 
 $(eval $(call gb_Library_set_componentfile,PresenterScreen,sdext/source/presenter/presenter))
 
-$(eval $(call gb_Library_set_precompiled_header,PresenterScreen,$(SRCDIR)/sdext/inc/pch/precompiled_PresenterScreen))
+$(eval $(call gb_Library_set_precompiled_header,PresenterScreen,sdext/inc/pch/precompiled_PresenterScreen))
 
 $(eval $(call gb_Library_use_externals,PresenterScreen,\
 	boost_headers \
@@ -23,6 +23,7 @@ $(eval $(call gb_Library_use_libraries,PresenterScreen,\
     cppu \
     cppuhelper \
     sal \
+    tl \
     vcl \
 ))
 
@@ -31,7 +32,6 @@ $(eval $(call gb_Library_add_exception_objects,PresenterScreen,\
     sdext/source/presenter/PresenterBitmapContainer \
     sdext/source/presenter/PresenterButton \
     sdext/source/presenter/PresenterCanvasHelper \
-    sdext/source/presenter/PresenterComponent \
     sdext/source/presenter/PresenterConfigurationAccess \
     sdext/source/presenter/PresenterController \
     sdext/source/presenter/PresenterCurrentSlideObserver \

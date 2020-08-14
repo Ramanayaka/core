@@ -17,12 +17,11 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "oox/drawingml/theme.hxx"
+#include <oox/drawingml/theme.hxx>
 #include <oox/token/tokens.hxx>
 #include <drawingml/textcharacterproperties.hxx>
 
-namespace oox {
-namespace drawingml {
+namespace oox::drawingml {
 
 Theme::Theme()
 {
@@ -106,7 +105,6 @@ const TextFont* Theme::resolveFont( const OUString& rName ) const
     return nullptr;
 }
 
-} // namespace drawingml
-} // namespace oox
+} // namespace oox::drawingml
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

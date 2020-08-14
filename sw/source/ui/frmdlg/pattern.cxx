@@ -17,25 +17,26 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <svx/svxdlg.hxx>
+#include <sfx2/sfxdlg.hxx>
 #include <svx/dialogs.hrc>
-#include "swtypes.hxx"
-#include "pattern.hxx"
-#include "frmui.hrc"
+#include <swtypes.hxx>
+#include <pattern.hxx>
+#include <strings.hrc>
 
-SwBackgroundDlg::SwBackgroundDlg(vcl::Window* pParent, const SfxItemSet& rSet)
-    : SfxSingleTabDialog(pParent, rSet)
+SwBackgroundDlg::SwBackgroundDlg(weld::Window* pParent, const SfxItemSet& rSet)
+    : SfxSingleTabDialogController(pParent, &rSet)
 
 {
-    SetText(SwResId(STR_FRMUI_PATTERN));
+    m_xDialog->set_title(SwResId(STR_FRMUI_PATTERN));
     SfxAbstractDialogFactory* pFact = SfxAbstractDialogFactory::Create();
-    OSL_ENSURE(pFact, "Dialog creation failed!");
-    ::CreateTabPage fnCreatePage = pFact->GetTabPageCreatorFunc( RID_SVXPAGE_BACKGROUND );
+    ::CreateTabPage fnCreatePage = pFact->GetTabPageCreatorFunc( RID_SVXPAGE_BKG );
     if ( fnCreatePage )
     {
-        SetTabPage((*fnCreatePage)(get_content_area(), &rSet));
+        std::unique_ptr<SfxTabPage> xRet = (*fnCreatePage)(get_content_area(), this, &rSet);
+        xRet->PageCreated(rSet);
+        xRet->ActivatePage(rSet);
+        SetTabPage(std::move(xRet));
     }
-
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

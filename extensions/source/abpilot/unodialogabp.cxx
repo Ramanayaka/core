@@ -18,11 +18,12 @@
  */
 
 #include "unodialogabp.hxx"
-#include <cppuhelper/typeprovider.hxx>
 #include "abspilot.hxx"
-#include <comphelper/processfactory.hxx>
 #include <comphelper/sequence.hxx>
-#include <vcl/msgbox.hxx>
+#include <vcl/svapp.hxx>
+#include <com/sun/star/beans/PropertyAttribute.hpp>
+#include <com/sun/star/beans/PropertyValue.hpp>
+#include <com/sun/star/awt/XWindow.hpp>
 
 #define PROPERTY_ID_DATASOURCENAME  3
 
@@ -72,7 +73,7 @@ namespace abp
 
     OUString SAL_CALL OABSPilotUno::getImplementationName()
     {
-        return OUString("org.openoffice.comp.abp.OAddressBookSourcePilot");
+        return "org.openoffice.comp.abp.OAddressBookSourcePilot";
     }
 
     css::uno::Sequence<OUString> SAL_CALL OABSPilotUno::getSupportedServiceNames()
@@ -112,11 +113,10 @@ namespace abp
         }
     }
 
-    VclPtr<Dialog> OABSPilotUno::createDialog(vcl::Window* _pParent)
+    std::unique_ptr<weld::DialogController> OABSPilotUno::createDialog(const css::uno::Reference<css::awt::XWindow>& rParent)
     {
-        return VclPtr<OAddressBookSourcePilot>::Create(_pParent, m_aContext );
+        return std::make_unique<OAddressBookSourcePilot>(Application::GetFrameWeld(rParent), m_aContext);
     }
-
 
     Any SAL_CALL OABSPilotUno::execute( const Sequence< NamedValue >& /*lArgs*/ )
     {
@@ -137,7 +137,7 @@ namespace abp
     {
         if ( _nExecutionResult == RET_OK )
         {
-            const AddressSettings& aSettings = static_cast<OAddressBookSourcePilot*>(m_pDialog.get())->getSettings();
+            const AddressSettings& aSettings = static_cast<OAddressBookSourcePilot*>(m_xDialog.get())->getSettings();
             m_sDataSourceName = aSettings.bRegisterDataSource ? aSettings.sRegisteredDataSourceName : aSettings.sDataSourceName;
         }
     }
@@ -145,13 +145,11 @@ namespace abp
 
 }   // namespace abp
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 org_openoffice_comp_abp_OAddressBookSourcePilot(
     css::uno::XComponentContext *context,
     css::uno::Sequence<css::uno::Any> const &)
 {
-    compmodule::OModule::setResourceFilePrefix("abp");
-
     return cppu::acquire(new abp::OABSPilotUno(context));
 }
 

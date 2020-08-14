@@ -7,24 +7,22 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include <sfx2/recentdocsviewitem.hxx>
-
 #include <com/sun/star/frame/Desktop.hpp>
 #include <com/sun/star/util/URLTransformer.hpp>
-#include <drawinglayer/primitive2d/baseprimitive2d.hxx>
 #include <drawinglayer/primitive2d/discretebitmapprimitive2d.hxx>
 #include <drawinglayer/processor2d/baseprocessor2d.hxx>
 #include <i18nutil/paper.hxx>
 #include <officecfg/Office/Common.hxx>
-#include <sfx2/recentdocsview.hxx>
-#include <sfx2/sfxresid.hxx>
+#include <recentdocsview.hxx>
 #include <sfx2/templatelocalview.hxx>
 #include <tools/urlobj.hxx>
 #include <unotools/historyoptions.hxx>
 #include <vcl/svapp.hxx>
+#include <vcl/event.hxx>
+#include <vcl/ptrstyle.hxx>
 
-#include <templateview.hrc>
-#include "bitmaps.hlst"
+#include <bitmaps.hlst>
+#include "recentdocsviewitem.hxx"
 
 using namespace basegfx;
 using namespace com::sun::star;
@@ -32,9 +30,10 @@ using namespace com::sun::star::uno;
 using namespace drawinglayer::primitive2d;
 using namespace drawinglayer::processor2d;
 
-RecentDocsViewItem::RecentDocsViewItem(ThumbnailView &rView, const OUString &rURL,
+RecentDocsViewItem::RecentDocsViewItem(sfx2::RecentDocsView &rView, const OUString &rURL,
     const OUString &rTitle, const BitmapEx &rThumbnail, sal_uInt16 nId, long nThumbnailSize)
     : ThumbnailViewItem(rView, nId),
+      mrParentView(rView),
       maURL(rURL),
       m_bRemoveIconHighlighted(false),
       m_aRemoveRecentBitmap(BMP_RECENTDOC_REMOVE),
@@ -49,7 +48,7 @@ RecentDocsViewItem::RecentDocsViewItem(ThumbnailView &rView, const OUString &rUR
         m_sHelpText = aURLObj.GetURLNoPass();
 
     if (aTitle.isEmpty())
-        aTitle = aURLObj.GetName(INetURLObject::DecodeMechanism::WithCharset);
+        aTitle = aURLObj.GetLastName(INetURLObject::DecodeMechanism::WithCharset);
 
     BitmapEx aThumbnail(rThumbnail);
     //fdo#74834: only load thumbnail if the corresponding option is not disabled in the configuration
@@ -178,7 +177,7 @@ void RecentDocsViewItem::MouseButtonUp(const MouseEvent& rMEvt)
 void RecentDocsViewItem::OpenDocument()
 {
     // show busy mouse pointer
-    mrParent.SetPointer(Pointer(PointerStyle::Wait));
+    mrParentView.SetPointer(PointerStyle::Wait);
 
     Reference<frame::XDispatch> xDispatch;
     Reference<frame::XDispatchProvider> xDispatchProvider;
@@ -206,19 +205,19 @@ void RecentDocsViewItem::OpenDocument()
 
     xDispatch = xDispatchProvider->queryDispatch(aTargetURL, "_default", 0);
 
-    if (xDispatch.is())
-    {
-        // Call dispatch asynchronously as we can be destroyed while dispatch is
-        // executed. VCL is not able to survive this as it wants to call listeners
-        // after select!!!
-        sfx2::LoadRecentFile *const pLoadRecentFile = new sfx2::LoadRecentFile;
-        pLoadRecentFile->xDispatch = xDispatch;
-        pLoadRecentFile->aTargetURL = aTargetURL;
-        pLoadRecentFile->aArgSeq = aArgsList;
-        pLoadRecentFile->pView.set(&mrParent);
+    if (!xDispatch.is())
+        return;
 
-        Application::PostUserEvent(LINK(nullptr, sfx2::RecentDocsView, ExecuteHdl_Impl), pLoadRecentFile, true);
-    }
+    // Call dispatch asynchronously as we can be destroyed while dispatch is
+    // executed. VCL is not able to survive this as it wants to call listeners
+    // after select!!!
+    sfx2::LoadRecentFile *const pLoadRecentFile = new sfx2::LoadRecentFile;
+    pLoadRecentFile->xDispatch = xDispatch;
+    pLoadRecentFile->aTargetURL = aTargetURL;
+    pLoadRecentFile->aArgSeq = aArgsList;
+    pLoadRecentFile->pView = &mrParentView;
+
+    Application::PostUserEvent(LINK(nullptr, sfx2::RecentDocsView, ExecuteHdl_Impl), pLoadRecentFile, true);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

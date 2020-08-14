@@ -36,7 +36,7 @@
 
 // comment: Step 1: get the Desktop object from the office
 //          Step 2: open an empty text document
-//          Step 3: enter a example text
+//          Step 3: enter an example text
 //          Step 4: insert some bookmarks
 
 //          Chapter 5.1.1.4 Inserting bookmarks
@@ -49,7 +49,7 @@ public class BookmarkInsertion {
     public static void main(String args[]) {
         // You need the desktop to create a document
         // The getDesktop method does the UNO bootstrapping, gets the
-        // remote servie manager and the desktop object.
+        // remote service manager and the desktop object.
         com.sun.star.frame.XDesktop xDesktop = null;
         xDesktop = getDesktop();
 
@@ -89,7 +89,7 @@ public class BookmarkInsertion {
                     xTextDocument, mList[ iCounter ] );
 
                 if( xSearchInterface != null ) {
-                    // get the TextRange form the XInterface
+                    // get the TextRange from the XInterface
                     xSearchTextRange = UnoRuntime.queryInterface(
                         com.sun.star.text.XTextRange.class, xSearchInterface);
 
@@ -183,7 +183,7 @@ public class BookmarkInsertion {
 
             xTextCursor.setString( "He heard quiet steps behind him. That didn't bode well. Who could be following him this late at night and in this deadbeat part of town? And at this particular moment, just after he pulled off the big time and was making off with the greenbacks. Was there another crook who'd had the same idea, and was now watching him and waiting for a chance to grab the fruit of his labor?" );
             xTextCursor.collapseToEnd();
-            xTextCursor.setString( "Or did the steps behind him mean that one of many bloody officers in town was on to him and just waiting to pounce and snap those cuffs on his wrists? He nervously looked all around. Suddenly he saw the alley. Like lightening he darted off to the left and disappeared between the two warehouses almost falling over the trash can lying in the middle of the sidewalk. He tried to nervously tap his way along in the inky darkness and suddenly stiffened: it was a dead-end, he would have to go back the way he had come" );
+            xTextCursor.setString( "Or did the steps behind him mean that one of many bloody officers in town was on to him and just waiting to pounce and snap those cuffs on his wrists? He nervously looked all around. Suddenly he saw the alley. Like lightning he darted off to the left and disappeared between the two warehouses almost falling over the trash can lying in the middle of the sidewalk. He tried to nervously tap his way along in the inky darkness and suddenly stiffened: it was a dead-end, he would have to go back the way he had come" );
             xTextCursor.collapseToEnd();
             xTextCursor.setString( "The steps got louder and louder, he saw the black outline of a figure coming around the corner. Is this the end of the line? he thought pressing himself back against the wall trying to make himself invisible in the dark, was all that planning and energy wasted? He was dripping with sweat now, cold and wet, he could smell the brilliant fear coming off his clothes. Suddenly next to him, with a barely noticeable squeak, a door swung quietly to and fro in the night's breeze." );
 

@@ -22,33 +22,14 @@
 
 #include <svl/lstner.hxx>
 #include <com/sun/star/document/XLinkTargetSupplier.hpp>
-#include <com/sun/star/lang/XServiceName.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/beans/PropertyValues.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/beans/PropertyValue.hpp>
-#include <com/sun/star/beans/PropertyState.hpp>
-#include <com/sun/star/beans/XPropertySetInfo.hpp>
-#include <com/sun/star/beans/XMultiPropertySet.hpp>
-#include <com/sun/star/beans/XFastPropertySet.hpp>
-#include <com/sun/star/beans/XVetoableChangeListener.hpp>
-#include <com/sun/star/beans/XPropertyState.hpp>
-#include <com/sun/star/beans/XPropertyStateChangeListener.hpp>
-#include <com/sun/star/beans/PropertyAttribute.hpp>
-#include <com/sun/star/beans/XPropertiesChangeListener.hpp>
-#include <com/sun/star/beans/XPropertyChangeListener.hpp>
-#include <com/sun/star/beans/XPropertyAccess.hpp>
-#include <com/sun/star/beans/XPropertyContainer.hpp>
-#include <com/sun/star/beans/PropertyStateChangeEvent.hpp>
-#include <com/sun/star/beans/PropertyChangeEvent.hpp>
-#include <com/sun/star/container/XEnumerationAccess.hpp>
-#include <com/sun/star/container/XHierarchicalNameAccess.hpp>
 #include <com/sun/star/container/XNameAccess.hpp>
-#include <com/sun/star/container/XContentEnumerationAccess.hpp>
-#include <com/sun/star/container/XEnumeration.hpp>
-#include <com/sun/star/container/XElementAccess.hpp>
-#include <com/sun/star/container/XIndexAccess.hpp>
 #include <cppuhelper/implbase.hxx>
+
+namespace com::sun::star::beans { class XPropertyChangeListener; }
+namespace com::sun::star::beans { class XPropertySetInfo; }
+namespace com::sun::star::beans { class XVetoableChangeListener; }
 
 class ScDocShell;
 
@@ -62,7 +43,7 @@ class ScDocShell;
 
 //! Graphic / OleObject (need separate collections!)
 
-class ScLinkTargetTypesObj : public ::cppu::WeakImplHelper<
+class ScLinkTargetTypesObj final : public ::cppu::WeakImplHelper<
                                 css::container::XNameAccess,
                                 css::lang::XServiceInfo >,
                             public SfxListener
@@ -92,7 +73,7 @@ public:
     virtual css::uno::Sequence< OUString> SAL_CALL      getSupportedServiceNames() override;
 };
 
-class ScLinkTargetTypeObj : public ::cppu::WeakImplHelper<
+class ScLinkTargetTypeObj final : public ::cppu::WeakImplHelper<
                                 css::beans::XPropertySet,
                                 css::document::XLinkTargetSupplier,
                                 css::lang::XServiceInfo >,
@@ -134,7 +115,7 @@ public:
     virtual css::uno::Sequence< OUString> SAL_CALL getSupportedServiceNames() override;
 };
 
-class ScLinkTargetsObj : public ::cppu::WeakImplHelper<
+class ScLinkTargetsObj final : public ::cppu::WeakImplHelper<
                             css::container::XNameAccess,
                             css::lang::XServiceInfo >
 {

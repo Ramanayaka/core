@@ -24,15 +24,18 @@
 #include <com/sun/star/beans/UnknownPropertyException.hpp>
 #include <com/sun/star/beans/PropertyVetoException.hpp>
 #include <com/sun/star/beans/TolerantPropertySetResultType.hpp>
+#include <com/sun/star/beans/XTolerantMultiPropertySet.hpp>
+#include <com/sun/star/beans/XPropertySet.hpp>
 #include <rtl/ustrbuf.hxx>
+#include <sal/log.hxx>
 #include <osl/diagnose.h>
 #include <xmloff/xmlprmap.hxx>
-#include <xmloff/nmspmap.hxx>
+#include <xmloff/namespacemap.hxx>
 #include <xmloff/xmlimppr.hxx>
 #include <xmloff/xmlimp.hxx>
 
 #include <xmloff/unoatrcn.hxx>
-#include <xmloff/xmlnmspe.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmltoken.hxx>
 #include <xmloff/xmlerror.hxx>
 #include <xmloff/contextid.hxx>
@@ -40,7 +43,6 @@
 #include <xmloff/maptype.hxx>
 
 #include <algorithm>
-#include <functional>
 #include <utility>
 #include <vector>
 
@@ -169,7 +171,7 @@ void SvXMLImportPropertyMapper::importXML(
                         sal_Int32 nReference = -1;
 
                         // if this is a multi attribute check if another attribute already set
-                        // this any. If so use this as a initial value
+                        // this any. If so use this as an initial value
                         if( ( nFlags & MID_FLAG_MERGE_PROPERTY ) != 0 )
                         {
                             const OUString aAPIName( maPropMapper->GetEntryAPIName( nIndex ) );
@@ -546,14 +548,17 @@ bool SvXMLImportPropertyMapper::FillPropertySet_(
 typedef pair<const OUString*, const Any* > PropertyPair;
 typedef vector<PropertyPair> PropertyPairs;
 
-struct PropertyPairLessFunctor :
-    public std::binary_function<PropertyPair, PropertyPair, bool>
+namespace {
+
+struct PropertyPairLessFunctor
 {
     bool operator()( const PropertyPair& a, const PropertyPair& b ) const
     {
         return (*a.first < *b.first);
     }
 };
+
+}
 
 void SvXMLImportPropertyMapper::PrepareForMultiPropertySet_(
     const vector<XMLPropertyState> & rProperties,
@@ -586,10 +591,10 @@ void SvXMLImportPropertyMapper::PrepareForMultiPropertySet_(
         if ( ( 0 == ( nPropFlags & MID_FLAG_NO_PROPERTY ) ) &&
              ( ( 0 != ( nPropFlags & MID_FLAG_MUST_EXIST ) ) ||
                !rPropSetInfo.is() ||
-               (rPropSetInfo.is() && rPropSetInfo->hasPropertyByName( rPropName )) ) )
+               rPropSetInfo->hasPropertyByName(rPropName) ) )
         {
             // save property into property pair structure
-            aPropertyPairs.push_back( PropertyPair( &rPropName, &rProp.maValue ) );
+            aPropertyPairs.emplace_back( &rPropName, &rProp.maValue );
         }
 
         // handle no-property and special items
@@ -628,12 +633,10 @@ void SvXMLImportPropertyMapper::PrepareForMultiPropertySet_(
 
     // copy values into sequences
     i = 0;
-    for( PropertyPairs::iterator aIter = aPropertyPairs.begin();
-         aIter != aPropertyPairs.end();
-         ++aIter )
+    for( const auto& rPropertyPair : aPropertyPairs )
     {
-        pNamesArray[i] = *(aIter->first);
-        pValuesArray[i++] = *(aIter->second);
+        pNamesArray[i] = *(rPropertyPair.first);
+        pValuesArray[i++] = *(rPropertyPair.second);
     }
 }
 
@@ -689,35 +692,30 @@ bool SvXMLImportPropertyMapper::FillTolerantMultiPropertySet_(
     // and, finally, try to set the values
     try
     {
-        Sequence< SetPropertyTolerantFailed > aResults(rTolMultiPropSet->setPropertyValuesTolerant( aNames, aValues ));
-        if (aResults.getLength() == 0)
-            bSuccessful = true;
-        else
+        const Sequence< SetPropertyTolerantFailed > aResults(rTolMultiPropSet->setPropertyValuesTolerant( aNames, aValues ));
+        bSuccessful = !aResults.hasElements();
+        for( const auto& rResult : aResults)
         {
-            sal_Int32 nCount(aResults.getLength());
-            for( sal_Int32 i = 0; i < nCount; ++i)
+            Sequence<OUString> aSeq { rResult.Name };
+            OUString sMessage;
+            switch (rResult.Result)
             {
-                Sequence<OUString> aSeq { aResults[i].Name };
-                OUString sMessage;
-                switch (aResults[i].Result)
-                {
-                case TolerantPropertySetResultType::UNKNOWN_PROPERTY :
-                    sMessage = "UNKNOWN_PROPERTY";
-                    break;
-                case TolerantPropertySetResultType::ILLEGAL_ARGUMENT :
-                    sMessage = "ILLEGAL_ARGUMENT";
-                    break;
-                case TolerantPropertySetResultType::PROPERTY_VETO :
-                    sMessage = "PROPERTY_VETO";
-                    break;
-                case TolerantPropertySetResultType::WRAPPED_TARGET :
-                    sMessage = "WRAPPED_TARGET";
-                    break;
-                };
-                rImport.SetError(
-                    XMLERROR_STYLE_PROP_OTHER | XMLERROR_FLAG_ERROR,
-                    aSeq, sMessage, nullptr );
+            case TolerantPropertySetResultType::UNKNOWN_PROPERTY :
+                sMessage = "UNKNOWN_PROPERTY";
+                break;
+            case TolerantPropertySetResultType::ILLEGAL_ARGUMENT :
+                sMessage = "ILLEGAL_ARGUMENT";
+                break;
+            case TolerantPropertySetResultType::PROPERTY_VETO :
+                sMessage = "PROPERTY_VETO";
+                break;
+            case TolerantPropertySetResultType::WRAPPED_TARGET :
+                sMessage = "WRAPPED_TARGET";
+                break;
             }
+            rImport.SetError(
+                XMLERROR_STYLE_PROP_OTHER | XMLERROR_FLAG_ERROR,
+                aSeq, sMessage, nullptr );
         }
     }
     catch ( ... )

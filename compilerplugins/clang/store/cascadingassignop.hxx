@@ -21,10 +21,8 @@ struct WalkCounter;
 
 // The class implementing the plugin action.
 class CascadingAssignOp
-    // Inherits from the Clang class that will allow examing the Clang AST tree (i.e. syntax tree).
-    : public RecursiveASTVisitor< CascadingAssignOp >
-    // And the base class for LO Clang plugins.
-    , public Plugin
+    // Inherits from the Clang class that will allow examining the Clang AST tree (i.e. syntax tree).
+    : public FilteringPlugin< CascadingAssignOp >
     {
     public:
         CascadingAssignOp( const InstantiationData& data );

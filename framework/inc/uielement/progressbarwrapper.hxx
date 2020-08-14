@@ -22,15 +22,13 @@
 
 #include <helper/uielementwrapperbase.hxx>
 
-#include <com/sun/star/task/XStatusIndicator.hpp>
 #include <com/sun/star/awt/XWindow.hpp>
 
-#include <cppuhelper/weak.hxx>
 #include <cppuhelper/weakref.hxx>
 
 namespace framework{
 
-class ProgressBarWrapper : public UIElementWrapperBase
+class ProgressBarWrapper final : public UIElementWrapperBase
 {
     public:
 

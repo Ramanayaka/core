@@ -25,13 +25,13 @@
 #include <map>
 #include <memory>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace container { class XNameContainer; }
     namespace lang      { class XMultiServiceFactory; }
     namespace chart     { class XChartDocument; }
     namespace chart2    { class XChartDocument; }
     namespace drawing   { class XShape; }
-} } }
+}
 
 class XclRoot;
 
@@ -89,6 +89,7 @@ class XclRoot;
 #define EXC_CHPROP_LABELPLACEMENT           "LabelPlacement"
 #define EXC_CHPROP_LABELPOSITION            "LabelPosition"
 #define EXC_CHPROP_LABELSEPARATOR           "LabelSeparator"
+#define EXC_CHPROP_SHOWLEGENDENTRY          "ShowLegendEntry"
 #define EXC_CHPROP_MAJORTICKS               "MajorTickmarks"
 #define EXC_CHPROP_MARKPOSITION             "MarkPosition"
 #define EXC_CHPROP_MINORTICKS               "MinorTickmarks"
@@ -96,6 +97,7 @@ class XclRoot;
 #define EXC_CHPROP_MOVING_AVERAGE_PERIOD    "MovingAveragePeriod"
 #define EXC_CHPROP_NEGATIVEERROR            "NegativeError"
 #define EXC_CHPROP_NUMBERFORMAT             "NumberFormat"
+#define EXC_CHPROP_NUMBERFORMAT_LINKSRC     "LinkNumberFormatToSource"
 #define EXC_CHPROP_OFFSET                   "Offset"
 #define EXC_CHPROP_OVERLAPSEQ               "OverlapSequence"
 #define EXC_CHPROP_PERCENTAGENUMFMT         "PercentageNumberFormat"
@@ -582,6 +584,13 @@ const sal_uInt16 EXC_CHAXESSET_PRIMARY          = 0;
 const sal_uInt16 EXC_CHAXESSET_SECONDARY        = 1;
 const sal_uInt16 EXC_CHAXESSET_NONE             = 0xFFFF;   /// For internal use.
 
+// (0x1043) LEGENDEXCEPTION
+
+const sal_uInt16 EXC_ID_CHLEGENDEXCEPTION       = 0x1043;
+
+const sal_uInt16 EXC_CHLEGENDEXCEPTION_DELETED  = 0x0001;
+const sal_uInt16 EXC_CHLEGENDEXCEPTION_LABEL    = 0x0002;
+
 // (0x1044) CHPROPERTIES ------------------------------------------------------
 
 const sal_uInt16 EXC_ID_CHPROPERTIES            = 0x1044;
@@ -889,7 +898,7 @@ struct XclChMarkerFormat
 struct XclCh3dDataFormat
 {
     sal_uInt8           mnBase;             /// Base form.
-    sal_uInt8           mnTop;              /// Top egde mode.
+    sal_uInt8           mnTop;              /// Top edge mode.
 
     explicit            XclCh3dDataFormat();
 };
@@ -1200,7 +1209,7 @@ struct XclChTypeInfo
     XclChTypeId         meTypeId;               /// Unique chart type identifier.
     XclChTypeCateg      meTypeCateg;            /// Chart type category this type belongs to.
     sal_uInt16          mnRecId;                /// Record identifier written to the file.
-    const sal_Char*     mpcServiceName;         /// Service name of the type.
+    const char*         mpcServiceName;         /// Service name of the type.
     XclChVarPointMode   meVarPointMode;         /// Mode for varying point colors.
     sal_Int32           mnDefaultLabelPos;      /// Default data label position (API constant).
     bool                mbCombinable2d;         /// true = Types can be combined in one axes set.
@@ -1297,8 +1306,6 @@ private:
     sal_Int32           mnIndex;                /// Index to create unique identifiers.
 };
 
-struct XclFontData;
-
 /** Helper class for usage of property sets. */
 class XclChPropSetHelper
 {
@@ -1351,7 +1358,6 @@ public:
     void                WriteEscherProperties(
                             ScfPropertySet& rPropSet,
                             XclChObjectTable& rGradientTable,
-                            XclChObjectTable& rHatchTable,
                             XclChObjectTable& rBitmapTable,
                             const XclChEscherFormat& rEscherFmt,
                             const XclChPicFormat* pPicFmt,

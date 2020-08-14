@@ -17,21 +17,22 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "ado/AConnection.hxx"
-#include "ado/ADatabaseMetaData.hxx"
-#include "ado/ADriver.hxx"
-#include "ado/AStatement.hxx"
-#include "ado/ACallableStatement.hxx"
-#include "ado/APreparedStatement.hxx"
-#include "ado/ACatalog.hxx"
+#include <ado/AConnection.hxx>
+#include <ado/ADatabaseMetaData.hxx>
+#include <ado/ADriver.hxx>
+#include <ado/AStatement.hxx>
+#include <ado/ACallableStatement.hxx>
+#include <ado/APreparedStatement.hxx>
+#include <ado/ACatalog.hxx>
 #include <com/sun/star/sdbc/ColumnValue.hpp>
 #include <com/sun/star/sdbc/TransactionIsolation.hpp>
 #include <com/sun/star/sdbc/XRow.hpp>
 #include <com/sun/star/lang/DisposedException.hpp>
+#include <comphelper/servicehelper.hxx>
 #include <cppuhelper/typeprovider.hxx>
 #include <connectivity/dbexception.hxx>
 #include <osl/file.hxx>
-#include "resource/ado_res.hrc"
+#include <strings.hrc>
 
 using namespace dbtools;
 using namespace connectivity::ado;
@@ -45,8 +46,7 @@ using namespace com::sun::star::sdbcx;
 IMPLEMENT_SERVICE_INFO(OConnection,"com.sun.star.sdbcx.AConnection","com.sun.star.sdbc.Connection");
 
 OConnection::OConnection(ODriver*   _pDriver)
-                         : OSubComponent<OConnection, OConnection_BASE>(static_cast<cppu::OWeakObject*>(_pDriver), this),
-                         m_xCatalog(nullptr),
+                         : m_xCatalog(nullptr),
                          m_pDriver(_pDriver),
                          m_pAdoConnection(nullptr),
                          m_pCatalog(nullptr),
@@ -151,11 +151,6 @@ void OConnection::construct(const OUString& url,const Sequence< PropertyValue >&
         throw;
     }
     osl_atomic_decrement( &m_refCount );
-}
-
-void SAL_CALL OConnection::release() throw()
-{
-    release_ChildImpl();
 }
 
 Reference< XStatement > SAL_CALL OConnection::createStatement(  )
@@ -435,34 +430,33 @@ void OConnection::buildTypeInfo()
                 sal_Int32 nPos = 1;
                 OExtendedTypeInfo* aInfo            = new OExtendedTypeInfo;
                 aInfo->aSimpleType.aTypeName        = ADOS::getField(pRecordset,nPos++).get_Value().getString();
-                aInfo->eType                        = (DataTypeEnum)ADOS::getField(pRecordset,nPos++).get_Value().getInt32();
+                aInfo->eType                        = static_cast<DataTypeEnum>(ADOS::getField(pRecordset,nPos++).get_Value().getInt32());
                 if ( aInfo->eType == adWChar && aInfo->aSimpleType.aTypeName == s_sVarChar )
                     aInfo->eType = adVarWChar;
-                aInfo->aSimpleType.nType            = (sal_Int16)ADOS::MapADOType2Jdbc(aInfo->eType);
+                aInfo->aSimpleType.nType            = static_cast<sal_Int16>(ADOS::MapADOType2Jdbc(aInfo->eType));
                 aInfo->aSimpleType.nPrecision       = ADOS::getField(pRecordset,nPos++).get_Value().getInt32();
-                aInfo->aSimpleType.aLiteralPrefix   = ADOS::getField(pRecordset,nPos++).get_Value().getString();
-                aInfo->aSimpleType.aLiteralSuffix   = ADOS::getField(pRecordset,nPos++).get_Value().getString();
-                aInfo->aSimpleType.aCreateParams    = ADOS::getField(pRecordset,nPos++).get_Value().getString();
-                aInfo->aSimpleType.bNullable        = ADOS::getField(pRecordset,nPos++).get_Value().getBool();
-                aInfo->aSimpleType.bCaseSensitive   = ADOS::getField(pRecordset,nPos++).get_Value().getBool();
-                aInfo->aSimpleType.nSearchType      = ADOS::getField(pRecordset,nPos++).get_Value().getInt16();
-                aInfo->aSimpleType.bUnsigned        = ADOS::getField(pRecordset,nPos++).get_Value().getBool();
-                aInfo->aSimpleType.bCurrency        = ADOS::getField(pRecordset,nPos++).get_Value().getBool();
-                aInfo->aSimpleType.bAutoIncrement   = ADOS::getField(pRecordset,nPos++).get_Value().getBool();
+                nPos++; // aLiteralPrefix
+                nPos++; // aLiteralSuffix
+                nPos++; // aCreateParams
+                nPos++; // bNullable
+                nPos++; // bCaseSensitive
+                nPos++; // nSearchType
+                nPos++; // bUnsigned
+                nPos++; // bCurrency
+                nPos++; // bAutoIncrement
                 aInfo->aSimpleType.aLocalTypeName   = ADOS::getField(pRecordset,nPos++).get_Value().getString();
-                aInfo->aSimpleType.nMinimumScale    = ADOS::getField(pRecordset,nPos++).get_Value().getInt16();
+                nPos++; // nMinimumScale
                 aInfo->aSimpleType.nMaximumScale    = ADOS::getField(pRecordset,nPos++).get_Value().getInt16();
                 if ( adCurrency == aInfo->eType && !aInfo->aSimpleType.nMaximumScale)
                 {
-                    aInfo->aSimpleType.nMinimumScale = 4;
                     aInfo->aSimpleType.nMaximumScale = 4;
                 }
-                aInfo->aSimpleType.nNumPrecRadix    = ADOS::getField(pRecordset,nPos++).get_Value().getInt16();
+                nPos++; // nNumPrecRadix
                 // Now that we have the type info, save it
                 // in the Hashtable if we don't already have an
                 // entry for this SQL type.
 
-                m_aTypeInfo.insert(OTypeInfoMap::value_type(aInfo->eType,aInfo));
+                m_aTypeInfo.emplace(aInfo->eType,aInfo);
             }
             while ( SUCCEEDED(pRecordset->MoveNext()) );
         }
@@ -483,28 +477,25 @@ void OConnection::disposing()
 
     m_pAdoConnection->Close();
 
-    OTypeInfoMap::iterator aIter = m_aTypeInfo.begin();
-    for (; aIter != m_aTypeInfo.end(); ++aIter)
-        delete aIter->second;
+    for (auto& rEntry : m_aTypeInfo)
+        delete rEntry.second;
 
     m_aTypeInfo.clear();
 
     delete m_pAdoConnection;
     m_pAdoConnection = nullptr;
-
-    dispose_ChildImpl();
 }
 
 sal_Int64 SAL_CALL OConnection::getSomething( const css::uno::Sequence< sal_Int8 >& rId )
 {
-    return (rId.getLength() == 16 && 0 == memcmp(getUnoTunnelImplementationId().getConstArray(),  rId.getConstArray(), 16 ) )
+    return isUnoTunnelId<OConnection>(rId)
                 ?
             reinterpret_cast< sal_Int64 >( this )
                 :
             OConnection_BASE::getSomething(rId);
 }
 
-Sequence< sal_Int8 > OConnection::getUnoTunnelImplementationId()
+Sequence< sal_Int8 > OConnection::getUnoTunnelId()
 {
     static ::cppu::OImplementationId implId;
 

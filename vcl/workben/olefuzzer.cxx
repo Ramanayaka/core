@@ -7,60 +7,47 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include <vector>
-
-#include <sot/storage.hxx>
-
 #include <tools/stream.hxx>
-
 #include "commonfuzzer.hxx"
 
-namespace
-{
+#include <config_features.h>
+#include <osl/detail/component-mapping.h>
 
-void traverse(const tools::SvRef<SotStorage>& rStorage, std::vector<unsigned char>& rBuf)
-{
-    SvStorageInfoList infos;
-
-    rStorage->FillInfoList(&infos);
-
-    for (const auto& info: infos)
-    {
-        if (info.IsStream())
-        {
-            // try to open and read all content
-            tools::SvRef<SotStorageStream> xStream(rStorage->OpenSotStream(info.GetName(), StreamMode::STD_READ));
-            const size_t nSize = xStream->GetSize();
-            const size_t nRead = xStream->ReadBytes(rBuf.data(), nSize);
-            (void) nRead;
-        }
-        else if (info.IsStorage())
-        {
-            tools::SvRef<SotStorage> xStorage(rStorage->OpenSotStorage(info.GetName(), StreamMode::STD_READ));
-
-            // continue with children
-            traverse(xStorage, rBuf);
-        }
-        else
-        {
-        }
-    }
+extern "C" {
+void * com_sun_star_comp_uui_UUIInteractionHandler_get_implementation( void *, void * );
+void * com_sun_star_i18n_CharacterClassification_Unicode_get_implementation( void *, void * );
+void * com_sun_star_i18n_CharacterClassification_get_implementation( void *, void * );
 }
 
-void TestImportOLE2(SvStream &rStream, size_t nSize)
+const lib_to_factory_mapping *
+lo_get_factory_map(void)
 {
-    try
-    {
-        tools::SvRef<SotStorage> xRootStorage(new SotStorage(&rStream, false));
-        std::vector<unsigned char> aTmpBuf(nSize);
-        traverse(xRootStorage, aTmpBuf);
-    }
-    catch (...)
-    {
-    }
+    static lib_to_factory_mapping map[] = {
+        { 0, 0 }
+    };
+
+    return map;
 }
 
+const lib_to_constructor_mapping *
+lo_get_constructor_map(void)
+{
+    static lib_to_constructor_mapping map[] = {
+        { "com_sun_star_comp_uui_UUIInteractionHandler_get_implementation", com_sun_star_comp_uui_UUIInteractionHandler_get_implementation },
+        { "com_sun_star_i18n_CharacterClassification_Unicode_get_implementation", com_sun_star_i18n_CharacterClassification_Unicode_get_implementation },
+        { "com_sun_star_i18n_CharacterClassification_get_implementation", com_sun_star_i18n_CharacterClassification_get_implementation },
+        { 0, 0 }
+    };
+
+    return map;
 }
+
+extern "C" void* lo_get_custom_widget_func(const char*)
+{
+    return nullptr;
+}
+
+extern "C" bool TestImportOLE2(SvStream &rStream);
 
 extern "C" int LLVMFuzzerInitialize(int *argc, char ***argv)
 {
@@ -71,7 +58,7 @@ extern "C" int LLVMFuzzerInitialize(int *argc, char ***argv)
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size)
 {
     SvMemoryStream aStream(const_cast<uint8_t*>(data), size, StreamMode::READ);
-    TestImportOLE2(aStream, size);
+    TestImportOLE2(aStream);
     return 0;
 }
 

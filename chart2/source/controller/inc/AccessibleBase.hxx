@@ -19,29 +19,30 @@
 #ifndef INCLUDED_CHART2_SOURCE_CONTROLLER_INC_ACCESSIBLEBASE_HXX
 #define INCLUDED_CHART2_SOURCE_CONTROLLER_INC_ACCESSIBLEBASE_HXX
 
-#include "ObjectIdentifier.hxx"
+#include <ObjectIdentifier.hxx>
 
-#include <com/sun/star/chart2/XChartDocument.hpp>
 #include <com/sun/star/accessibility/XAccessible.hpp>
 #include <com/sun/star/accessibility/XAccessibleContext.hpp>
 #include <com/sun/star/accessibility/XAccessibleComponent.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/document/XEventListener.hpp>
 #include <com/sun/star/lang/XEventListener.hpp>
-#include <com/sun/star/lang/DisposedException.hpp>
 #include <com/sun/star/accessibility/XAccessibleEventBroadcaster.hpp>
-#include <com/sun/star/view/XSelectionSupplier.hpp>
 #include <comphelper/accessibleeventnotifier.hxx>
 #include <cppuhelper/compbase.hxx>
-#include <cppuhelper/interfacecontainer.hxx>
-#include <unotools/accessiblestatesethelper.hxx>
 #include <rtl/ref.hxx>
+#include <tools/color.hxx>
 
 #include <map>
-#include <memory>
 #include <vector>
+#include <memory>
 
-#include "MutexContainer.hxx"
+#include <MutexContainer.hxx>
+
+namespace com::sun::star::awt { class XWindow; }
+namespace com::sun::star::chart2 { class XChartDocument; }
+namespace com::sun::star::view { class XSelectionSupplier; }
+namespace utl { class AccessibleStateSetHelper; }
+
 
 class SdrView;
 
@@ -101,7 +102,7 @@ public:
 
     AccessibleBase( const AccessibleElementInfo & rAccInfo,
                     bool bMayHaveChildren,
-                    bool bAlwaysTransparent = false );
+                    bool bAlwaysTransparent );
     virtual ~AccessibleBase() override;
 
 protected:
@@ -285,7 +286,7 @@ private:
         ACC_BASE_FOREGROUND,
         ACC_BASE_BACKGROUND
     };
-    sal_Int32 getColor( eColorType eColType );
+    Color getColor( eColorType eColType );
 
 private:
     /** type of the vector containing the accessible children

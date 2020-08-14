@@ -17,31 +17,32 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "framework/ModuleController.hxx"
+#include <framework/ModuleController.hxx>
+#include <com/sun/star/frame/XController.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
+#include <com/sun/star/container/XNameAccess.hpp>
 
-#include "tools/ConfigurationAccess.hxx"
+#include <tools/ConfigurationAccess.hxx>
 #include <comphelper/processfactory.hxx>
 #include <unordered_map>
 
 #include <tools/diagnose_ex.h>
-
-#include <facreg.hxx>
+#include <sal/log.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::drawing::framework;
 using ::sd::tools::ConfigurationAccess;
 
-namespace sd { namespace framework {
+namespace sd::framework {
 
-static const sal_uInt32 snFactoryPropertyCount (2);
-static const sal_uInt32 snStartupPropertyCount (1);
+const sal_uInt32 snFactoryPropertyCount (2);
+const sal_uInt32 snStartupPropertyCount (1);
 
 class ModuleController::ResourceToFactoryMap
     : public std::unordered_map<
     OUString,
-    OUString,
-    OUStringHash>
+    OUString>
 {
 public:
     ResourceToFactoryMap() {}
@@ -50,8 +51,7 @@ public:
 class ModuleController::LoadedFactoryContainer
     : public std::unordered_map<
     OUString,
-    WeakReference<XInterface>,
-    OUStringHash>
+    WeakReference<XInterface>>
 {
 public:
     LoadedFactoryContainer() {}
@@ -96,7 +96,7 @@ ModuleController::ModuleController (const Reference<XComponentContext>& rxContex
     }
     catch (Exception&)
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("sd");
     }
 }
 
@@ -131,11 +131,10 @@ void ModuleController::ProcessFactory (const ::std::vector<Any>& rValues)
     SAL_INFO("sd.fwk", OSL_THIS_FUNC << ": ModuleController::adding factory " << sServiceName);
 
     // Add the resource URLs to the map.
-    ::std::vector<OUString>::const_iterator iResource;
-    for (iResource=aURLs.begin(); iResource!=aURLs.end(); ++iResource)
+    for (const auto& rResource : aURLs)
     {
-        (*mpResourceToFactoryMap)[*iResource] = sServiceName;
-        SAL_INFO("sd.fwk", OSL_THIS_FUNC << ":    " << *iResource);
+        (*mpResourceToFactoryMap)[rResource] = sServiceName;
+        SAL_INFO("sd.fwk", OSL_THIS_FUNC << ":    " << rResource);
     }
 }
 
@@ -200,47 +199,47 @@ void ModuleController::ProcessStartupService (const ::std::vector<Any>& rValues)
 void SAL_CALL ModuleController::requestResource (const OUString& rsResourceURL)
 {
     ResourceToFactoryMap::const_iterator iFactory (mpResourceToFactoryMap->find(rsResourceURL));
-    if (iFactory != mpResourceToFactoryMap->end())
+    if (iFactory == mpResourceToFactoryMap->end())
+        return;
+
+    // Check that the factory has already been loaded and not been
+    // destroyed in the meantime.
+    Reference<XInterface> xFactory;
+    LoadedFactoryContainer::const_iterator iLoadedFactory (
+        mpLoadedFactories->find(iFactory->second));
+    if (iLoadedFactory != mpLoadedFactories->end())
+        xFactory.set(iLoadedFactory->second, UNO_QUERY);
+    if (  xFactory.is())
+        return;
+
+    // Create a new instance of the factory.
+    Reference<uno::XComponentContext> xContext =
+        ::comphelper::getProcessComponentContext();
+
+    // Create the factory service.
+    Sequence<Any> aArguments(1);
+    aArguments[0] <<= mxController;
+    try
     {
-        // Check that the factory has already been loaded and not been
-        // destroyed in the meantime.
-        Reference<XInterface> xFactory;
-        LoadedFactoryContainer::const_iterator iLoadedFactory (
-            mpLoadedFactories->find(iFactory->second));
-        if (iLoadedFactory != mpLoadedFactories->end())
-            xFactory.set(iLoadedFactory->second, UNO_QUERY);
-        if ( ! xFactory.is())
-        {
-            // Create a new instance of the factory.
-            Reference<uno::XComponentContext> xContext =
-                ::comphelper::getProcessComponentContext();
-
-            // Create the factory service.
-            Sequence<Any> aArguments(1);
-            aArguments[0] <<= mxController;
-            try
-            {
-                xFactory = xContext->getServiceManager()->createInstanceWithArgumentsAndContext(
-                    iFactory->second,
-                    aArguments,
-                    xContext);
-            }
-            catch (const Exception&)
-            {
-                SAL_WARN("sd.fwk", "caught exception while creating factory.");
-            }
-
-            // Remember that this factory has been instanced.
-            (*mpLoadedFactories)[iFactory->second] = xFactory;
-        }
+        xFactory = xContext->getServiceManager()->createInstanceWithArgumentsAndContext(
+            iFactory->second,
+            aArguments,
+            xContext);
     }
+    catch (const Exception&)
+    {
+        TOOLS_WARN_EXCEPTION("sd.fwk", "caught exception while creating factory");
+    }
+
+    // Remember that this factory has been instanced.
+    (*mpLoadedFactories)[iFactory->second] = xFactory;
 }
 
 //----- XInitialization -------------------------------------------------------
 
 void SAL_CALL ModuleController::initialize (const Sequence<Any>& aArguments)
 {
-    if (aArguments.getLength() > 0)
+    if (aArguments.hasElements())
     {
         try
         {
@@ -254,10 +253,10 @@ void SAL_CALL ModuleController::initialize (const Sequence<Any>& aArguments)
     }
 }
 
-} } // end of namespace sd::framework
+} // end of namespace sd::framework
 
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_comp_Draw_framework_module_ModuleController_get_implementation(
         css::uno::XComponentContext* context,
         css::uno::Sequence<css::uno::Any> const &)

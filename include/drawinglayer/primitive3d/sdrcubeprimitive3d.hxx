@@ -25,9 +25,7 @@
 #include <drawinglayer/primitive3d/sdrprimitive3d.hxx>
 
 
-namespace drawinglayer
-{
-    namespace primitive3d
+namespace drawinglayer::primitive3d
     {
         /** SdrCubePrimitive3D class
 
@@ -35,9 +33,8 @@ namespace drawinglayer
             The cube is implicitly in unit coordinates and the given transformation
             defines its geometry in space.
          */
-        class DRAWINGLAYER_DLLPUBLIC SdrCubePrimitive3D : public SdrPrimitive3D
+        class DRAWINGLAYER_DLLPUBLIC SdrCubePrimitive3D final : public SdrPrimitive3D
         {
-        protected:
             /// local decomposition.
             virtual Primitive3DContainer create3DDecomposition(const geometry::ViewInformation3D& rViewInformation) const override;
 
@@ -55,8 +52,8 @@ namespace drawinglayer
             /// provide unique ID
             DeclPrimitive3DIDBlock()
         };
-    } // end of namespace primitive3d
-} // end of namespace drawinglayer
+
+} // end of namespace drawinglayer::primitive3d
 
 
 #endif //INCLUDED_DRAWINGLAYER_PRIMITIVE3D_SDRCUBEPRIMITIVE3D_HXX

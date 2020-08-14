@@ -27,27 +27,24 @@
 #include <o3tl/typed_flags_set.hxx>
 #include <sfx2/dllapi.h>
 #include <sal/types.h>
-#include <rtl/strbuf.hxx>
 #include <tools/link.hxx>
-#include <com/sun/star/frame/XFrame.hpp>
-#include <com/sun/star/frame/XDispatchProvider.hpp>
-#include <com/sun/star/frame/XDispatchRecorder.hpp>
 #include <com/sun/star/uno/Reference.h>
+#include <svl/poolitem.hxx>
+#include <svl/SfxBroadcaster.hxx>
+#include <sfx2/shell.hxx>
 
-//  some other includes
+namespace com::sun::star::frame { class XDispatch; }
+namespace com::sun::star::frame { class XDispatchProvider; }
+namespace com::sun::star::frame { class XDispatchRecorder; }
+namespace com::sun::star::frame { class XFrame; }
+namespace com::sun::star::util { struct URL; }
 
-#include <sfx2/viewfrm.hxx>
-
-//  forwards, typedefs, declarations
-
-class SystemWindow;
 class SfxSlot;
 class SfxSlotServer;
 class SfxControllerItem;
 class SfxStateCache;
 class SfxItemSet;
 class SfxDispatcher;
-class SfxBindings;
 class SfxBindings_Impl;
 class Timer;
 class SfxWorkWindow;
@@ -60,13 +57,12 @@ enum class SfxCallMode : sal_uInt16
     SYNCHRON  = 0x01,    // synchronously in the same Stackframe
     ASYNCHRON = 0x02,    // asynchronously via AppEvent
     RECORD    = 0x04,    // take into account while recording
-    API       = 0x08,    // API call (silent)
-    MODAL     = 0x10     // despite ModalMode
+    API       = 0x08     // API call (silent)
 };
 
 namespace o3tl {
 
-template<> struct typed_flags<SfxCallMode>: is_typed_flags<SfxCallMode, 0x1F>
+template<> struct typed_flags<SfxCallMode>: is_typed_flags<SfxCallMode, 0x0F>
 {};
 
 }
@@ -105,7 +101,7 @@ private:
                                     SfxCallMode nCall, const SfxPoolItem **pInternalArgs, bool bGlobalOnly=false);
     SAL_DLLPRIVATE void SetSubBindings_Impl( SfxBindings* );
     SAL_DLLPRIVATE void UpdateSlotServer_Impl(); // Update SlotServer
-    SAL_DLLPRIVATE SfxItemSet* CreateSet_Impl(SfxStateCache& rCache, const SfxSlot* &pRealSlot,
+    SAL_DLLPRIVATE std::unique_ptr<SfxItemSet> CreateSet_Impl(SfxStateCache& rCache, const SfxSlot* &pRealSlot,
                                               const SfxSlotServer**, SfxFoundCacheArr_Impl&);
     SAL_DLLPRIVATE std::size_t GetSlotPos( sal_uInt16 nId, std::size_t nStartSearchAt = 0 );
     SAL_DLLPRIVATE void Update_Impl(SfxStateCache& rCache);
@@ -115,7 +111,7 @@ private:
                             SfxItemState eItemState );
     SAL_DLLPRIVATE SfxStateCache* GetStateCache( sal_uInt16 nId, std::size_t * pPos);
     DECL_DLLPRIVATE_LINK( NextJob, Timer *, void );
-    SAL_DLLPRIVATE bool NextJob_Impl(Timer * pTimer);
+    SAL_DLLPRIVATE bool NextJob_Impl(Timer const * pTimer);
 
 public:
                      SfxBindings();
@@ -145,6 +141,8 @@ public:
      */
     SfxItemState     QueryState( sal_uInt16 nSID, std::unique_ptr<SfxPoolItem> &rpState );
 
+    void             QueryControlState ( sal_uInt16 nSID, boost::property_tree::ptree& rState );
+
     const SfxPoolItem*  ExecuteSynchron( sal_uInt16 nSlot,
                                  const SfxPoolItem **pArgs = nullptr);
     bool             Execute( sal_uInt16 nSlot,
@@ -153,7 +151,7 @@ public:
 
     SAL_DLLPRIVATE void SetDispatchProvider_Impl( const css::uno::Reference< css::frame::XDispatchProvider > & rFrame );
     void             SetActiveFrame( const css::uno::Reference< css::frame::XFrame > & rFrame );
-    const css::uno::Reference< css::frame::XFrame > GetActiveFrame() const;
+    css::uno::Reference< css::frame::XFrame > GetActiveFrame() const;
                      // Reconfig
     sal_uInt16       EnterRegistrations(const char *pFile = nullptr, int nLine = 0);
     void             LeaveRegistrations( const char *pFile = nullptr, int nLine = 0 );
@@ -172,9 +170,9 @@ public:
     SAL_DLLPRIVATE void RegisterInternal_Impl( SfxControllerItem& rBinding );
     SAL_DLLPRIVATE void Register_Impl( SfxControllerItem& rBinding, bool );
     SAL_DLLPRIVATE SfxWorkWindow* GetWorkWindow_Impl() const;
-    SAL_DLLPRIVATE void SetWorkWindow_Impl( SfxWorkWindow* );
+    SAL_DLLPRIVATE void SetWorkWindow_Impl( std::unique_ptr<SfxWorkWindow> );
     SAL_DLLPRIVATE SfxBindings* GetSubBindings_Impl() const;
-    SAL_DLLPRIVATE void SetRecorder_Impl( css::uno::Reference< css::frame::XDispatchRecorder >& );
+    SAL_DLLPRIVATE void SetRecorder_Impl( css::uno::Reference< css::frame::XDispatchRecorder > const & );
     SAL_DLLPRIVATE void InvalidateSlotsInMap_Impl();
     SAL_DLLPRIVATE void AddSlotToInvalidateSlotsMap_Impl( sal_uInt16 nId );
 };

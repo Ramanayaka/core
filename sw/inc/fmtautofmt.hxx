@@ -19,36 +19,28 @@
 #ifndef INCLUDED_SW_INC_FMTAUTOFMT_HXX
 #define INCLUDED_SW_INC_FMTAUTOFMT_HXX
 
+#include "hintids.hxx"
 #include <svl/poolitem.hxx>
-#include <format.hxx>
 #include <memory>
 
-class SwFormatAutoFormat: public SfxPoolItem
+class SAL_DLLPUBLIC_RTTI SwFormatAutoFormat final : public SfxPoolItem
 {
     std::shared_ptr<SfxItemSet> mpHandle;
 
 public:
     SwFormatAutoFormat( sal_uInt16 nWhich = RES_TXTATR_AUTOFMT );
 
-    /// single argument ctors shall be explicit.
-    virtual ~SwFormatAutoFormat() override;
-
-    /// @@@ public copy ctor, but no copy assignment?
-    SwFormatAutoFormat( const SwFormatAutoFormat& rAttr );
-private:
-    /// @@@ public copy ctor, but no copy assignment?
-    SwFormatAutoFormat & operator= (const SwFormatAutoFormat &) = delete;
 public:
 
 
     /// "pure virtual methods" of SfxPoolItem
     virtual bool            operator==( const SfxPoolItem& ) const override;
-    virtual SfxPoolItem*    Clone( SfxItemPool* pPool = nullptr ) const override;
+    virtual SwFormatAutoFormat* Clone( SfxItemPool* pPool = nullptr ) const override;
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
                                   OUString &rText,
-                                  const IntlWrapper*    pIntl = nullptr ) const override;
+                                  const IntlWrapper& rIntl ) const override;
 
     virtual bool QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
@@ -56,7 +48,7 @@ public:
     void SetStyleHandle( const std::shared_ptr<SfxItemSet>& pHandle ) { mpHandle = pHandle; }
     const std::shared_ptr<SfxItemSet>& GetStyleHandle() const { return mpHandle; }
 
-    void dumpAsXml(struct _xmlTextWriter* pWriter) const override;
+    void dumpAsXml(xmlTextWriterPtr pWriter) const override;
 };
 
 #endif

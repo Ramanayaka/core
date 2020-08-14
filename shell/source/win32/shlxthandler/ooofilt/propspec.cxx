@@ -26,14 +26,11 @@
 
 #include <new>
 
-#if defined _MSC_VER
-#pragma warning(push, 1)
+#if !defined WIN32_LEAN_AND_MEAN
+# define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
 #include <filter.h>
-#if defined _MSC_VER
-#pragma warning(pop)
-#endif
 
 #include "propspec.hxx"
 
@@ -53,7 +50,6 @@
 
 CFullPropSpec::CFullPropSpec()
 {
-    memset( &_guidPropSet, 0, sizeof( _guidPropSet ) );
     _psProperty.ulKind = PRSPEC_PROPID;
     _psProperty.propid = 0;
 }
@@ -114,12 +110,16 @@ CFullPropSpec::CFullPropSpec( CFullPropSpec const & src ) :
 
 CFullPropSpec & CFullPropSpec::operator=( CFullPropSpec const & Property )
 {
-    // Clean up.
-    this->CFullPropSpec::~CFullPropSpec();
+    if (this != &Property)
+    {
+        // Clean up.
+        this->CFullPropSpec::~CFullPropSpec();
 
-    ::new (this) CFullPropSpec( Property );
+        ::new (this) CFullPropSpec( Property );
+    }
     return *this;
 }
+
 CFullPropSpec::~CFullPropSpec()
 {
     if ( _psProperty.ulKind == PRSPEC_LPWSTR &&
@@ -128,6 +128,7 @@ CFullPropSpec::~CFullPropSpec()
         CoTaskMemFree( _psProperty.lpwstr );
     }
 }
+
 void CFullPropSpec::SetProperty( PROPID pidProperty )
 {
     if ( _psProperty.ulKind == PRSPEC_LPWSTR &&
@@ -146,7 +147,7 @@ BOOL CFullPropSpec::SetProperty( WCHAR const * wcsProperty )
         CoTaskMemFree( _psProperty.lpwstr );
     }
     _psProperty.ulKind = PRSPEC_LPWSTR;
-    int len = (int) ( (wcslen( wcsProperty ) + 1) * sizeof( WCHAR ) );
+    int len = static_cast<int>( (wcslen( wcsProperty ) + 1) * sizeof( WCHAR ) );
     _psProperty.lpwstr = static_cast<WCHAR *>(CoTaskMemAlloc( len ));
     if ( nullptr != _psProperty.lpwstr )
     {

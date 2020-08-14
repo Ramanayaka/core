@@ -17,16 +17,15 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <basic/sberrors.hxx>
+#include <basic/sbstar.hxx>
 #include <basic/sbx.hxx>
-#include "sbunoobj.hxx"
-#include "parser.hxx"
-#include <svtools/miscopt.hxx>
+#include <sbunoobj.hxx>
+#include <parser.hxx>
+#include <sb.hxx>
 #include <osl/diagnose.h>
 #include <com/sun/star/reflection/theCoreReflection.hpp>
-#include <comphelper/namedvaluecollection.hxx>
 #include <comphelper/processfactory.hxx>
-#include <com/sun/star/reflection/XInterfaceMemberTypeDescription.hpp>
-#include <com/sun/star/reflection/XIdlMethod.hpp>
 #include <com/sun/star/uno/Exception.hpp>
 #include <basic/codecompletecache.hxx>
 #include <memory>
@@ -74,125 +73,125 @@ SbiSymDef* SbiParser::VarDecl( SbiExprListPtr* ppDim, bool bStatic, bool bConst 
     return pDef;
 }
 
-// Resolving of a AS-Type-Declaration
+// Resolving of an AS-Type-Declaration
 // The data type were inserted into the handed over variable
 
 void SbiParser::TypeDecl( SbiSymDef& rDef, bool bAsNewAlreadyParsed )
 {
     SbxDataType eType = rDef.GetType();
-    if( bAsNewAlreadyParsed || Peek() == AS )
-    {
-        short nSize = 0;
-        if( !bAsNewAlreadyParsed )
-            Next();
-        rDef.SetDefinedAs();
-        SbiToken eTok = Next();
-        if( !bAsNewAlreadyParsed && eTok == NEW )
-        {
-            rDef.SetNew();
-            eTok = Next();
-        }
-        switch( eTok )
-        {
-            case ANY:
-                if( rDef.IsNew() )
-                    Error( ERRCODE_BASIC_SYNTAX );
-                eType = SbxVARIANT; break;
-            case TINTEGER:
-            case TLONG:
-            case TSINGLE:
-            case TDOUBLE:
-            case TCURRENCY:
-            case TDATE:
-            case TSTRING:
-            case TOBJECT:
-            case ERROR_:
-            case TBOOLEAN:
-            case TVARIANT:
-            case TBYTE:
-                if( rDef.IsNew() )
-                    Error( ERRCODE_BASIC_SYNTAX );
-                eType = (eTok==TBYTE) ? SbxBYTE : SbxDataType( eTok - TINTEGER + SbxINTEGER );
-                if( eType == SbxSTRING )
-                {
-                    // STRING*n ?
-                    if( Peek() == MUL )
-                    {       // fixed size!
-                        Next();
-                        SbiConstExpression aSize( this );
-                        nSize = aSize.GetShortValue();
-                        if( nSize < 0 || (bVBASupportOn && nSize <= 0) )
-                            Error( ERRCODE_BASIC_OUT_OF_RANGE );
-                        else
-                            rDef.SetFixedStringLength( nSize );
-                    }
-                }
-                break;
-            case SYMBOL: // can only be a TYPE or a object class!
-                if( eScanType != SbxVARIANT )
-                    Error( ERRCODE_BASIC_SYNTAX );
-                else
-                {
-                    OUString aCompleteName = aSym;
+    if( !(bAsNewAlreadyParsed || Peek() == AS) )
+        return;
 
-                    // #52709 DIM AS NEW for Uno with full-qualified name
-                    if( Peek() == DOT )
+    short nSize = 0;
+    if( !bAsNewAlreadyParsed )
+        Next();
+    rDef.SetDefinedAs();
+    SbiToken eTok = Next();
+    if( !bAsNewAlreadyParsed && eTok == NEW )
+    {
+        rDef.SetNew();
+        eTok = Next();
+    }
+    switch( eTok )
+    {
+        case ANY:
+            if( rDef.IsNew() )
+                Error( ERRCODE_BASIC_SYNTAX );
+            eType = SbxVARIANT; break;
+        case TINTEGER:
+        case TLONG:
+        case TSINGLE:
+        case TDOUBLE:
+        case TCURRENCY:
+        case TDATE:
+        case TSTRING:
+        case TOBJECT:
+        case ERROR_:
+        case TBOOLEAN:
+        case TVARIANT:
+        case TBYTE:
+            if( rDef.IsNew() )
+                Error( ERRCODE_BASIC_SYNTAX );
+            eType = (eTok==TBYTE) ? SbxBYTE : SbxDataType( eTok - TINTEGER + SbxINTEGER );
+            if( eType == SbxSTRING )
+            {
+                // STRING*n ?
+                if( Peek() == MUL )
+                {       // fixed size!
+                    Next();
+                    SbiConstExpression aSize( this );
+                    nSize = aSize.GetShortValue();
+                    if( nSize < 0 || (bVBASupportOn && nSize <= 0) )
+                        Error( ERRCODE_BASIC_OUT_OF_RANGE );
+                    else
+                        rDef.SetFixedStringLength( nSize );
+                }
+            }
+            break;
+        case SYMBOL: // can only be a TYPE or an object class!
+            if( eScanType != SbxVARIANT )
+                Error( ERRCODE_BASIC_SYNTAX );
+            else
+            {
+                OUString aCompleteName = aSym;
+
+                // #52709 DIM AS NEW for Uno with full-qualified name
+                if( Peek() == DOT )
+                {
+                    OUString aDotStr( '.' );
+                    while( Peek() == DOT )
                     {
-                        OUString aDotStr( '.' );
-                        while( Peek() == DOT )
+                        aCompleteName += aDotStr;
+                        Next();
+                        SbiToken ePeekTok = Peek();
+                        if( ePeekTok == SYMBOL || IsKwd( ePeekTok ) )
                         {
-                            aCompleteName += aDotStr;
                             Next();
-                            SbiToken ePeekTok = Peek();
-                            if( ePeekTok == SYMBOL || IsKwd( ePeekTok ) )
-                            {
-                                Next();
-                                aCompleteName += aSym;
-                            }
-                            else
-                            {
-                                Next();
-                                Error( ERRCODE_BASIC_UNEXPECTED, SYMBOL );
-                                break;
-                            }
+                            aCompleteName += aSym;
+                        }
+                        else
+                        {
+                            Next();
+                            Error( ERRCODE_BASIC_UNEXPECTED, SYMBOL );
+                            break;
                         }
                     }
-                    else if( rEnumArray->Find( aCompleteName, SbxClassType::Object ) || ( IsVBASupportOn() && VBAConstantHelper::instance().isVBAConstantType( aCompleteName ) ) )
-                    {
-                        eType = SbxLONG;
-                        break;
-                    }
-
-                    // Take over in the string pool
-                    rDef.SetTypeId( aGblStrings.Add( aCompleteName ) );
-
-                    if( rDef.IsNew() && pProc == nullptr )
-                        aRequiredTypes.push_back( aCompleteName );
                 }
-                eType = SbxOBJECT;
-                break;
-            case FIXSTRING: // new syntax for complex UNO types
-                rDef.SetTypeId( aGblStrings.Add( aSym ) );
-                eType = SbxOBJECT;
-                break;
-            default:
-                Error( ERRCODE_BASIC_UNEXPECTED, eTok );
-                Next();
-        }
-        // The variable could have been declared with a suffix
-        if( rDef.GetType() != SbxVARIANT )
-        {
-            if( rDef.GetType() != eType )
-                Error( ERRCODE_BASIC_VAR_DEFINED, rDef.GetName() );
-            else if( eType == SbxSTRING && rDef.GetLen() != nSize )
-                Error( ERRCODE_BASIC_VAR_DEFINED, rDef.GetName() );
-        }
-        rDef.SetType( eType );
-        rDef.SetLen( nSize );
+                else if( rEnumArray->Find( aCompleteName, SbxClassType::Object ) || ( IsVBASupportOn() && VBAConstantHelper::instance().isVBAConstantType( aCompleteName ) ) )
+                {
+                    eType = SbxLONG;
+                    break;
+                }
+
+                // Take over in the string pool
+                rDef.SetTypeId( aGblStrings.Add( aCompleteName ) );
+
+                if( rDef.IsNew() && pProc == nullptr )
+                    aRequiredTypes.push_back( aCompleteName );
+            }
+            eType = SbxOBJECT;
+            break;
+        case FIXSTRING: // new syntax for complex UNO types
+            rDef.SetTypeId( aGblStrings.Add( aSym ) );
+            eType = SbxOBJECT;
+            break;
+        default:
+            Error( ERRCODE_BASIC_UNEXPECTED, eTok );
+            Next();
     }
+    // The variable could have been declared with a suffix
+    if( rDef.GetType() != SbxVARIANT )
+    {
+        if( rDef.GetType() != eType )
+            Error( ERRCODE_BASIC_VAR_DEFINED, rDef.GetName() );
+        else if( eType == SbxSTRING && rDef.GetLen() != nSize )
+            Error( ERRCODE_BASIC_VAR_DEFINED, rDef.GetName() );
+    }
+    rDef.SetType( eType );
+    rDef.SetLen( nSize );
 }
 
-// Here variables, arrays and structures were definied.
+// Here variables, arrays and structures were defined.
 // DIM/PRIVATE/PUBLIC/GLOBAL
 
 void SbiParser::Dim()
@@ -217,7 +216,7 @@ void SbiParser::DefVar( SbiOpcode eOp, bool bStatic )
     }
     // behavior in VBA is that a module scope variable's lifetime is
     // tied to the document. e.g. a module scope variable is global
-       if(  GetBasic()->IsDocBasic() && bVBASupportOn && !pProc )
+    if(  GetBasic()->IsDocBasic() && bVBASupportOn && !pProc )
         bPersistentGlobal = true;
     // PRIVATE is a synonymous for DIM
     // _CONST_?
@@ -317,10 +316,11 @@ void SbiParser::DefVar( SbiOpcode eOp, bool bStatic )
             if( pOld )
                 bRtlSym = true;
         }
-        if( pOld && !(eOp == SbiOpcode::REDIM_ || eOp == SbiOpcode::REDIMP_) )
+        if( pOld && eOp != SbiOpcode::REDIM_ && eOp != SbiOpcode::REDIMP_ )
         {
-            if( pDef->GetScope() == SbLOCAL && pOld->GetScope() != SbLOCAL )
-                pOld = nullptr;
+            if( pDef->GetScope() == SbLOCAL )
+                if (auto eOldScope = pOld->GetScope(); eOldScope != SbLOCAL && eOldScope != SbPARAM)
+                    pOld = nullptr;
         }
         if( pOld )
         {
@@ -337,7 +337,7 @@ void SbiParser::DefVar( SbiOpcode eOp, bool bStatic )
                 }
                 else if( pOld->GetType() != ( eDefType = pDef->GetType() ) )
                 {
-                    if( !( eDefType == SbxVARIANT && !pDef->IsDefinedAs() ) )
+                    if( eDefType != SbxVARIANT || pDef->IsDefinedAs() )
                         bError_ = true;
                 }
                 if( bError_ )
@@ -352,7 +352,7 @@ void SbiParser::DefVar( SbiOpcode eOp, bool bStatic )
 
         // #36374: Create the variable in front of the distinction IsNew()
         // Otherwise error at Dim Identifier As New Type and option explicit
-        if( !bDefined && !(eOp == SbiOpcode::REDIM_ || eOp == SbiOpcode::REDIMP_)
+        if( !bDefined && eOp != SbiOpcode::REDIM_ && eOp != SbiOpcode::REDIMP_
                       && ( !bConst || pDef->GetScope() == SbGLOBAL ) )
         {
             // Declare variable or global constant
@@ -641,7 +641,7 @@ void SbiParser::DefType()
                         pArray->setHasFixedSize( true );
                     }
                     else
-                        pArray->unoAddDim( 0, -1 ); // variant array
+                        pArray->unoAddDim32( 0, -1 ); // variant array
                     SbxFlagBits nSavFlags = pTypeElem->GetFlags();
                     // need to reset the FIXED flag
                     // when calling PutObject ( because the type will not match Object )
@@ -664,7 +664,7 @@ void SbiParser::DefType()
                         }
                     }
                 }
-                pTypeMembers->Insert( pTypeElem, pTypeMembers->Count() );
+                pTypeMembers->Insert32( pTypeElem, pTypeMembers->Count32() );
             }
         }
     }
@@ -672,7 +672,7 @@ void SbiParser::DefType()
     pType->Remove( "Name", SbxClassType::DontCare );
     pType->Remove( "Parent", SbxClassType::DontCare );
 
-    rTypeArray->Insert (pType,rTypeArray->Count());
+    rTypeArray->Insert32 (pType,rTypeArray->Count32());
 }
 
 
@@ -685,7 +685,7 @@ void SbiParser::Enum()
 
 void SbiParser::DefEnum( bool bPrivate )
 {
-    // Read a the new Token. It had to be a symbol
+    // Read the new Token. It had to be a symbol
     if (!TestSymbol())
         return;
 
@@ -796,14 +796,14 @@ void SbiParser::DefEnum( bool bPrivate )
             pEnumElem->PutLong( nCurrentEnumValue );
             pEnumElem->ResetFlag( SbxFlagBits::Write );
             pEnumElem->SetFlag( SbxFlagBits::Const );
-            pEnumMembers->Insert( pEnumElem, pEnumMembers->Count() );
+            pEnumMembers->Insert32( pEnumElem, pEnumMembers->Count32() );
         }
     }
 
     pEnum->Remove( "Name", SbxClassType::DontCare );
     pEnum->Remove( "Parent", SbxClassType::DontCare );
 
-    rEnumArray->Insert( pEnum, rEnumArray->Count() );
+    rEnumArray->Insert32( pEnum, rEnumArray->Count32() );
 }
 
 
@@ -938,7 +938,14 @@ SbiProcDef* SbiParser::ProcDecl( bool bDecl )
                 {
                     pPar->SetParamArray();
                 }
-                pDef->GetParams().Add( pPar );
+                if (SbiSymDef* pOldDef = pDef->GetParams().Find(pPar->GetName(), false))
+                {
+                    Error(ERRCODE_BASIC_VAR_DEFINED, pPar->GetName());
+                    delete pPar;
+                    pPar = pOldDef;
+                }
+                else
+                    pDef->GetParams().Add( pPar );
                 SbiToken eTok = Next();
                 if( eTok != COMMA && eTok != RPAREN )
                 {
@@ -1216,17 +1223,13 @@ void SbiParser::DefProc( bool bStatic, bool bPrivate )
         }
 
         pDef->Match( pProc );
-        pProc = pDef;
     }
     else
     {
         aPublics.Add( pDef );
-        pProc = pDef;
     }
-    if( !pProc )
-    {
-        return;
-    }
+    assert(pDef);
+    pProc = pDef;
     pProc->SetPublic( !bPrivate );
 
     // Now we set the search hierarchy for symbols as well as the

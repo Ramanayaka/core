@@ -17,35 +17,20 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <com/sun/star/drawing/XDrawPage.hpp>
-#include <com/sun/star/drawing/XDrawView.hpp>
-#include <com/sun/star/drawing/XShapes.hpp>
-#include <com/sun/star/container/XChild.hpp>
-#include <com/sun/star/frame/XController.hpp>
-#include <com/sun/star/document/XEventBroadcaster.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/accessibility/AccessibleEventId.hpp>
-#include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
-#include <rtl/ustring.h>
-#include <sfx2/viewfrm.hxx>
 
-#include <svx/AccessibleShape.hxx>
-
-#include <svx/svdobj.hxx>
-#include <svx/svdmodel.hxx>
-#include <svx/unoapi.hxx>
-#include <toolkit/helper/vclunohelper.hxx>
+#include <sal/log.hxx>
 #include <vcl/svapp.hxx>
-#include "Window.hxx"
-#include "ViewShell.hxx"
-#include "OutlineViewShell.hxx"
-#include "View.hxx"
-#include "AccessibleOutlineView.hxx"
-#include "AccessibleOutlineEditSource.hxx"
+#include <Window.hxx>
+#include <OutlineViewShell.hxx>
+#include <DrawDocShell.hxx>
+#include <OutlineView.hxx>
+#include <View.hxx>
+#include <AccessibleOutlineView.hxx>
+#include <AccessibleOutlineEditSource.hxx>
 #include <drawdoc.hxx>
-#include "accessibility.hrc"
-#include "sdresid.hxx"
+#include <strings.hrc>
+#include <sdresid.hxx>
 
 #include <memory>
 
@@ -68,23 +53,23 @@ AccessibleOutlineView::AccessibleOutlineView (
 
     // Beware! Here we leave the paths of the UNO API and descend into the
     // depths of the core.  Necessary for making the edit engine accessible.
-    if (pSdWindow)
+    if (!pSdWindow)
+        return;
+
+    ::sd::View* pView = pViewShell->GetView();
+
+    if (dynamic_cast<const ::sd::OutlineView* >( pView ) ==  nullptr)
+        return;
+
+    OutlinerView* pOutlineView = static_cast< ::sd::OutlineView*>(
+        pView)->GetViewByWindow( pSdWindow );
+    SdrOutliner& rOutliner =
+        static_cast< ::sd::OutlineView*>(pView)->GetOutliner();
+
+    if( pOutlineView )
     {
-        ::sd::View* pView = pViewShell->GetView();
-
-        if (dynamic_cast<const ::sd::OutlineView* >( pView ) !=  nullptr)
-        {
-            OutlinerView* pOutlineView = static_cast< ::sd::OutlineView*>(
-                pView)->GetViewByWindow( pSdWindow );
-            SdrOutliner& rOutliner =
-                static_cast< ::sd::OutlineView*>(pView)->GetOutliner();
-
-            if( pOutlineView )
-            {
-                maTextHelper.SetEditSource( ::std::unique_ptr< SvxEditSource >( new AccessibleOutlineEditSource(
-                                                                                  rOutliner, *pView, *pOutlineView, *pSdWindow ) ) );
-            }
-        }
+        maTextHelper.SetEditSource( ::std::unique_ptr< SvxEditSource >( new AccessibleOutlineEditSource(
+                                                                          rOutliner, *pView, *pOutlineView, *pSdWindow ) ) );
     }
 }
 
@@ -136,7 +121,7 @@ OUString SAL_CALL
     if ( pSdView )
     {
         SdDrawDocument& rDoc = pSdView->GetDoc();
-        rtl::OUString sFileName = rDoc.getDocAccTitle();
+        OUString sFileName = rDoc.getDocAccTitle();
         if (sFileName.isEmpty())
         {
             ::sd::DrawDocShell* pDocSh = pSdView->GetDocSh();
@@ -176,7 +161,7 @@ void SAL_CALL AccessibleOutlineView::removeAccessibleEventListener( const uno::R
 OUString SAL_CALL
     AccessibleOutlineView::getImplementationName()
 {
-    return OUString("AccessibleOutlineView");
+    return "AccessibleOutlineView";
 }
 
 //=====  XEventListener  ======================================================
@@ -242,17 +227,6 @@ OUString
     SolarMutexGuard aGuard;
 
     return SdResId(SID_SD_A11Y_I_OUTLINEVIEW_N);
-}
-
-/** Create a description for this view.  Use the model's description or URL
-    if a description is not available.
-*/
-OUString
-    AccessibleOutlineView::CreateAccessibleDescription()
-{
-    SolarMutexGuard aGuard;
-
-    return SdResId(SID_SD_A11Y_I_OUTLINEVIEW_D);
 }
 
 void AccessibleOutlineView::UpdateChildren()

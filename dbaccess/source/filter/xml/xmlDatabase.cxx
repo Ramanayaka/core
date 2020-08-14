@@ -20,15 +20,16 @@
 #include "xmlDatabase.hxx"
 #include "xmlfilter.hxx"
 #include <xmloff/xmltoken.hxx>
-#include <xmloff/xmlnmspe.hxx>
+#include <xmloff/ProgressBarHelper.hxx>
 #include "xmlDataSource.hxx"
 #include "xmlDocuments.hxx"
 #include "xmlEnums.hxx"
+#include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/sdb/XReportDocumentsSupplier.hpp>
 #include <com/sun/star/sdb/XFormDocumentsSupplier.hpp>
 #include <com/sun/star/sdbcx/XTablesSupplier.hpp>
 #include <com/sun/star/sdb/XQueryDefinitionsSupplier.hpp>
-#include "xmlstrings.hrc"
+#include <strings.hxx>
 #include <connectivity/dbtools.hxx>
 
 namespace dbaxml
@@ -38,9 +39,8 @@ namespace dbaxml
     using namespace ::com::sun::star::sdbcx;
     using namespace ::com::sun::star::xml::sax;
 
-OXMLDatabase::OXMLDatabase( ODBFilter& rImport,
-                sal_uInt16 nPrfx, const OUString& rLName ) :
-    SvXMLImportContext( rImport, nPrfx, rLName )
+OXMLDatabase::OXMLDatabase( ODBFilter& rImport ) :
+    SvXMLImportContext( rImport )
 {
 
 }
@@ -50,21 +50,18 @@ OXMLDatabase::~OXMLDatabase()
 
 }
 
-SvXMLImportContext* OXMLDatabase::CreateChildContext(
-        sal_uInt16 nPrefix,
-        const OUString& rLocalName,
-        const Reference< XAttributeList > & xAttrList )
+css::uno::Reference< css::xml::sax::XFastContextHandler > OXMLDatabase::createFastChildContext(
+            sal_Int32 nElement, const css::uno::Reference< css::xml::sax::XFastAttributeList >& xAttrList )
 {
     SvXMLImportContext *pContext = nullptr;
-    const SvXMLTokenMap&    rTokenMap   = GetOwnImport().GetDatabaseElemTokenMap();
 
-    switch( rTokenMap.Get( nPrefix, rLocalName ) )
+    switch( nElement & TOKEN_MASK )
     {
-        case XML_TOK_DATASOURCE:
+        case XML_DATASOURCE:
             GetOwnImport().GetProgressBarHelper()->Increment( PROGRESS_BAR_STEP );
-            pContext = new OXMLDataSource( GetOwnImport(), nPrefix, rLocalName, xAttrList, OXMLDataSource::eDataSource );
+            pContext = new OXMLDataSource( GetOwnImport(), xAttrList, OXMLDataSource::eDataSource );
             break;
-        case XML_TOK_FORMS:
+        case XML_FORMS:
             {
                 GetOwnImport().GetProgressBarHelper()->Increment( PROGRESS_BAR_STEP );
                 Any aValue;
@@ -75,11 +72,11 @@ SvXMLImportContext* OXMLDatabase::CreateChildContext(
                 {
                     Reference<XFormDocumentsSupplier> xSup(GetOwnImport().GetModel(),UNO_QUERY);
                     if ( xSup.is() )
-                        pContext = new OXMLDocuments( GetOwnImport(), nPrefix, rLocalName,xSup->getFormDocuments(),SERVICE_NAME_FORM_COLLECTION,SERVICE_SDB_DOCUMENTDEFINITION);
+                        pContext = new OXMLDocuments( GetOwnImport(), xSup->getFormDocuments(),SERVICE_NAME_FORM_COLLECTION,SERVICE_SDB_DOCUMENTDEFINITION);
                 }
             }
             break;
-        case XML_TOK_REPORTS:
+        case XML_REPORTS:
             {
                 GetOwnImport().GetProgressBarHelper()->Increment( PROGRESS_BAR_STEP );
                 Any aValue;
@@ -90,11 +87,11 @@ SvXMLImportContext* OXMLDatabase::CreateChildContext(
                 {
                     Reference<XReportDocumentsSupplier> xSup(GetOwnImport().GetModel(),UNO_QUERY);
                     if ( xSup.is() )
-                        pContext = new OXMLDocuments( GetOwnImport(), nPrefix, rLocalName,xSup->getReportDocuments(),SERVICE_NAME_REPORT_COLLECTION,SERVICE_SDB_DOCUMENTDEFINITION);
+                        pContext = new OXMLDocuments( GetOwnImport(), xSup->getReportDocuments(),SERVICE_NAME_REPORT_COLLECTION,SERVICE_SDB_DOCUMENTDEFINITION);
                 }
             }
             break;
-        case XML_TOK_QUERIES:
+        case XML_QUERIES:
             {
                 GetOwnImport().GetProgressBarHelper()->Increment( PROGRESS_BAR_STEP );
                 Any aValue;
@@ -105,23 +102,20 @@ SvXMLImportContext* OXMLDatabase::CreateChildContext(
                 {
                     Reference<XQueryDefinitionsSupplier> xSup(GetOwnImport().getDataSource(),UNO_QUERY);
                     if ( xSup.is() )
-                        pContext = new OXMLDocuments( GetOwnImport(), nPrefix, rLocalName,xSup->getQueryDefinitions(),SERVICE_NAME_QUERY_COLLECTION);
+                        pContext = new OXMLDocuments( GetOwnImport(), xSup->getQueryDefinitions(),SERVICE_NAME_QUERY_COLLECTION);
                 }
             }
             break;
-        case XML_TOK_TABLES:
-        case XML_TOK_SCHEMA_DEFINITION:
+        case XML_TABLE_REPRESENTATIONS:
+        case XML_SCHEMA_DEFINITION:
             {
                 GetOwnImport().GetProgressBarHelper()->Increment( PROGRESS_BAR_STEP );
                 Reference<XTablesSupplier> xSup(GetOwnImport().getDataSource(),UNO_QUERY);
                 if ( xSup.is() )
-                    pContext = new OXMLDocuments( GetOwnImport(), nPrefix, rLocalName,xSup->getTables());
+                    pContext = new OXMLDocuments( GetOwnImport(), xSup->getTables());
             }
             break;
     }
-
-    if( !pContext )
-        pContext = new SvXMLImportContext( GetImport(), nPrefix, rLocalName );
 
     return pContext;
 }
@@ -131,7 +125,7 @@ ODBFilter& OXMLDatabase::GetOwnImport()
     return static_cast<ODBFilter&>(GetImport());
 }
 
-void OXMLDatabase::EndElement()
+void OXMLDatabase::endFastElement(sal_Int32)
 {
     GetOwnImport().setPropertyInfo();
 }

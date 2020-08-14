@@ -10,6 +10,8 @@
 #ifndef INCLUDED_SFX2_TOOLBARIDS_HXX
 #define INCLUDED_SFX2_TOOLBARIDS_HXX
 
+#include <sal/types.h>
+
 //these numbers end up in the configuration to identify toolbars
 //so don't blindly change their numbers
 enum class ToolbarId : sal_uInt32
@@ -24,7 +26,6 @@ enum class ToolbarId : sal_uInt32
     SvxTbx_Form_Filter = 18002,
     SvxTbx_Text_Control_Attributes = 18003,
     SvxTbx_Controls = 18004,
-    SvxTbx_MoreControls = 18005,
     SvxTbx_FormDesign = 18006,
     Math_Toolbox = 20050,
     Webtools_Toolbox = 20402,

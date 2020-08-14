@@ -20,16 +20,13 @@
 #include "XMLConverter.hxx"
 #include <com/sun/star/util/DateTime.hpp>
 #include <com/sun/star/sheet/GeneralFunction2.hpp>
+#include <comphelper/servicehelper.hxx>
 #include <tools/datetime.hxx>
 #include <sax/tools/converter.hxx>
 #include <xmloff/xmltoken.hxx>
-#include "rangelst.hxx"
-#include "rangeutl.hxx"
-#include "docuno.hxx"
-#include "convuno.hxx"
-#include "document.hxx"
-#include "ftools.hxx"
-#include "generalfunction.hxx"
+#include <rangeutl.hxx>
+#include <docuno.hxx>
+#include <generalfunction.hxx>
 
 using namespace ::com::sun::star;
 using namespace xmloff::token;
@@ -38,7 +35,7 @@ ScDocument* ScXMLConverter::GetScDocument( const uno::Reference< frame::XModel >
 {
     if (xModel.is())
     {
-        ScModelObj* pDocObj = ScModelObj::getImplementation( xModel );
+        ScModelObj* pDocObj = comphelper::getUnoTunnelImplementation<ScModelObj>( xModel );
         return pDocObj ? pDocObj->GetDocument() : nullptr;
     }
     return nullptr;
@@ -354,15 +351,15 @@ enum ScXMLConditionTokenType
 
 struct ScXMLConditionInfo
 {
-    ScXMLConditionToken meToken;
-    ScXMLConditionTokenType meType;
-    sheet::ValidationType meValidation;
-    sheet::ConditionOperator meOperator;
-    const sal_Char*     mpcIdentifier;
-    sal_Int32           mnIdentLength;
+    ScXMLConditionToken       meToken;
+    ScXMLConditionTokenType   meType;
+    sheet::ValidationType     meValidation;
+    sheet::ConditionOperator  meOperator;
+    const char*               mpcIdentifier;
+    sal_Int32                 mnIdentLength;
 };
 
-static const ScXMLConditionInfo spConditionInfos[] =
+const ScXMLConditionInfo spConditionInfos[] =
 {
     { XML_COND_AND,                     XML_COND_TYPE_KEYWORD,    sheet::ValidationType_ANY,      sheet::ConditionOperator_NONE,        RTL_CONSTASCII_STRINGPARAM( "and" ) },
     { XML_COND_CELLCONTENT,             XML_COND_TYPE_COMPARISON, sheet::ValidationType_ANY,      sheet::ConditionOperator_NONE,        RTL_CONSTASCII_STRINGPARAM( "cell-content" ) },
@@ -546,69 +543,70 @@ void ScXMLConditionHelper::parseCondition(
     const sal_Unicode* pcBegin = rAttribute.getStr();
     const sal_Unicode* pcString = pcBegin + nStartIndex;
     const sal_Unicode* pcEnd = pcBegin + rAttribute.getLength();
-    if( const ScXMLConditionInfo* pCondInfo = lclGetConditionInfo( pcString, pcEnd ) )
-    {
-        // insert default values into parse result (may be changed below)
-        rParseResult.meValidation = pCondInfo->meValidation;
-        rParseResult.meOperator = pCondInfo->meOperator;
-        // continue parsing dependent on token type
-        switch( pCondInfo->meType )
-        {
-            case XML_COND_TYPE_KEYWORD:
-                // nothing specific has to follow, success
-                rParseResult.meToken = pCondInfo->meToken;
-            break;
+    const ScXMLConditionInfo* pCondInfo = lclGetConditionInfo( pcString, pcEnd );
+    if( !pCondInfo )
+        return;
 
-            case XML_COND_TYPE_COMPARISON:
-                // format is <condition>()<operator><expression>
-                if( lclSkipEmptyParentheses( pcString, pcEnd ) )
+    // insert default values into parse result (may be changed below)
+    rParseResult.meValidation = pCondInfo->meValidation;
+    rParseResult.meOperator = pCondInfo->meOperator;
+    // continue parsing dependent on token type
+    switch( pCondInfo->meType )
+    {
+        case XML_COND_TYPE_KEYWORD:
+            // nothing specific has to follow, success
+            rParseResult.meToken = pCondInfo->meToken;
+        break;
+
+        case XML_COND_TYPE_COMPARISON:
+            // format is <condition>()<operator><expression>
+            if( lclSkipEmptyParentheses( pcString, pcEnd ) )
+            {
+                rParseResult.meOperator = lclGetConditionOperator( pcString, pcEnd );
+                if( rParseResult.meOperator != sheet::ConditionOperator_NONE )
                 {
-                    rParseResult.meOperator = lclGetConditionOperator( pcString, pcEnd );
-                    if( rParseResult.meOperator != sheet::ConditionOperator_NONE )
+                    lclSkipWhitespace( pcString, pcEnd );
+                    if( pcString < pcEnd )
                     {
-                        lclSkipWhitespace( pcString, pcEnd );
-                        if( pcString < pcEnd )
-                        {
-                            rParseResult.meToken = pCondInfo->meToken;
-                            // comparison must be at end of attribute, remaining text is the formula
-                            rParseResult.maOperand1 = OUString( pcString, static_cast< sal_Int32 >( pcEnd - pcString ) );
-                        }
+                        rParseResult.meToken = pCondInfo->meToken;
+                        // comparison must be at end of attribute, remaining text is the formula
+                        rParseResult.maOperand1 = OUString( pcString, static_cast< sal_Int32 >( pcEnd - pcString ) );
                     }
                 }
-            break;
+            }
+        break;
 
-            case XML_COND_TYPE_FUNCTION0:
-                // format is <condition>()
-                if( lclSkipEmptyParentheses( pcString, pcEnd ) )
+        case XML_COND_TYPE_FUNCTION0:
+            // format is <condition>()
+            if( lclSkipEmptyParentheses( pcString, pcEnd ) )
+                rParseResult.meToken = pCondInfo->meToken;
+        break;
+
+        case XML_COND_TYPE_FUNCTION1:
+            // format is <condition>(<expression>)
+            if( (pcString < pcEnd) && (*pcString == '(') )
+            {
+                rParseResult.maOperand1 = getExpression( ++pcString, pcEnd, ')' );
+                if( !rParseResult.maOperand1.isEmpty() )
                     rParseResult.meToken = pCondInfo->meToken;
-            break;
+            }
+        break;
 
-            case XML_COND_TYPE_FUNCTION1:
-                // format is <condition>(<expression>)
-                if( (pcString < pcEnd) && (*pcString == '(') )
+        case XML_COND_TYPE_FUNCTION2:
+            // format is <condition>(<expression1>,<expression2>)
+            if( (pcString < pcEnd) && (*pcString == '(') )
+            {
+                rParseResult.maOperand1 = getExpression( ++pcString, pcEnd, ',' );
+                if( !rParseResult.maOperand1.isEmpty() )
                 {
-                    rParseResult.maOperand1 = getExpression( ++pcString, pcEnd, ')' );
-                    if( !rParseResult.maOperand1.isEmpty() )
+                    rParseResult.maOperand2 = getExpression( pcString, pcEnd, ')' );
+                    if( !rParseResult.maOperand2.isEmpty() )
                         rParseResult.meToken = pCondInfo->meToken;
                 }
-            break;
-
-            case XML_COND_TYPE_FUNCTION2:
-                // format is <condition>(<expression1>,<expression2>)
-                if( (pcString < pcEnd) && (*pcString == '(') )
-                {
-                    rParseResult.maOperand1 = getExpression( ++pcString, pcEnd, ',' );
-                    if( !rParseResult.maOperand1.isEmpty() )
-                    {
-                        rParseResult.maOperand2 = getExpression( pcString, pcEnd, ')' );
-                        if( !rParseResult.maOperand2.isEmpty() )
-                            rParseResult.meToken = pCondInfo->meToken;
-                    }
-                }
-            break;
-        }
-        rParseResult.mnEndIndex = static_cast< sal_Int32 >( pcString - pcBegin );
+            }
+        break;
     }
+    rParseResult.mnEndIndex = static_cast< sal_Int32 >( pcString - pcBegin );
 }
 
 OUString ScXMLConditionHelper::getExpression( const sal_Unicode*& rpcString, const sal_Unicode* pcEnd, sal_Unicode cEndChar )

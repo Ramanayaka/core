@@ -25,7 +25,6 @@
 #include <com/sun/star/frame/XFrame.hpp>
 #include <com/sun/star/frame/XStatusListener.hpp>
 #include <com/sun/star/util/XURLTransformer.hpp>
-#include <com/sun/star/beans/NamedValue.hpp>
 #include <com/sun/star/frame/XToolbarController.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
 
@@ -38,7 +37,7 @@ class ToolBox;
 namespace framework
 {
 
-class ButtonToolbarController : public css::frame::XStatusListener,
+class ButtonToolbarController final : public css::frame::XStatusListener,
                                 public css::frame::XToolbarController,
                                 public css::lang::XInitialization,
                                 public css::util::XUpdatable,

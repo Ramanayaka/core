@@ -20,31 +20,28 @@
 #ifndef INCLUDED_OOX_SOURCE_DRAWINGML_HYPERLINKCONTEXT_HXX
 #define INCLUDED_OOX_SOURCE_DRAWINGML_HYPERLINKCONTEXT_HXX
 
-#include <com/sun/star/xml/sax/XFastAttributeList.hpp>
-#include "oox/core/contexthandler2.hxx"
+#include <oox/core/contexthandler2.hxx>
 
 namespace oox { class PropertyMap; }
 
-namespace oox {
-namespace drawingml {
+namespace oox::drawingml {
 
-class HyperLinkContext : public ::oox::core::ContextHandler2
+class HyperLinkContext final : public ::oox::core::ContextHandler2
 {
 public:
                         HyperLinkContext(
-                            ::oox::core::ContextHandler2Helper& rParent,
+                            ::oox::core::ContextHandler2Helper const & rParent,
                             const ::oox::AttributeList& rAttribs,
                             PropertyMap& aProperties );
     virtual             ~HyperLinkContext() override;
 
     virtual ::oox::core::ContextHandlerRef onCreateContext( ::sal_Int32 Element, const ::oox::AttributeList& rAttribs ) override;
 
-protected:
+private:
     PropertyMap&        maProperties;
 };
 
-} // namespace drawingml
-} // namespace oox
+} // namespace oox::drawingml
 
 #endif
 

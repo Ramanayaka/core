@@ -17,36 +17,27 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "DrawViewShell.hxx"
+#include <DrawViewShell.hxx>
 #include <com/sun/star/embed/EmbedMisc.hpp>
-#include <svl/aeitem.hxx>
+#include <com/sun/star/embed/XEmbeddedObject.hpp>
+#include <com/sun/star/presentation/ClickAction.hpp>
+#include <sfx2/objsh.hxx>
 #include <svx/svxids.hrc>
-#include <svx/globl3d.hxx>
-#include <editeng/eeitem.hxx>
+#include <svx/sdmetitm.hxx>
 #include <editeng/flditem.hxx>
 #include <svx/svdogrp.hxx>
 #include <svx/svdograf.hxx>
 #include <svx/svdoole2.hxx>
-#include <svx/sxelditm.hxx>
-#include <sfx2/dispatch.hxx>
-#include <sfx2/request.hxx>
+#include <svx/sdtfsitm.hxx>
 #include <svx/svdopath.hxx>
 #include <svx/obj3d.hxx>
 #include <svx/scene3d.hxx>
-#include <sfx2/event.hxx>
-#include <sfx2/docfile.hxx>
-#include <rtl/ustrbuf.hxx>
 
-#include "app.hrc"
+#include <app.hrc>
 
-#include "Outliner.hxx"
-#include "sdpage.hxx"
-#include "fupoor.hxx"
-#include "fusel.hxx"
-#include "drawdoc.hxx"
-#include "DrawDocShell.hxx"
-#include "drawview.hxx"
-#include "optsitem.hxx"
+#include <anminfo.hxx>
+#include <drawdoc.hxx>
+#include <drawview.hxx>
 
 using namespace com::sun::star;
 
@@ -93,7 +84,9 @@ void DrawViewShell::GetMenuStateSel( SfxItemSet &rSet )
             SfxItemState::DEFAULT == rSet.GetItemState( SID_OBJECT_ALIGN_DOWN ) ||
             SfxItemState::DEFAULT == rSet.GetItemState( SID_FRAME_TO_TOP ) ||
             SfxItemState::DEFAULT == rSet.GetItemState( SID_MOREFRONT ) ||
+            SfxItemState::DEFAULT == rSet.GetItemState( SID_FRAME_UP ) ||
             SfxItemState::DEFAULT == rSet.GetItemState( SID_MOREBACK ) ||
+            SfxItemState::DEFAULT == rSet.GetItemState( SID_FRAME_DOWN ) ||
             SfxItemState::DEFAULT == rSet.GetItemState( SID_FRAME_TO_BOTTOM ) ||
             SfxItemState::DEFAULT == rSet.GetItemState( SID_BEFORE_OBJ ) ||
             SfxItemState::DEFAULT == rSet.GetItemState( SID_BEHIND_OBJ ) ||
@@ -101,11 +94,14 @@ void DrawViewShell::GetMenuStateSel( SfxItemSet &rSet )
             SfxItemState::DEFAULT == rSet.GetItemState( SID_ORIGINAL_SIZE ) ||
             SfxItemState::DEFAULT == rSet.GetItemState( SID_SAVE_GRAPHIC ) ||
             SfxItemState::DEFAULT == rSet.GetItemState( SID_COMPRESS_GRAPHIC ) ||
-            SfxItemState::DEFAULT == rSet.GetItemState( SID_TEXTATTR_DLG ) )
+            SfxItemState::DEFAULT == rSet.GetItemState( SID_TEXTATTR_DLG ) ||
+            SfxItemState::DEFAULT == rSet.GetItemState( SID_EXECUTE_ANIMATION_EFFECT ))
         {
             const SdrObject* pObj = rMarkList.GetMark(0)->GetMarkedSdrObj();
             const SdrGrafObj* pSdrGrafObj = dynamic_cast< const SdrGrafObj* >(pObj);
             const SdrOle2Obj* pSdrOle2Obj = dynamic_cast< const SdrOle2Obj* >(pObj);
+            const SdAnimationInfo* pAnimationInfo
+                = SdDrawDocument::GetAnimationInfo(rMarkList.GetMark(0)->GetMarkedSdrObj());
             SdrInventor nInv = pObj->GetObjInventor();
             sal_uInt16  nId  = pObj->GetObjIdentifier();
             SdrObjTransformInfoRec aInfoRec;
@@ -115,7 +111,7 @@ void DrawViewShell::GetMenuStateSel( SfxItemSet &rSet )
             if(pSdrOle2Obj)
             {
                 if (pSdrOle2Obj->GetObjRef().is() &&
-                    ((pSdrOle2Obj->GetObjRef()->getStatus( pSdrOle2Obj->GetAspect() ) & embed::EmbedMisc::MS_EMBED_RECOMPOSEONRESIZE) ) )
+                    (pSdrOle2Obj->GetObjRef()->getStatus( pSdrOle2Obj->GetAspect() ) & embed::EmbedMisc::MS_EMBED_RECOMPOSEONRESIZE) )
                     rSet.DisableItem(SID_ORIGINAL_SIZE);
             }
 
@@ -123,6 +119,17 @@ void DrawViewShell::GetMenuStateSel( SfxItemSet &rSet )
             {
                 rSet.DisableItem(SID_SAVE_GRAPHIC);
                 rSet.DisableItem(SID_COMPRESS_GRAPHIC);
+            }
+
+            if (!pAnimationInfo
+                || pAnimationInfo->meClickAction == presentation::ClickAction::ClickAction_NONE
+                // Sound does not work in edit mode
+                || pAnimationInfo->meClickAction == presentation::ClickAction::ClickAction_SOUND
+                // No point in exiting the presentation in edit mode
+                || pAnimationInfo->meClickAction
+                       == presentation::ClickAction::ClickAction_STOPPRESENTATION)
+            {
+                rSet.DisableItem(SID_EXECUTE_ANIMATION_EFFECT);
             }
 
             /* If it is not a group object or 3D object, we disable "enter
@@ -134,7 +141,7 @@ void DrawViewShell::GetMenuStateSel( SfxItemSet &rSet )
             }
 
             // If it is not a group object, we disable "ungroup"
-            if(!(dynamic_cast< const SdrObjGroup *>( pObj ) != nullptr && nInv == SdrInventor::Default))
+            if(dynamic_cast< const SdrObjGroup *>( pObj ) == nullptr || nInv != SdrInventor::Default)
             {
                 rSet.DisableItem(SID_UNGROUP);
             }
@@ -185,9 +192,9 @@ void DrawViewShell::GetMenuStateSel( SfxItemSet &rSet )
                     aAttrSet.GetItemState( SDRATTR_EDGELINE2DELTA ) >= SfxItemState::DEFAULT &&
                     aAttrSet.GetItemState( SDRATTR_EDGELINE3DELTA ) >= SfxItemState::DEFAULT )
                 {
-                    long nVal1 = static_cast<const SdrMetricItem&>( aAttrSet.Get( SDRATTR_EDGELINE1DELTA ) ).GetValue();
-                    long nVal2 = static_cast<const SdrMetricItem&>( aAttrSet.Get( SDRATTR_EDGELINE2DELTA ) ).GetValue();
-                    long nVal3 = static_cast<const SdrMetricItem&>( aAttrSet.Get( SDRATTR_EDGELINE3DELTA ) ).GetValue();
+                    long nVal1 = aAttrSet.Get( SDRATTR_EDGELINE1DELTA ).GetValue();
+                    long nVal2 = aAttrSet.Get( SDRATTR_EDGELINE2DELTA ).GetValue();
+                    long nVal3 = aAttrSet.Get( SDRATTR_EDGELINE3DELTA ).GetValue();
                     {
                         if( nVal1 != 0 || nVal2 != 0 || nVal3 != 0 )
                             bDisable = false;
@@ -216,7 +223,9 @@ void DrawViewShell::GetMenuStateSel( SfxItemSet &rSet )
                 rSet.DisableItem( SID_OBJECT_ALIGN_DOWN );
                 rSet.DisableItem( SID_FRAME_TO_TOP );
                 rSet.DisableItem( SID_MOREFRONT );
+                rSet.DisableItem( SID_FRAME_UP );
                 rSet.DisableItem( SID_MOREBACK );
+                rSet.DisableItem( SID_FRAME_DOWN );
                 rSet.DisableItem( SID_FRAME_TO_BOTTOM );
                 rSet.DisableItem( SID_BEFORE_OBJ );
                 rSet.DisableItem( SID_BEHIND_OBJ );
@@ -262,11 +271,12 @@ void DrawViewShell::GetMenuStateSel( SfxItemSet &rSet )
         if( SfxItemState::DEFAULT == rSet.GetItemState( SID_OUTLINE_TEXT_AUTOFIT ) )
         {
             const SdrObject* pObj = rMarkList.GetMark(0)->GetMarkedSdrObj();
-            const bool bSet = pObj->GetMergedItemSet().GetItem<SdrTextFitToSizeTypeItem>(SDRATTR_TEXT_FITTOSIZE)->GetValue() != SdrFitToSizeType::NONE;
+            const bool bSet = pObj->GetMergedItemSet().GetItem<SdrTextFitToSizeTypeItem>(SDRATTR_TEXT_FITTOSIZE)->GetValue() != drawing::TextFitToSizeType_NONE;
             rSet.Put(SfxBoolItem(SID_OUTLINE_TEXT_AUTOFIT, bSet));
         }
 
         rSet.DisableItem(SID_GROUP);
+        rSet.DisableItem(SID_TEXT_COMBINE);
         rSet.DisableItem(SID_COMBINE);
         rSet.DisableItem(SID_DISTRIBUTE_DLG);
         rSet.DisableItem(SID_POLY_MERGE);
@@ -393,7 +403,9 @@ void DrawViewShell::GetMenuStateSel( SfxItemSet &rSet )
                 rSet.DisableItem( SID_OBJECT_ALIGN_DOWN );
                 rSet.DisableItem( SID_FRAME_TO_TOP );
                 rSet.DisableItem( SID_MOREFRONT );
+                rSet.DisableItem( SID_FRAME_UP );
                 rSet.DisableItem( SID_MOREBACK );
+                rSet.DisableItem( SID_FRAME_DOWN );
                 rSet.DisableItem( SID_FRAME_TO_BOTTOM );
                 rSet.DisableItem( SID_BEFORE_OBJ );
                 rSet.DisableItem( SID_BEHIND_OBJ );
@@ -453,7 +465,9 @@ void DrawViewShell::GetMenuStateSel( SfxItemSet &rSet )
 
         rSet.DisableItem( SID_FRAME_TO_TOP );
         rSet.DisableItem( SID_MOREFRONT );
+        rSet.DisableItem( SID_FRAME_UP );
         rSet.DisableItem( SID_MOREBACK );
+        rSet.DisableItem( SID_FRAME_DOWN );
         rSet.DisableItem( SID_FRAME_TO_BOTTOM );
         rSet.DisableItem( SID_BEFORE_OBJ );
         rSet.DisableItem( SID_BEHIND_OBJ );
@@ -475,6 +489,7 @@ void DrawViewShell::GetMenuStateSel( SfxItemSet &rSet )
 
         rSet.DisableItem( SID_DISMANTLE );
         rSet.DisableItem( SID_BREAK );
+        rSet.DisableItem( SID_TEXT_COMBINE );
         rSet.DisableItem( SID_COMBINE );
         rSet.DisableItem(SID_DISTRIBUTE_DLG);
         rSet.DisableItem(SID_POLY_MERGE);
@@ -484,10 +499,21 @@ void DrawViewShell::GetMenuStateSel( SfxItemSet &rSet )
         rSet.DisableItem(SID_EQUALIZEHEIGHT);
         rSet.DisableItem( SID_CONNECT );
         rSet.DisableItem( SID_ANIMATION_EFFECTS );
+        rSet.DisableItem( SID_EXECUTE_ANIMATION_EFFECT );
         rSet.DisableItem( SID_MODIFY_FIELD );
         rSet.DisableItem (SID_OBJECT_SHEAR);
     }
 
+    if (GetObjectShell()->isContentExtractionLocked())
+    {
+        rSet.DisableItem(SID_COPY);
+        rSet.DisableItem(SID_CUT);
+    }
+    if(GetObjectShell()->isExportLocked())
+    {
+        rSet.DisableItem(SID_SAVE_GRAPHIC);
+        rSet.DisableItem(SID_EXTERNAL_EDIT);
+    }
 }
 
 } // end of namespace sd

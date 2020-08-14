@@ -17,6 +17,8 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <rtl/ref.hxx>
+
 #include <xmloff/xmlprmap.hxx>
 #include <xmloff/xmlprhdl.hxx>
 #include <xmloff/xmltypes.hxx>
@@ -24,11 +26,7 @@
 #include <xmloff/maptype.hxx>
 #include <xmloff/prhdlfac.hxx>
 
-#include "xmlbahdl.hxx"
-
 #include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/beans/XPropertyState.hpp>
-#include <com/sun/star/uno/Sequence.hxx>
 
 #include <vector>
 
@@ -37,6 +35,8 @@ using namespace ::std;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::beans;
 using ::xmloff::token::GetXMLToken;
+
+namespace {
 
 /** Helper-class for XML-im/export:
     - Holds a pointer to a given array of XMLPropertyMapEntry
@@ -57,7 +57,7 @@ struct XMLPropertySetMapperEntry_Impl
     sal_Int32                          nType;
     sal_uInt16                         nXMLNameSpace;
     sal_Int16                          nContextId;
-    SvtSaveOptions::ODFDefaultVersion  nEarliestODFVersionForExport;
+    SvtSaveOptions::ODFSaneDefaultVersion  nEarliestODFVersionForExport;
     bool                               bImportOnly;
     const XMLPropertyHandler          *pHdl;
 
@@ -65,11 +65,10 @@ struct XMLPropertySetMapperEntry_Impl
         const XMLPropertyMapEntry& rMapEntry,
         const rtl::Reference< XMLPropertyHandlerFactory >& rFactory );
 
-    XMLPropertySetMapperEntry_Impl(
-        const XMLPropertySetMapperEntry_Impl& rEntry );
-
     sal_uInt32 GetPropType() const { return nType & XML_TYPE_PROP_MASK; }
 };
+
+}
 
 XMLPropertySetMapperEntry_Impl::XMLPropertySetMapperEntry_Impl(
     const XMLPropertyMapEntry& rMapEntry,
@@ -83,20 +82,6 @@ XMLPropertySetMapperEntry_Impl::XMLPropertySetMapperEntry_Impl(
     nEarliestODFVersionForExport( rMapEntry.mnEarliestODFVersionForExport ),
     bImportOnly( rMapEntry.mbImportOnly),
     pHdl( rFactory->GetPropertyHandler( rMapEntry.mnType & MID_FLAG_MASK ) )
-{
-    assert(pHdl);
-}
-
-XMLPropertySetMapperEntry_Impl::XMLPropertySetMapperEntry_Impl(
-        const XMLPropertySetMapperEntry_Impl& rEntry ) :
-    sXMLAttributeName( rEntry.sXMLAttributeName),
-    sAPIPropertyName( rEntry.sAPIPropertyName),
-    nType( rEntry.nType),
-    nXMLNameSpace( rEntry.nXMLNameSpace),
-    nContextId( rEntry.nContextId),
-    nEarliestODFVersionForExport( rEntry.nEarliestODFVersionForExport ),
-    bImportOnly( rEntry.bImportOnly),
-    pHdl( rEntry.pHdl)
 {
     assert(pHdl);
 }
@@ -118,30 +103,30 @@ XMLPropertySetMapper::XMLPropertySetMapper(
     mpImpl(new Impl(bForExport))
 {
     mpImpl->maHdlFactories.push_back(rFactory);
-    if( pEntries )
-    {
-        const XMLPropertyMapEntry* pIter = pEntries;
+    if( !pEntries )
+        return;
 
-        if (mpImpl->mbOnlyExportMappings)
+    const XMLPropertyMapEntry* pIter = pEntries;
+
+    if (mpImpl->mbOnlyExportMappings)
+    {
+        while( pIter->msApiName )
         {
-            while( pIter->msApiName )
-            {
-                if (!pIter->mbImportOnly)
-                {
-                    XMLPropertySetMapperEntry_Impl aEntry( *pIter, rFactory );
-                    mpImpl->maMapEntries.push_back( aEntry );
-                }
-                pIter++;
-            }
-        }
-        else
-        {
-            while( pIter->msApiName )
+            if (!pIter->mbImportOnly)
             {
                 XMLPropertySetMapperEntry_Impl aEntry( *pIter, rFactory );
                 mpImpl->maMapEntries.push_back( aEntry );
-                pIter++;
             }
+            ++pIter;
+        }
+    }
+    else
+    {
+        while( pIter->msApiName )
+        {
+            XMLPropertySetMapperEntry_Impl aEntry( *pIter, rFactory );
+            mpImpl->maMapEntries.push_back( aEntry );
+            ++pIter;
         }
     }
 }
@@ -153,21 +138,15 @@ XMLPropertySetMapper::~XMLPropertySetMapper()
 void XMLPropertySetMapper::AddMapperEntry(
     const rtl::Reference < XMLPropertySetMapper >& rMapper )
 {
-    for( vector < rtl::Reference < XMLPropertyHandlerFactory > >::iterator
-            aFIter = rMapper->mpImpl->maHdlFactories.begin();
-         aFIter != rMapper->mpImpl->maHdlFactories.end();
-         ++aFIter )
+    for( const auto& rHdlFactory : rMapper->mpImpl->maHdlFactories )
     {
-        mpImpl->maHdlFactories.push_back(*aFIter);
+        mpImpl->maHdlFactories.push_back(rHdlFactory);
     }
 
-    for( vector < XMLPropertySetMapperEntry_Impl >::iterator
-            aEIter = rMapper->mpImpl->maMapEntries.begin();
-         aEIter != rMapper->mpImpl->maMapEntries.end();
-         ++aEIter )
+    for( const auto& rMapEntry : rMapper->mpImpl->maMapEntries )
     {
-        if (!mpImpl->mbOnlyExportMappings || !(*aEIter).bImportOnly)
-            mpImpl->maMapEntries.push_back( *aEIter );
+        if (!mpImpl->mbOnlyExportMappings || !rMapEntry.bImportOnly)
+            mpImpl->maMapEntries.push_back( rMapEntry );
     }
 }
 
@@ -213,10 +192,11 @@ sal_Int16 XMLPropertySetMapper::GetEntryContextId( sal_Int32 nIndex ) const
     return nIndex == -1 ? 0 : mpImpl->maMapEntries[nIndex].nContextId;
 }
 
-SvtSaveOptions::ODFDefaultVersion XMLPropertySetMapper::GetEarliestODFVersionForExport( sal_Int32 nIndex ) const
+SvtSaveOptions::ODFSaneDefaultVersion
+XMLPropertySetMapper::GetEarliestODFVersionForExport(sal_Int32 const nIndex) const
 {
-    assert((-1 <= nIndex) && (nIndex < static_cast<sal_Int32>(mpImpl->maMapEntries.size())));
-    return nIndex == -1 ? SvtSaveOptions::ODFVER_UNKNOWN : mpImpl->maMapEntries[nIndex].nEarliestODFVersionForExport;
+    assert((0 <= nIndex) && (nIndex < static_cast<sal_Int32>(mpImpl->maMapEntries.size())));
+    return mpImpl->maMapEntries[nIndex].nEarliestODFVersionForExport;
 }
 
 const XMLPropertyHandler* XMLPropertySetMapper::GetPropertyHandler( sal_Int32 nIndex ) const
@@ -292,7 +272,7 @@ sal_Int32 XMLPropertySetMapper::GetEntryIndex(
 
 /** searches for an entry that matches the given api name, namespace and local name or -1 if nothing found */
 sal_Int32 XMLPropertySetMapper::FindEntryIndex(
-        const sal_Char* sApiName,
+        const char* sApiName,
         sal_uInt16 nNameSpace,
         const OUString& sXMLName ) const
 {
@@ -303,7 +283,7 @@ sal_Int32 XMLPropertySetMapper::FindEntryIndex(
     {
         const XMLPropertySetMapperEntry_Impl& rEntry = mpImpl->maMapEntries[nIndex];
         if( rEntry.nXMLNameSpace == nNameSpace &&
-            rEntry.sXMLAttributeName.equals( sXMLName ) &&
+            rEntry.sXMLAttributeName == sXMLName &&
             rEntry.sAPIPropertyName.equalsAscii( sApiName ) )
             return nIndex;
         else
@@ -341,8 +321,7 @@ void XMLPropertySetMapper::RemoveEntry( sal_Int32 nIndex )
     if( nIndex>=nEntries || nIndex<0 )
         return;
     vector < XMLPropertySetMapperEntry_Impl >::iterator aEIter = mpImpl->maMapEntries.begin();
-    for( sal_Int32 nN=0; nN<nIndex; nN++ )
-        ++aEIter;
+    std::advance(aEIter, nIndex);
     mpImpl->maMapEntries.erase( aEIter );
 }
 

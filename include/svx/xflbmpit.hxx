@@ -24,22 +24,20 @@
 #include <svx/rectenum.hxx>
 #include <svx/svxdllapi.h>
 
-class SVX_DLLPUBLIC XFillBmpPosItem : public SfxEnumItem<RectPoint>
+class SVXCORE_DLLPUBLIC XFillBmpPosItem final : public SfxEnumItem<RectPoint>
 {
 public:
                             XFillBmpPosItem( RectPoint eRP = RectPoint::MM );
-                            SVX_DLLPRIVATE XFillBmpPosItem( SvStream& rIn );
 
-    SVX_DLLPRIVATE virtual SfxPoolItem*    Clone( SfxItemPool* pPool = nullptr ) const override;
-    SVX_DLLPRIVATE virtual SfxPoolItem*    Create( SvStream& rIn, sal_uInt16 nVer ) const override;
+    SVX_DLLPRIVATE virtual XFillBmpPosItem* Clone( SfxItemPool* pPool = nullptr ) const override;
 
     SVX_DLLPRIVATE virtual bool GetPresentation( SfxItemPresentation ePres,
                                                  MapUnit eCoreMetric,
                                                  MapUnit ePresMetric,
-                                                 OUString &rText, const IntlWrapper * = nullptr ) const override;
+                                                 OUString &rText, const IntlWrapper& ) const override;
 
     SVX_DLLPRIVATE virtual sal_uInt16      GetValueCount() const override;
-    void dumpAsXml(struct _xmlTextWriter* pWriter) const override;
+    void dumpAsXml(xmlTextWriterPtr pWriter) const override;
 };
 
 

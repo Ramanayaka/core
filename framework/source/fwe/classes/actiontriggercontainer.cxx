@@ -46,9 +46,9 @@ Any SAL_CALL ActionTriggerContainer::queryInterface( const Type& aType )
 {
     Any a = ::cppu::queryInterface(
                 aType ,
-                (static_cast< XMultiServiceFactory* >(this)),
-                (static_cast< XServiceInfo* >(this)),
-                (static_cast< XTypeProvider* >(this)));
+                static_cast< XMultiServiceFactory* >(this),
+                static_cast< XServiceInfo* >(this),
+                static_cast< XTypeProvider* >(this));
 
     if( a.hasValue() )
     {
@@ -100,7 +100,7 @@ Sequence< OUString > SAL_CALL ActionTriggerContainer::getAvailableServiceNames()
 // XServiceInfo
 OUString SAL_CALL ActionTriggerContainer::getImplementationName()
 {
-    return OUString( IMPLEMENTATIONNAME_ACTIONTRIGGERCONTAINER );
+    return IMPLEMENTATIONNAME_ACTIONTRIGGERCONTAINER;
 }
 
 sal_Bool SAL_CALL ActionTriggerContainer::supportsService( const OUString& ServiceName )

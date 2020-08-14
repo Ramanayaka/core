@@ -8,10 +8,10 @@
  */
 
 #include <comphelper/threadpool.hxx>
-#include "cppunit/TestAssert.h"
-#include "cppunit/TestFixture.h"
-#include "cppunit/extensions/HelperMacros.h"
-#include "cppunit/plugin/TestPlugIn.h"
+#include <cppunit/TestAssert.h>
+#include <cppunit/TestFixture.h>
+#include <cppunit/extensions/HelperMacros.h>
+#include <cppunit/plugin/TestPlugIn.h>
 
 #include <stdlib.h>
 #include <thread>
@@ -26,8 +26,8 @@ public:
     CPPUNIT_TEST_SUITE_END();
 };
 
-void ThreadPoolTest::testPreferredConcurrency() {
-
+void ThreadPoolTest::testPreferredConcurrency()
+{
     // Check default.
     auto nThreads = comphelper::ThreadPool::getPreferredConcurrency();
     sal_Int32 nExpected = 4; // UTs are capped to 4.
@@ -39,7 +39,7 @@ void ThreadPoolTest::testPreferredConcurrency() {
     setenv("MAX_CONCURRENCY", std::to_string(nThreads).c_str(), true);
     nThreads = comphelper::ThreadPool::getPreferredConcurrency();
     CPPUNIT_ASSERT_MESSAGE("Expected no more than hardware threads",
-                           nThreads <= (sal_Int32)std::thread::hardware_concurrency());
+                           nThreads <= static_cast<sal_Int32>(std::thread::hardware_concurrency()));
 
     // Revert and check. Again, nothing should change.
     unsetenv("MAX_CONCURRENCY");

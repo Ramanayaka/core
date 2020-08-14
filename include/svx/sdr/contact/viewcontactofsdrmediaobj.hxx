@@ -27,9 +27,9 @@
 
 namespace avmedia { class MediaItem; }
 
-namespace sdr { namespace contact {
+namespace sdr::contact {
 
-class SVX_DLLPUBLIC ViewContactOfSdrMediaObj : public ViewContactOfSdrObj
+class SVXCORE_DLLPUBLIC ViewContactOfSdrMediaObj : public ViewContactOfSdrObj
 {
     friend class ViewObjectContactOfSdrMediaObj;
 
@@ -54,7 +54,7 @@ public:
 
 protected:
 
-    // Create a Object-Specific ViewObjectContact, set ViewContact and
+    // Create an Object-Specific ViewObjectContact, set ViewContact and
     // ObjectContact. Always needs to return something.
     virtual ViewObjectContact& CreateObjectSpecificViewObjectContact(ObjectContact& rObjectContact) override;
 
@@ -67,7 +67,7 @@ protected:
     virtual drawinglayer::primitive2d::Primitive2DContainer createViewIndependentPrimitive2DSequence() const override;
 };
 
-}}
+}
 
 
 #endif // INCLUDED_SVX_SDR_CONTACT_VIEWCONTACTOFSDRMEDIAOBJ_HXX

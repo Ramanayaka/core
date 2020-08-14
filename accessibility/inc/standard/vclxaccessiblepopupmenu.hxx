@@ -17,23 +17,19 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_ACCESSIBILITY_INC_STANDARD_VCLXACCESSIBLEPOPUPMENU_HXX
-#define INCLUDED_ACCESSIBILITY_INC_STANDARD_VCLXACCESSIBLEPOPUPMENU_HXX
+#pragma once
 
 #include <standard/accessiblemenucomponent.hxx>
 
 
-//  class VCLXAccessiblePopupMenu
 
 
-class VCLXAccessiblePopupMenu : public OAccessibleMenuComponent
+class VCLXAccessiblePopupMenu final : public OAccessibleMenuComponent
 {
-protected:
     virtual bool        IsFocused() override;
 
 public:
-    VCLXAccessiblePopupMenu( Menu* pMenu );
-    virtual ~VCLXAccessiblePopupMenu() override;
+    using OAccessibleMenuComponent::OAccessibleMenuComponent;
 
     // XServiceInfo
     virtual OUString SAL_CALL getImplementationName() override;
@@ -47,6 +43,5 @@ public:
     virtual sal_Int32 SAL_CALL getBackground(  ) override;
 };
 
-#endif // INCLUDED_ACCESSIBILITY_INC_STANDARD_VCLXACCESSIBLEPOPUPMENU_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -20,8 +20,6 @@
 #include <sal/config.h>
 
 #include <cassert>
-#include <memory>
-#include <vector>
 
 #include <com/sun/star/beans/NamedValue.hpp>
 #include <com/sun/star/beans/PropertyValue.hpp>
@@ -35,9 +33,7 @@
 #include <com/sun/star/uno/Any.hxx>
 #include <com/sun/star/uno/Exception.hpp>
 #include <com/sun/star/uno/Reference.hxx>
-#include <com/sun/star/uno/RuntimeException.hpp>
 #include <com/sun/star/uno/Sequence.hxx>
-#include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/uno/XInterface.hpp>
 #include <com/sun/star/util/XFlushListener.hpp>
 #include <com/sun/star/util/XFlushable.hpp>
@@ -48,7 +44,6 @@
 #include <cppuhelper/compbase.hxx>
 #include <cppuhelper/factory.hxx>
 #include <cppuhelper/implbase.hxx>
-#include <cppuhelper/interfacecontainer.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <cppuhelper/weak.hxx>
 #include <osl/mutex.hxx>
@@ -64,7 +59,7 @@
 #include "defaultprovider.hxx"
 #include "rootaccess.hxx"
 
-namespace configmgr { namespace configuration_provider {
+namespace configmgr::configuration_provider {
 
 namespace {
 
@@ -121,7 +116,7 @@ private:
     {
         return default_
             ? default_provider::getImplementationName()
-            : configuration_provider::getImplementationName();
+            : "com.sun.star.comp.configuration.ConfigurationProvider";
     }
 
     virtual sal_Bool SAL_CALL supportsService(OUString const & ServiceName) override
@@ -132,7 +127,7 @@ private:
     {
         return default_
             ? default_provider::getSupportedServiceNames()
-            : configuration_provider::getSupportedServiceNames();
+            : css::uno::Sequence<OUString> { "com.sun.star.configuration.ConfigurationProvider" };
     }
 
     virtual css::uno::Reference< css::uno::XInterface > SAL_CALL createInstance(
@@ -259,7 +254,7 @@ Service::createInstanceWithArguments(
     }
     osl::MutexGuard guard(*lock_);
     Components & components = Components::getSingleton(context_);
-    rtl::Reference< RootAccess > root(
+    rtl::Reference root(
         new RootAccess(components, nodepath, locale, update));
     if (root->isValue()) {
         throw css::uno::Exception(
@@ -273,10 +268,7 @@ Service::createInstanceWithArguments(
 
 css::uno::Sequence< OUString > Service::getAvailableServiceNames()
 {
-    css::uno::Sequence< OUString > names(2);
-    names[0] = accessServiceName;
-    names[1] = updateAccessServiceName;
-    return names;
+    return { accessServiceName, updateAccessServiceName };
 }
 
 void Service::refresh() {
@@ -350,53 +342,14 @@ void Service::flushModifications() const {
     components->flushModifications();
 }
 
-class Factory:
-    public cppu::WeakImplHelper<
-        css::lang::XSingleComponentFactory, css::lang::XServiceInfo >
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+com_sun_star_comp_configuration_ConfigurationProvider_get_implementation(
+    css::uno::XComponentContext* Context, css::uno::Sequence<css::uno::Any> const& Arguments)
 {
-public:
-    Factory() {}
-
-private:
-    Factory(const Factory&) = delete;
-    Factory& operator=(const Factory&) = delete;
-
-    virtual ~Factory() override {}
-
-    virtual css::uno::Reference< css::uno::XInterface > SAL_CALL
-    createInstanceWithContext(
-        css::uno::Reference< css::uno::XComponentContext > const & Context) override;
-
-    virtual css::uno::Reference< css::uno::XInterface > SAL_CALL
-    createInstanceWithArgumentsAndContext(
-        css::uno::Sequence< css::uno::Any > const & Arguments,
-        css::uno::Reference< css::uno::XComponentContext > const & Context) override;
-
-    virtual OUString SAL_CALL getImplementationName() override
-    { return configuration_provider::getImplementationName(); }
-
-    virtual sal_Bool SAL_CALL supportsService(OUString const & ServiceName) override
-    { return cppu::supportsService(this, ServiceName); }
-
-    virtual css::uno::Sequence< OUString > SAL_CALL
-    getSupportedServiceNames() override
-    { return configuration_provider::getSupportedServiceNames(); }
-};
-
-css::uno::Reference< css::uno::XInterface > Factory::createInstanceWithContext(
-    css::uno::Reference< css::uno::XComponentContext > const & Context)
-{
-    return createInstanceWithArgumentsAndContext(
-        css::uno::Sequence< css::uno::Any >(), Context);
-}
-
-css::uno::Reference< css::uno::XInterface >
-Factory::createInstanceWithArgumentsAndContext(
-    css::uno::Sequence< css::uno::Any > const & Arguments,
-    css::uno::Reference< css::uno::XComponentContext > const & Context)
-{
-    if (Arguments.getLength() == 0) {
-        return css::configuration::theDefaultProvider::get(Context);
+    if (!Arguments.hasElements()) {
+        auto p = css::configuration::theDefaultProvider::get(Context);
+        p->acquire();
+        return p.get();
     } else {
         OUString locale;
         for (sal_Int32 i = 0; i < Arguments.getLength(); ++i) {
@@ -435,7 +388,7 @@ Factory::createInstanceWithArgumentsAndContext(
                     nullptr);
             }
         }
-        return static_cast< cppu::OWeakObject * >(new Service(Context, locale));
+        return cppu::acquire(static_cast< cppu::OWeakObject * >(new Service(Context, locale)));
     }
 }
 
@@ -447,24 +400,6 @@ css::uno::Reference< css::uno::XInterface > createDefault(
     return static_cast< cppu::OWeakObject * >(new Service(context));
 }
 
-OUString getImplementationName() {
-    return OUString("com.sun.star.comp.configuration.ConfigurationProvider");
 }
-
-css::uno::Sequence< OUString > getSupportedServiceNames() {
-    return css::uno::Sequence< OUString > { "com.sun.star.configuration.ConfigurationProvider" };
-}
-
-css::uno::Reference< css::lang::XSingleComponentFactory >
-createFactory(
-    SAL_UNUSED_PARAMETER cppu::ComponentFactoryFunc,
-    SAL_UNUSED_PARAMETER OUString const &,
-    SAL_UNUSED_PARAMETER css::uno::Sequence< OUString > const &,
-    SAL_UNUSED_PARAMETER rtl_ModuleCount *)
-{
-    return new Factory;
-}
-
-} }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

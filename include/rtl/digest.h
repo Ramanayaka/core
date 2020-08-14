@@ -20,10 +20,10 @@
 #ifndef INCLUDED_RTL_DIGEST_H
 #define INCLUDED_RTL_DIGEST_H
 
-#include <sal/config.h>
+#include "sal/config.h"
 
-#include <sal/saldllapi.h>
-#include <sal/types.h>
+#include "sal/saldllapi.h"
+#include "sal/types.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -77,7 +77,7 @@ typedef enum __rtl_DigestError rtlDigestError;
 /** Create a digest handle for the given algorithm.
     @see rtlDigestAlgorithm
 
-    @param  Algorithm [in] digest algorithm.
+    @param[in] Algorithm digest algorithm.
     @return Digest handle, or 0 upon failure.
  */
 SAL_DLLPUBLIC rtlDigest SAL_CALL rtl_digest_create  (
@@ -87,7 +87,7 @@ SAL_DLLPUBLIC rtlDigest SAL_CALL rtl_digest_create  (
 
 /** Destroy a digest handle.
     @post Digest handle destroyed and invalid.
-    @param    Digest [in] digest handle to be destroyed.
+    @param[in] Digest digest handle to be destroyed.
     @return   None.
  */
 SAL_DLLPUBLIC void SAL_CALL rtl_digest_destroy (
@@ -96,8 +96,8 @@ SAL_DLLPUBLIC void SAL_CALL rtl_digest_destroy (
 
 
 /** Query the algorithm of a given digest.
-    @param  Digest [in] digest handle.
-    @return digest algorithm, or rtl_Digest_AlgorithmInvalid upon failure.
+    @param[in] Digest digest handle.
+    @return digest algorithm, or <code>rtl_Digest_AlgorithmInvalid</code> upon failure.
  */
 SAL_DLLPUBLIC rtlDigestAlgorithm SAL_CALL rtl_digest_queryAlgorithm (
     rtlDigest Digest
@@ -105,7 +105,7 @@ SAL_DLLPUBLIC rtlDigestAlgorithm SAL_CALL rtl_digest_queryAlgorithm (
 
 
 /** Query the length of a given digest.
-    @param  Digest [in] digest handle.
+    @param[in] Digest digest handle.
     @return digest length, or 0 upon failure.
  */
 SAL_DLLPUBLIC sal_uInt32 SAL_CALL rtl_digest_queryLength (
@@ -114,11 +114,11 @@ SAL_DLLPUBLIC sal_uInt32 SAL_CALL rtl_digest_queryLength (
 
 
 /** Initialize a digest with given data.
-    @param  Digest  [in] digest handle.
-    @param  pData   [in] data buffer.
-    @param  nDatLen [in] data length.
+    @param[in] Digest  digest handle.
+    @param[in] pData   data buffer.
+    @param[in] nDatLen data length.
 
-    @return rtl_Digest_E_None upon success.
+    @retval rtl_Digest_E_None upon success.
  */
 SAL_DLLPUBLIC rtlDigestError SAL_CALL rtl_digest_init (
     rtlDigest Digest,
@@ -127,11 +127,11 @@ SAL_DLLPUBLIC rtlDigestError SAL_CALL rtl_digest_init (
 
 
 /** Update a digest with given data.
-    @param  Digest  [in] digest handle.
-    @param  pData   [in] data buffer.
-    @param  nDatLen [in] data length.
+    @param[in] Digest  digest handle.
+    @param[in] pData   data buffer.
+    @param[in] nDatLen data length.
 
-    @return rtl_Digest_E_None upon success.
+    @retval rtl_Digest_E_None upon success.
  */
 SAL_DLLPUBLIC rtlDigestError SAL_CALL rtl_digest_update (
     rtlDigest Digest,
@@ -145,11 +145,11 @@ SAL_DLLPUBLIC rtlDigestError SAL_CALL rtl_digest_update (
     @see      rtl_digest_queryLength()
     @see      rtl_digest_update()
 
-    @param  Digest  [in] digest handle.
-    @param  pBuffer [in] digest value buffer.
-    @param  nBufLen [in] digest value length.
+    @param[in] Digest  digest handle.
+    @param[in] pBuffer digest value buffer.
+    @param[in] nBufLen digest value length.
 
-    @return rtl_Digest_E_None upon success.
+    @retval rtl_Digest_E_None upon success.
  */
 SAL_DLLPUBLIC rtlDigestError SAL_CALL rtl_digest_get (
     rtlDigest Digest,
@@ -200,12 +200,12 @@ SAL_DLLPUBLIC rtlDigestError SAL_CALL rtl_digest_getMD2 (
     @see rtl_digest_updateMD2()
     @see rtl_digest_getMD2()
 
-    @param  pData   [in] data buffer.
-    @param  nDatLen [in] data length.
-    @param  pBuffer [in] digest value buffer.
-    @param  nBufLen [in] digest value length.
+    @param[in] pData   data buffer.
+    @param[in] nDatLen data length.
+    @param[in] pBuffer digest value buffer.
+    @param[in] nBufLen digest value length.
 
-    @return rtl_Digest_E_None upon success.
+    @retval rtl_Digest_E_None upon success.
  */
 SAL_DLLPUBLIC rtlDigestError SAL_CALL rtl_digest_MD2 (
     const void *pData,   sal_uInt32 nDatLen,
@@ -268,12 +268,12 @@ SAL_DLLPUBLIC rtlDigestError SAL_CALL rtl_digest_rawMD5 (
     @see rtl_digest_updateMD5()
     @see rtl_digest_getMD5()
 
-    @param  pData   [in] data buffer.
-    @param  nDatLen [in] data length.
-    @param  pBuffer [in] digest value buffer.
-    @param  nBufLen [in] digest value length.
+    @param[in] pData   data buffer.
+    @param[in] nDatLen data length.
+    @param[in] pBuffer digest value buffer.
+    @param[in] nBufLen digest value length.
 
-    @return rtl_Digest_E_None upon success.
+    @retval rtl_Digest_E_None upon success.
  */
 SAL_DLLPUBLIC rtlDigestError SAL_CALL rtl_digest_MD5 (
     const void *pData,   sal_uInt32 nDatLen,
@@ -288,11 +288,18 @@ SAL_DLLPUBLIC rtlDigestError SAL_CALL rtl_digest_MD5 (
     FIPS PUB 180 (Superseded by FIPS PUB 180-1)
       Secure Hash Standard
 
+    @deprecated The implementation is buggy and generates incorrect results
+                for 52 <= (len % 64) <= 55; use only for bug-compatibility.
+
     @see rtl_digest_create()
  */
 SAL_DLLPUBLIC rtlDigest SAL_CALL rtl_digest_createSHA (void) SAL_THROW_EXTERN_C();
 
 /** Destroy a SHA digest handle.
+
+    @deprecated The implementation is buggy and generates incorrect results
+                for 52 <= (len % 64) <= 55; use only for bug-compatibility.
+
     @see rtl_digest_destroy()
  */
 SAL_DLLPUBLIC void SAL_CALL rtl_digest_destroySHA (
@@ -301,6 +308,10 @@ SAL_DLLPUBLIC void SAL_CALL rtl_digest_destroySHA (
 
 
 /** Update a SHA digest with given data.
+
+    @deprecated The implementation is buggy and generates incorrect results
+                for 52 <= (len % 64) <= 55; use only for bug-compatibility.
+
     @see rtl_digest_update()
  */
 SAL_DLLPUBLIC rtlDigestError SAL_CALL rtl_digest_updateSHA (
@@ -309,6 +320,10 @@ SAL_DLLPUBLIC rtlDigestError SAL_CALL rtl_digest_updateSHA (
 ) SAL_THROW_EXTERN_C();
 
 /** Finalize a SHA digest and retrieve the digest value.
+
+    @deprecated The implementation is buggy and generates incorrect results
+                for 52 <= (len % 64) <= 55; use only for bug-compatibility.
+
     @see rtl_digest_get()
  */
 SAL_DLLPUBLIC rtlDigestError SAL_CALL rtl_digest_getSHA (
@@ -321,15 +336,18 @@ SAL_DLLPUBLIC rtlDigestError SAL_CALL rtl_digest_getSHA (
     This function performs an optimized call sequence on a
     single data buffer, avoiding digest creation and destruction.
 
+    @deprecated The implementation is buggy and generates incorrect results
+                for 52 <= (len % 64) <= 55; use only for bug-compatibility.
+
     @see rtl_digest_updateSHA()
     @see rtl_digest_getSHA()
 
-    @param  pData   [in] data buffer.
-    @param  nDatLen [in] data length.
-    @param  pBuffer [in] digest value buffer.
-    @param  nBufLen [in] digest value length.
+    @param[in] pData   data buffer.
+    @param[in] nDatLen data length.
+    @param[in] pBuffer digest value buffer.
+    @param[in] nBufLen digest value length.
 
-    @return rtl_Digest_E_None upon success.
+    @retval rtl_Digest_E_None upon success.
  */
 SAL_DLLPUBLIC rtlDigestError SAL_CALL rtl_digest_SHA (
     const void *pData,   sal_uInt32 nDatLen,
@@ -349,11 +367,18 @@ SAL_DLLPUBLIC rtlDigestError SAL_CALL rtl_digest_SHA (
     FIPS PUB 180-1 (Supersedes FIPS PUB 180)
       Secure Hash Standard
 
+    @deprecated The implementation is buggy and generates incorrect results
+                for 52 <= (len % 64) <= 55; use only for bug-compatibility.
+
     @see rtl_digest_create()
  */
 SAL_DLLPUBLIC rtlDigest SAL_CALL rtl_digest_createSHA1 (void) SAL_THROW_EXTERN_C();
 
 /** Destroy a SHA1 digest handle.
+
+    @deprecated The implementation is buggy and generates incorrect results
+                for 52 <= (len % 64) <= 55; use only for bug-compatibility.
+
     @see rtl_digest_destroy()
  */
 SAL_DLLPUBLIC void SAL_CALL rtl_digest_destroySHA1 (
@@ -361,6 +386,10 @@ SAL_DLLPUBLIC void SAL_CALL rtl_digest_destroySHA1 (
 ) SAL_THROW_EXTERN_C();
 
 /** Update a SHA1 digest with given data.
+
+    @deprecated The implementation is buggy and generates incorrect results
+                for 52 <= (len % 64) <= 55; use only for bug-compatibility.
+
     @see rtl_digest_update()
  */
 SAL_DLLPUBLIC rtlDigestError SAL_CALL rtl_digest_updateSHA1 (
@@ -369,6 +398,10 @@ SAL_DLLPUBLIC rtlDigestError SAL_CALL rtl_digest_updateSHA1 (
 ) SAL_THROW_EXTERN_C();
 
 /** Finalize a SHA1 digest and retrieve the digest value.
+
+    @deprecated The implementation is buggy and generates incorrect results
+                for 52 <= (len % 64) <= 55; use only for bug-compatibility.
+
     @see rtl_digest_get()
  */
 SAL_DLLPUBLIC rtlDigestError SAL_CALL rtl_digest_getSHA1 (
@@ -381,15 +414,18 @@ SAL_DLLPUBLIC rtlDigestError SAL_CALL rtl_digest_getSHA1 (
     This function performs an optimized call sequence on a
     single data buffer, avoiding digest creation and destruction.
 
+    @deprecated The implementation is buggy and generates incorrect results
+                for 52 <= (len % 64) <= 55; use only for bug-compatibility.
+
     @see rtl_digest_updateSHA1()
     @see rtl_digest_getSHA1()
 
-    @param  pData   [in] data buffer.
-    @param  nDatLen [in] data length.
-    @param  pBuffer [in] digest value buffer.
-    @param  nBufLen [in] digest value length.
+    @param[in] pData   data buffer.
+    @param[in] nDatLen data length.
+    @param[in] pBuffer digest value buffer.
+    @param[in] nBufLen digest value length.
 
-    @return rtl_Digest_E_None upon success.
+    @retval rtl_Digest_E_None upon success.
  */
 SAL_DLLPUBLIC rtlDigestError SAL_CALL rtl_digest_SHA1 (
     const void *pData,   sal_uInt32 nDatLen,
@@ -419,11 +455,11 @@ SAL_DLLPUBLIC void SAL_CALL rtl_digest_destroyHMAC_MD5 (
 /** Initialize a HMAC_MD5 digest.
     @see rtl_digest_init()
 
-    @param  Digest   [in] digest handle.
-    @param  pKeyData [in] key material buffer.
-    @param  nKeyLen  [in] key material length.
+    @param[in] Digest   digest handle.
+    @param[in] pKeyData key material buffer.
+    @param[in] nKeyLen  key material length.
 
-    @return rtl_Digest_E_None upon success.
+    @retval rtl_Digest_E_None upon success.
  */
 SAL_DLLPUBLIC rtlDigestError SAL_CALL rtl_digest_initHMAC_MD5 (
     rtlDigest Digest,
@@ -455,14 +491,14 @@ SAL_DLLPUBLIC rtlDigestError SAL_CALL rtl_digest_getHMAC_MD5 (
     @see rtl_digest_updateHMAC_MD5()
     @see rtl_digest_getHMAC_MD5()
 
-    @param  pKeyData [in] key material buffer.
-    @param  nKeyLen  [in] key material length.
-    @param  pData    [in] data buffer.
-    @param  nDatLen  [in] data length.
-    @param  pBuffer  [in] digest value buffer.
-    @param  nBufLen  [in] digest value length.
+    @param[in] pKeyData key material buffer.
+    @param[in] nKeyLen  key material length.
+    @param[in] pData    data buffer.
+    @param[in] nDatLen  data length.
+    @param[in] pBuffer  digest value buffer.
+    @param[in] nBufLen  digest value length.
 
-    @return rtl_Digest_E_None upon success.
+    @retval rtl_Digest_E_None upon success.
  */
 SAL_DLLPUBLIC rtlDigestError SAL_CALL rtl_digest_HMAC_MD5 (
     const sal_uInt8 *pKeyData, sal_uInt32 nKeyLen,
@@ -480,11 +516,18 @@ SAL_DLLPUBLIC rtlDigestError SAL_CALL rtl_digest_HMAC_MD5 (
     RFC 2898 (Informational)
       PKCS #5: Password-Based Cryptography Specification Version 2.0
 
+    @deprecated The implementation is buggy and generates incorrect results
+                for 52 <= (len % 64) <= 55; use only for bug-compatibility.
+
     @see rtl_digest_create()
  */
 SAL_DLLPUBLIC rtlDigest SAL_CALL rtl_digest_createHMAC_SHA1 (void) SAL_THROW_EXTERN_C();
 
 /** Destroy a HMAC_SHA1 digest handle.
+
+    @deprecated The implementation is buggy and generates incorrect results
+                for 52 <= (len % 64) <= 55; use only for bug-compatibility.
+
     @see rtl_digest_destroy()
  */
 SAL_DLLPUBLIC void SAL_CALL rtl_digest_destroyHMAC_SHA1 (
@@ -492,13 +535,17 @@ SAL_DLLPUBLIC void SAL_CALL rtl_digest_destroyHMAC_SHA1 (
 ) SAL_THROW_EXTERN_C();
 
 /** Initialize a HMAC_SHA1 digest.
+
+    @deprecated The implementation is buggy and generates incorrect results
+                for 52 <= (len % 64) <= 55; use only for bug-compatibility.
+
     @see rtl_digest_init()
 
-    @param  Digest   [in] digest handle.
-    @param  pKeyData [in] key material buffer.
-    @param  nKeyLen  [in] key material length.
+    @param[in] Digest   digest handle.
+    @param[in] pKeyData key material buffer.
+    @param[in] nKeyLen  key material length.
 
-    @return rtl_Digest_E_None upon success.
+    @retval rtl_Digest_E_None upon success.
  */
 SAL_DLLPUBLIC rtlDigestError SAL_CALL rtl_digest_initHMAC_SHA1 (
     rtlDigest Digest,
@@ -506,6 +553,10 @@ SAL_DLLPUBLIC rtlDigestError SAL_CALL rtl_digest_initHMAC_SHA1 (
 ) SAL_THROW_EXTERN_C();
 
 /** Update a HMAC_SHA1 digest with given data.
+
+    @deprecated The implementation is buggy and generates incorrect results
+                for 52 <= (len % 64) <= 55; use only for bug-compatibility.
+
     @see rtl_digest_update()
  */
 SAL_DLLPUBLIC rtlDigestError SAL_CALL rtl_digest_updateHMAC_SHA1 (
@@ -514,6 +565,10 @@ SAL_DLLPUBLIC rtlDigestError SAL_CALL rtl_digest_updateHMAC_SHA1 (
 ) SAL_THROW_EXTERN_C();
 
 /** Finalize a HMAC_SHA1 digest and retrieve the digest value.
+
+    @deprecated The implementation is buggy and generates incorrect results
+                for 52 <= (len % 64) <= 55; use only for bug-compatibility.
+
     @see rtl_digest_get()
  */
 SAL_DLLPUBLIC rtlDigestError SAL_CALL rtl_digest_getHMAC_SHA1 (
@@ -526,18 +581,21 @@ SAL_DLLPUBLIC rtlDigestError SAL_CALL rtl_digest_getHMAC_SHA1 (
     This function performs an optimized call sequence on a
     single data buffer, avoiding digest creation and destruction.
 
+    @deprecated The implementation is buggy and generates incorrect results
+                for 52 <= (len % 64) <= 55; use only for bug-compatibility.
+
     @see rtl_digest_initHMAC_SHA1()
     @see rtl_digest_updateHMAC_SHA1()
     @see rtl_digest_getHMAC_SHA1()
 
-    @param  pKeyData [in] key material buffer.
-    @param  nKeyLen  [in] key material length.
-    @param  pData    [in] data buffer.
-    @param  nDatLen  [in] data length.
-    @param  pBuffer  [in] digest value buffer.
-    @param  nBufLen  [in] digest value length.
+    @param[in] pKeyData key material buffer.
+    @param[in] nKeyLen  key material length.
+    @param[in] pData    data buffer.
+    @param[in] nDatLen  data length.
+    @param[in] pBuffer  digest value buffer.
+    @param[in] nBufLen  digest value length.
 
-    @return rtl_Digest_E_None upon success.
+    @retval rtl_Digest_E_None upon success.
  */
 SAL_DLLPUBLIC rtlDigestError SAL_CALL rtl_digest_HMAC_SHA1 (
     const sal_uInt8 *pKeyData, sal_uInt32 nKeyLen,
@@ -551,15 +609,20 @@ SAL_DLLPUBLIC rtlDigestError SAL_CALL rtl_digest_HMAC_SHA1 (
     RFC 2898 (Informational)
       PKCS #5: Password-Based Cryptography Specification Version 2.0
 
-    @param  pKeyData  [out] derived key
-    @param  nKeyLen   [in]  derived key length
-    @param  pPassData [in]  password
-    @param  nPassLen  [in]  password length
-    @param  pSaltData [in]  salt
-    @param  nSaltLen  [in]  salt length
-    @param  nCount    [in]  iteration count
+    @deprecated The implementation is buggy and generates incorrect results
+                for 52 <= (len % 64) <= 55; use only for bug-compatibility
+                or if the input is guaranteed to have a good length
+                by a start-key derivation round.
 
-    @return rtl_Digest_E_None upon success.
+    @param[out] pKeyData  derived key
+    @param[in]  nKeyLen   derived key length
+    @param[in]  pPassData password
+    @param[in]  nPassLen  password length
+    @param[in]  pSaltData salt
+    @param[in]  nSaltLen  salt length
+    @param[in]  nCount    iteration count
+
+    @retval rtl_Digest_E_None upon success.
 */
 SAL_DLLPUBLIC rtlDigestError SAL_CALL rtl_digest_PBKDF2 (
     sal_uInt8       *pKeyData , sal_uInt32 nKeyLen,

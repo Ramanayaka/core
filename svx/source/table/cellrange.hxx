@@ -23,10 +23,10 @@
 #include <com/sun/star/table/XCellRange.hpp>
 #include <cppuhelper/implbase1.hxx>
 
-#include "tablemodel.hxx"
+#include <tablemodel.hxx>
 
 
-namespace sdr { namespace table {
+namespace sdr::table {
 
 class CellRange : public ::cppu::WeakAggImplHelper1< css::table::XCellRange >, public ICellRange
 {
@@ -54,7 +54,7 @@ protected:
     sal_Int32 mnBottom;
 };
 
-} }
+}
 
 #endif
 

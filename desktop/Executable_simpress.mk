@@ -11,10 +11,6 @@ $(eval $(call gb_Executable_Executable,simpress))
 
 $(eval $(call gb_Executable_set_targettype_gui,simpress,YES))
 
-$(eval $(call gb_Executable_add_defs,simpress,\
-    -DUNICODE \
-))
-
 $(eval $(call gb_Executable_add_ldflags,simpress,\
     /ENTRY:wWinMainCRTStartup \
 ))
@@ -28,5 +24,7 @@ $(eval $(call gb_Executable_add_exception_objects,simpress,\
 ))
 
 $(eval $(call gb_Executable_add_nativeres,simpress,simpress/launcher))
+
+$(eval $(call gb_Executable_add_default_nativeres,simpress,$(PRODUCTNAME) Impress))
 
 # vim: set ts=4 sw=4 et:

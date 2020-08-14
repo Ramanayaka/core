@@ -10,14 +10,16 @@
 #include "Table.hxx"
 #include "Tables.hxx"
 #include "Catalog.hxx"
+#include "Util.hxx"
 
-#include "TConnection.hxx"
+#include <TConnection.hxx>
 
 #include <connectivity/dbtools.hxx>
 
 #include <com/sun/star/sdbc/XRow.hpp>
 #include <com/sun/star/sdbc/ColumnValue.hpp>
 #include <com/sun/star/sdbcx/XColumnsSupplier.hpp>
+#include <comphelper/types.hxx>
 
 using namespace ::connectivity;
 using namespace ::connectivity::firebird;
@@ -49,7 +51,7 @@ ObjectType Tables::createObject(const OUString& rName)
                                                                   uno::Sequence< OUString >());
 
     if (!xTables.is())
-        throw RuntimeException();
+        throw RuntimeException("Could not acquire table.");
 
     uno::Reference< XRow > xRow(xTables,UNO_QUERY_THROW);
 
@@ -64,7 +66,7 @@ ObjectType Tables::createObject(const OUString& rName)
                               xRow->getString(5))); // Description / Remarks / Comments
 
     if (xTables->next())
-        throw RuntimeException(); // Only one table should be returned
+        throw RuntimeException("Found more tables than expected.");
 
     return xRet;
 }
@@ -92,6 +94,34 @@ OUString Tables::createStandardColumnPart(const Reference< XPropertySet >& xColP
 
     aSql.append(dbtools::createStandardTypePart(xColProp, _xConnection));
 
+    // Add character set for BINARY (fix) type:
+    // BINARY is distinguished from other CHAR types by its character set.
+    // Octets is a special character set for binary data.
+    if ( xPropInfo.is() && xPropInfo->hasPropertyByName(rPropMap.getNameByIndex(
+                    PROPERTY_ID_TYPE)) )
+    {
+        sal_Int32 aType = 0;
+        xColProp->getPropertyValue(rPropMap.getNameByIndex(PROPERTY_ID_TYPE))
+            >>= aType;
+        if(aType == DataType::BINARY || aType == DataType::VARBINARY)
+        {
+            aSql.append(" ");
+            aSql.append("CHARACTER SET OCTETS");
+        }
+        else if(aType == DataType::CLOB)
+        {
+            // CLOB is a special type of blob in Firebird context.
+            // Subtype number 1 always refers to CLOB
+            aSql.append(" ");
+            aSql.append("SUB_TYPE 1");
+        }
+        else if(aType == DataType::LONGVARBINARY)
+        {
+            aSql.append(" ");
+            aSql.append("SUB_TYPE ");
+            aSql.append(OUString::number(static_cast<short>(BlobSubtype::Image)));
+        }
+    }
 
     if ( bIsAutoIncrement && !sAutoIncrementValue.isEmpty())
     {
@@ -162,7 +192,7 @@ ObjectType Tables::appendObject(const OUString& rName,
     else
     {
         if ( sSql.endsWith(",") )
-            sSql = sSql.replaceAt(aSqlBuffer.getLength()-1, 1, ")");
+            sSql = sSql.replaceAt(sSql.getLength()-1, 1, ")");
         else
             sSql += ")";
     }
@@ -177,19 +207,19 @@ void Tables::dropObject(sal_Int32 nPosition, const OUString& sName)
 {
     uno::Reference< XPropertySet > xTable(getObject(nPosition));
 
-    if (!ODescriptor::isNew(xTable))
-    {
-        OUStringBuffer sSql("DROP ");
+    if (ODescriptor::isNew(xTable))
+        return;
 
-        OUString sType;
-        xTable->getPropertyValue("Type") >>= sType;
-        sSql.append(sType);
+    OUStringBuffer sSql("DROP ");
 
-        const OUString sQuoteString = m_xMetaData->getIdentifierQuoteString();
-        sSql.append(::dbtools::quoteName(sQuoteString,sName));
+    OUString sType;
+    xTable->getPropertyValue("Type") >>= sType;
+    sSql.append(sType);
 
-        m_xMetaData->getConnection()->createStatement()->execute(sSql.makeStringAndClear());
-    }
+    const OUString sQuoteString = m_xMetaData->getIdentifierQuoteString();
+    sSql.append(::dbtools::quoteName(sQuoteString,sName));
+
+    m_xMetaData->getConnection()->createStatement()->execute(sSql.makeStringAndClear());
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

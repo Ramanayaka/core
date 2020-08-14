@@ -57,7 +57,9 @@
  * @file
  * Font object to serial to xml filter.
  ************************************************************************/
-#include "xffont.hxx"
+#include <xfilter/ixfattrlist.hxx>
+#include <xfilter/xffont.hxx>
+#include <xfilter/xfutil.hxx>
 
 XFFont::XFFont()
     : m_nFontSize(0)
@@ -71,18 +73,10 @@ XFFont::XFFont()
     , m_bBoldComplex(false)
     , m_eUnderline(enumXFUnderlineNone)
     , m_eCrossout(enumXFCrossoutNone)
-    , m_eRelief(enumXFReliefNone)
     , m_eTransform(enumXFTransformNone)
-    , m_eEmphasize(enumXFEmphasizeNone)
     , m_bWordByWord(false)
-    , m_bEmphasizeTop(true)
-    , m_bOutline(false)
-    , m_bShadow(false)
-    , m_bBlink(false)
     , m_nPosition(33)
     , m_nScale(58)
-    , m_fCharSpace(0)
-    , m_nWidthScale(100)
     , m_nFlag(0)
     , m_bTransparent(false)
 {
@@ -106,7 +100,7 @@ XFFont::XFFont()
 
         sal_uInt32      m_nFlag;
 */
-bool operator==(XFFont& f1, XFFont& f2)
+bool operator==(XFFont const & f1, XFFont const & f2)
 {
     //The most possible entry be first:
     if( f1.m_nFlag != f2.m_nFlag )
@@ -154,46 +148,14 @@ bool operator==(XFFont& f1, XFFont& f2)
             return false;
     }
 
-    if( f1.m_nFlag&XFFONT_FLAG_RELIEF )
-    {
-        if( f1.m_eRelief != f2.m_eRelief )
-            return false;
-    }
-
     if( f1.m_nFlag&XFFONT_FLAG_TRANSFORM )
     {
         if( f1.m_eTransform != f2.m_eTransform )
             return false;
     }
 
-    if( f1.m_nFlag&XFFONT_FLAG_EMPHASIZE )
-    {
-        if( f1.m_eEmphasize != f2.m_eEmphasize )
-            return false;
-        if( f1.m_bEmphasizeTop != f2.m_bEmphasizeTop )
-            return false;
-    }
-
     if( f1.m_bWordByWord != f2.m_bWordByWord )
         return false;
-
-    if( f1.m_nFlag&XFFONT_FLAG_OUTLINE )
-    {
-        if( f1.m_bOutline != f2.m_bOutline )
-            return false;
-    }
-
-    if( f1.m_nFlag&XFFONT_FLAG_SHADOW )
-    {
-        if( f1.m_bShadow != f2.m_bShadow )
-            return false;
-    }
-
-    if( f1.m_nFlag&XFFONT_FLAG_BLINK )
-    {
-        if( f1.m_bBlink != f2.m_bBlink )
-            return false;
-    }
 
     if( f1.m_nFlag&XFFONT_FLAG_POSITION )
     {
@@ -204,18 +166,6 @@ bool operator==(XFFont& f1, XFFont& f2)
     if( f1.m_nFlag&XFFONT_FLAG_SCALE )
     {
         if( f1.m_nScale != f2.m_nScale )
-            return false;
-    }
-
-    if( f1.m_nFlag&XFFONT_FLAG_CHARSPACE )
-    {
-        if( f1.m_fCharSpace != f2.m_fCharSpace )
-            return false;
-    }
-
-    if( f1.m_nFlag&XFFONT_FLAG_WIDTHSCALE )
-    {
-        if( f1.m_nWidthScale != f2.m_nWidthScale )
             return false;
     }
 
@@ -234,7 +184,7 @@ bool operator==(XFFont& f1, XFFont& f2)
     return true;
 }
 
-bool operator!=(XFFont& f1, XFFont& f2)
+bool operator!=(XFFont const & f1, XFFont const & f2)
 {
     return !(f1==f2);
 }
@@ -261,20 +211,17 @@ void XFFont::ToXml(IXFStream *pStrm)
     //font size:
     if( (m_nFlag & XFFONT_FLAG_SIZE) && m_nFontSize != 0 )
     {
-        OUString strSize = OUString::number(m_nFontSize);
-        strSize += "pt";
+        OUString strSize = OUString::number(m_nFontSize) + "pt";
         pAttrList->AddAttribute("fo:font-size",strSize);
     }
     if( (m_nFlag & XFFONT_FLAG_SIZE_ASIA) && m_nFontSizeAsia )
     {
-        OUString strSize = OUString::number(m_nFontSizeAsia);
-        strSize += "pt";
+        OUString strSize = OUString::number(m_nFontSizeAsia) + "pt";
         pAttrList->AddAttribute("style:font-size-asian",strSize);
     }
     if( (m_nFlag & XFFONT_FLAG_SIZE_COMPLEX) && m_nFontSizeComplex )
     {
-        OUString strSize = OUString::number(m_nFontSizeComplex);
-        strSize += "pt";
+        OUString strSize = OUString::number(m_nFontSizeComplex) + "pt";
         pAttrList->AddAttribute("style:font-size-complex",strSize);
     }
 
@@ -309,7 +256,7 @@ void XFFont::ToXml(IXFStream *pStrm)
     if( (m_nFlag & XFFONT_FLAG_UNDERLINE) && m_eUnderline )
     {
         pAttrList->AddAttribute("style:text-underline", GetUnderlineName(m_eUnderline) );
-        if( (m_nFlag & XFFONT_FLAG_UNDERLINECOLOR) )
+        if( m_nFlag & XFFONT_FLAG_UNDERLINECOLOR )
         {
             pAttrList->AddAttribute( "style:text-underline-color", m_aUnderlineColor.ToString() );
         }
@@ -331,11 +278,6 @@ void XFFont::ToXml(IXFStream *pStrm)
             pAttrList->AddAttribute("fo:score-spaces", "true" );
     }
 
-    if( (m_nFlag & XFFONT_FLAG_RELIEF) && m_eRelief )
-    {
-        pAttrList->AddAttribute("style:font-relief", GetReliefName(m_eRelief) );
-    }
-
     if( (m_nFlag & XFFONT_FLAG_TRANSFORM) && m_eTransform )
     {
         //enumTransformSmallCap is different:
@@ -345,59 +287,23 @@ void XFFont::ToXml(IXFStream *pStrm)
             pAttrList->AddAttribute("fo:text-transform", GetTransformName(m_eTransform) );
     }
 
-    if( (m_nFlag & XFFONT_FLAG_EMPHASIZE) && m_eEmphasize )
-    {
-        OUString empha = GetEmphasizeName(m_eEmphasize);
-        empha += " ";
-        if( m_bEmphasizeTop )
-            empha += "above";
-        pAttrList->AddAttribute("style:text-emphasize", empha );
-    }
-
-    if( (m_nFlag & XFFONT_FLAG_OUTLINE) && m_bOutline )
-    {
-        pAttrList->AddAttribute("style:text-outline", "true" );
-    }
-
-    if( (m_nFlag & XFFONT_FLAG_SHADOW) && m_bShadow )
-    {
-        pAttrList->AddAttribute("fo:text-shadow", "1pt 1pt" );
-    }
-
-    if( (m_nFlag & XFFONT_FLAG_BLINK) && m_bBlink )
-    {
-        pAttrList->AddAttribute("style:text-blinking", "true" );
-    }
-
     //position & scale:
     if( ((m_nFlag & XFFONT_FLAG_SCALE) && m_nScale>0 ) ||
         ((m_nFlag & XFFONT_FLAG_POSITION) && m_nPosition != 0)
         )
     {
-        OUString tmp;
-        tmp = OUString::number(m_nPosition) + "% ";
-        tmp += OUString::number(m_nScale) + "%";
+        OUString tmp = OUString::number(m_nPosition) + "% "
+                        + OUString::number(m_nScale) + "%";
         pAttrList->AddAttribute("style:text-position", tmp );
     }
 
-    //char space:
-    if( (m_nFlag & XFFONT_FLAG_CHARSPACE) && m_fCharSpace != 0 )
-    {
-        pAttrList->AddAttribute("fo:letter-spacing", OUString::number(m_fCharSpace)+"cm" );
-    }
-
-    if( (m_nFlag&XFFONT_FLAG_WIDTHSCALE) && m_nWidthScale != 100 )
-    {
-        pAttrList->AddAttribute("style:text-scale", OUString::number(m_nWidthScale)+"%" );
-    }
-
     //Color:
-    if( (m_nFlag & XFFONT_FLAG_COLOR) )
+    if( m_nFlag & XFFONT_FLAG_COLOR )
     {
         pAttrList->AddAttribute( "fo:color", m_aColor.ToString() );
     }
 
-    if( (m_nFlag & XFFONT_FLAG_BGCOLOR) )
+    if( m_nFlag & XFFONT_FLAG_BGCOLOR )
     {
         if (m_bTransparent)
             pAttrList->AddAttribute( "style:text-background-color", "transparent");

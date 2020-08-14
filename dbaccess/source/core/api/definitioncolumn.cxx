@@ -19,19 +19,17 @@
 
 #include <bitset>
 
-#include "apitools.hxx"
-#include "dbastrings.hrc"
-#include "definitioncolumn.hxx"
-#include "sdbcoretools.hxx"
+#include <apitools.hxx>
+#include <stringconstants.hxx>
+#include <definitioncolumn.hxx>
+#include <sdbcoretools.hxx>
 
 #include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <com/sun/star/sdbcx/XTablesSupplier.hpp>
 
 #include <comphelper/property.hxx>
-#include <comphelper/types.hxx>
 #include <connectivity/dbtools.hxx>
-#include <cppuhelper/typeprovider.hxx>
-#include <tools/debug.hxx>
+#include <sal/log.hxx>
 #include <tools/diagnose_ex.h>
 
 using namespace ::com::sun::star::sdbc;
@@ -86,15 +84,13 @@ IMPLEMENT_GET_IMPLEMENTATION_ID( OTableColumnDescriptor )
 // css::lang::XServiceInfo
 OUString OTableColumnDescriptor::getImplementationName(  )
 {
-    return OUString("com.sun.star.sdb.OTableColumnDescriptor");
+    return "com.sun.star.sdb.OTableColumnDescriptor";
 }
 
 Sequence< OUString > OTableColumnDescriptor::getSupportedServiceNames(  )
 {
-    Sequence< OUString > aSNS( 2 );
-    aSNS[0] = m_bActAsDescriptor ? OUString(SERVICE_SDBCX_COLUMNDESCRIPTOR) : OUString(SERVICE_SDBCX_COLUMN);
-    aSNS[1] = SERVICE_SDB_COLUMNSETTINGS;
-    return aSNS;
+    return { m_bActAsDescriptor? OUString(SERVICE_SDBCX_COLUMNDESCRIPTOR) : OUString(SERVICE_SDBCX_COLUMN),
+        SERVICE_SDB_COLUMNSETTINGS };
 }
 
 // comphelper::OPropertyArrayUsageHelper
@@ -114,7 +110,7 @@ Sequence< OUString > OTableColumnDescriptor::getSupportedServiceNames(  )
 void OTableColumnDescriptor::setFastPropertyValue_NoBroadcast( sal_Int32 nHandle, const Any& rValue )
 {
     OColumn::setFastPropertyValue_NoBroadcast( nHandle, rValue );
-    ::dbaccess::notifyDataSourceModified( m_xParent, true );
+    ::dbaccess::notifyDataSourceModified( m_xParent );
 }
 
 Reference< XInterface > SAL_CALL OTableColumnDescriptor::getParent(  )
@@ -145,7 +141,7 @@ IMPLEMENT_GET_IMPLEMENTATION_ID( OTableColumn )
 
 OUString OTableColumn::getImplementationName(  )
 {
-    return OUString("com.sun.star.sdb.OTableColumn");
+    return "com.sun.star.sdb.OTableColumn";
 }
 
 ::cppu::IPropertyArrayHelper& SAL_CALL OTableColumn::getInfoHelper()
@@ -172,20 +168,36 @@ OQueryColumn::OQueryColumn( const Reference< XPropertySet >& _rxParserColumn, co
     registerProperty( PROPERTY_LABEL, PROPERTY_ID_LABEL, nPropAttr, &m_sLabel, cppu::UnoType<decltype(m_sLabel)>::get() );
 
 
-    OSL_VERIFY( _rxParserColumn->getPropertyValue( PROPERTY_TYPENAME ) >>= m_aTypeName );
-    OSL_VERIFY( _rxParserColumn->getPropertyValue( PROPERTY_ISNULLABLE ) >>= m_nIsNullable );
-    OSL_VERIFY( _rxParserColumn->getPropertyValue( PROPERTY_PRECISION ) >>= m_nPrecision );
-    OSL_VERIFY( _rxParserColumn->getPropertyValue( PROPERTY_SCALE ) >>= m_nScale );
-    OSL_VERIFY( _rxParserColumn->getPropertyValue( PROPERTY_TYPE ) >>= m_nType );
-    OSL_VERIFY( _rxParserColumn->getPropertyValue( PROPERTY_ISAUTOINCREMENT ) >>= m_bAutoIncrement );
-    OSL_VERIFY( _rxParserColumn->getPropertyValue( PROPERTY_ISCURRENCY ) >>= m_bCurrency );
-    OSL_VERIFY( _rxParserColumn->getPropertyValue( PROPERTY_NAME ) >>= m_sName );
+    if( ! (_rxParserColumn->getPropertyValue( PROPERTY_TYPENAME ) >>= m_aTypeName) )
+        SAL_WARN("dbaccess.core", "OQueryColumn: unable to get property " PROPERTY_TYPENAME);
+
+    if( ! (_rxParserColumn->getPropertyValue( PROPERTY_ISNULLABLE ) >>= m_nIsNullable) )
+        SAL_WARN("dbaccess.core", "OQueryColumn: unable to get property " PROPERTY_ISNULLABLE);
+
+    if( ! (_rxParserColumn->getPropertyValue( PROPERTY_PRECISION ) >>= m_nPrecision) )
+        SAL_WARN("dbaccess.core", "OQueryColumn: unable to get property " PROPERTY_PRECISION);
+
+    if( ! (_rxParserColumn->getPropertyValue( PROPERTY_SCALE ) >>= m_nScale) )
+        SAL_WARN("dbaccess.core", "OQueryColumn: unable to get property " PROPERTY_SCALE);
+
+    if( ! (_rxParserColumn->getPropertyValue( PROPERTY_TYPE ) >>= m_nType) )
+        SAL_WARN("dbaccess.core", "OQueryColumn: unable to get property " PROPERTY_TYPE);
+
+    if( ! (_rxParserColumn->getPropertyValue( PROPERTY_ISAUTOINCREMENT ) >>= m_bAutoIncrement) )
+        SAL_WARN("dbaccess.core", "OQueryColumn: unable to get property " PROPERTY_ISAUTOINCREMENT);
+
+    if( ! (_rxParserColumn->getPropertyValue( PROPERTY_ISCURRENCY ) >>= m_bCurrency) )
+        SAL_WARN("dbaccess.core", "OQueryColumn: unable to get property " PROPERTY_ISCURRENCY);
+
+    if( ! (_rxParserColumn->getPropertyValue( PROPERTY_NAME ) >>= m_sName) )
+        SAL_WARN("dbaccess.core", "OQueryColumn: unable to get property " PROPERTY_NAME);
 
     m_bRowVersion = false;
 
     Reference< XPropertySetInfo > xPSI( _rxParserColumn->getPropertySetInfo(), UNO_SET_THROW );
     if ( xPSI->hasPropertyByName( PROPERTY_DEFAULTVALUE ) )
-        OSL_VERIFY( _rxParserColumn->getPropertyValue( PROPERTY_DEFAULTVALUE ) >>= m_aDefaultValue );
+        if( ! (_rxParserColumn->getPropertyValue( PROPERTY_DEFAULTVALUE ) >>= m_aDefaultValue) )
+            SAL_WARN("dbaccess.core", "OQueryColumn: unable to get property " PROPERTY_DEFAULTVALUE);
 
     // copy some optional properties from the parser column
     struct PropertyDescriptor
@@ -230,9 +242,12 @@ Reference< XPropertySet > OQueryColumn::impl_determineOriginalTableColumn( const
         // determine the composed table name, plus the column name, as indicated by the
         // respective properties
         OUString sCatalog, sSchema, sTable;
-        OSL_VERIFY( getPropertyValue( PROPERTY_CATALOGNAME ) >>= sCatalog );
-        OSL_VERIFY( getPropertyValue( PROPERTY_SCHEMANAME ) >>= sSchema );
-        OSL_VERIFY( getPropertyValue( PROPERTY_TABLENAME ) >>= sTable );
+        if( ! (getPropertyValue( PROPERTY_CATALOGNAME ) >>= sCatalog) )
+            SAL_WARN("dbaccess.core", "impl_determineOriginalTableColumn: unable to get property " PROPERTY_CATALOGNAME);
+        if( ! (getPropertyValue( PROPERTY_SCHEMANAME ) >>= sSchema) )
+            SAL_WARN("dbaccess.core", "impl_determineOriginalTableColumn: unable to get property " PROPERTY_SCHEMANAME);
+        if( ! (getPropertyValue( PROPERTY_TABLENAME ) >>= sTable) )
+            SAL_WARN("dbaccess.core", "impl_determineOriginalTableColumn: unable to get property " PROPERTY_TABLENAME);
         if ( sCatalog.isEmpty() && sSchema.isEmpty() && sTable.isEmpty() )
             return nullptr;
 
@@ -241,15 +256,16 @@ Reference< XPropertySet > OQueryColumn::impl_determineOriginalTableColumn( const
 
         // retrieve the table in question
         Reference< XTablesSupplier > xSuppTables( _rxConnection, UNO_QUERY_THROW );
-        Reference< XNameAccess > xTables( xSuppTables->getTables(), UNO_QUERY_THROW );
+        Reference< XNameAccess > xTables( xSuppTables->getTables(), UNO_SET_THROW );
         if ( !xTables->hasByName( sComposedTableName ) )
             return nullptr;
 
         Reference< XColumnsSupplier > xSuppCols( xTables->getByName( sComposedTableName ), UNO_QUERY_THROW );
-        Reference< XNameAccess > xColumns( xSuppCols->getColumns(), UNO_QUERY_THROW );
+        Reference< XNameAccess > xColumns( xSuppCols->getColumns(), UNO_SET_THROW );
 
         OUString sColumn;
-        OSL_VERIFY( getPropertyValue( PROPERTY_REALNAME ) >>= sColumn );
+        if( ! (getPropertyValue( PROPERTY_REALNAME ) >>= sColumn) )
+            SAL_WARN("dbaccess.core", "impl_determineOriginalTableColumn: unable to get property " PROPERTY_REALNAME);
         if ( !xColumns->hasByName( sColumn ) )
             return nullptr;
 
@@ -257,7 +273,7 @@ Reference< XPropertySet > OQueryColumn::impl_determineOriginalTableColumn( const
     }
     catch( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("dbaccess");
     }
     return xOriginalTableColumn;
 }
@@ -266,7 +282,7 @@ IMPLEMENT_GET_IMPLEMENTATION_ID( OQueryColumn )
 
 OUString SAL_CALL OQueryColumn::getImplementationName(  )
 {
-    return OUString( "org.openoffice.comp.dbaccess.OQueryColumn"  );
+    return "org.openoffice.comp.dbaccess.OQueryColumn";
 }
 
 ::cppu::IPropertyArrayHelper& SAL_CALL OQueryColumn::getInfoHelper()
@@ -307,7 +323,7 @@ void SAL_CALL OQueryColumn::getFastPropertyValue( Any& _rValue, sal_Int32 _nHand
     }
     catch( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("dbaccess");
     }
 }
 
@@ -321,19 +337,19 @@ OColumnWrapper::OColumnWrapper( const Reference< XPropertySet > & rCol, const bo
     // which type of aggregate property do we have?
     // we distinguish the properties by the containment of optional properties
     m_nColTypeID = 0;
-    if ( m_xAggregate.is() )
-    {
-        Reference <XPropertySetInfo > xInfo(m_xAggregate->getPropertySetInfo());
-        m_nColTypeID |= xInfo->hasPropertyByName(PROPERTY_DESCRIPTION) ? HAS_DESCRIPTION : 0;
-        m_nColTypeID |= xInfo->hasPropertyByName(PROPERTY_DEFAULTVALUE) ? HAS_DEFAULTVALUE : 0;
-        m_nColTypeID |= xInfo->hasPropertyByName(PROPERTY_ISROWVERSION) ? HAS_ROWVERSION : 0;
-        m_nColTypeID |= xInfo->hasPropertyByName(PROPERTY_AUTOINCREMENTCREATION) ? HAS_AUTOINCREMENT_CREATION : 0;
-        m_nColTypeID |= xInfo->hasPropertyByName(PROPERTY_CATALOGNAME) ? HAS_CATALOGNAME : 0;
-        m_nColTypeID |= xInfo->hasPropertyByName(PROPERTY_SCHEMANAME) ? HAS_SCHEMANAME : 0;
-        m_nColTypeID |= xInfo->hasPropertyByName(PROPERTY_TABLENAME) ? HAS_TABLENAME : 0;
+    if ( !m_xAggregate.is() )
+        return;
 
-        m_xAggregate->getPropertyValue(PROPERTY_NAME) >>= m_sName;
-    }
+    Reference <XPropertySetInfo > xInfo(m_xAggregate->getPropertySetInfo());
+    m_nColTypeID |= xInfo->hasPropertyByName(PROPERTY_DESCRIPTION) ? HAS_DESCRIPTION : 0;
+    m_nColTypeID |= xInfo->hasPropertyByName(PROPERTY_DEFAULTVALUE) ? HAS_DEFAULTVALUE : 0;
+    m_nColTypeID |= xInfo->hasPropertyByName(PROPERTY_ISROWVERSION) ? HAS_ROWVERSION : 0;
+    m_nColTypeID |= xInfo->hasPropertyByName(PROPERTY_AUTOINCREMENTCREATION) ? HAS_AUTOINCREMENT_CREATION : 0;
+    m_nColTypeID |= xInfo->hasPropertyByName(PROPERTY_CATALOGNAME) ? HAS_CATALOGNAME : 0;
+    m_nColTypeID |= xInfo->hasPropertyByName(PROPERTY_SCHEMANAME) ? HAS_SCHEMANAME : 0;
+    m_nColTypeID |= xInfo->hasPropertyByName(PROPERTY_TABLENAME) ? HAS_TABLENAME : 0;
+
+    m_xAggregate->getPropertyValue(PROPERTY_NAME) >>= m_sName;
 }
 
 OColumnWrapper::~OColumnWrapper()
@@ -412,15 +428,12 @@ IMPLEMENT_GET_IMPLEMENTATION_ID( OTableColumnDescriptorWrapper )
 // css::lang::XServiceInfo
 OUString OTableColumnDescriptorWrapper::getImplementationName(  )
 {
-    return OUString("com.sun.star.sdb.OTableColumnDescriptorWrapper");
+    return "com.sun.star.sdb.OTableColumnDescriptorWrapper";
 }
 
 Sequence< OUString > OTableColumnDescriptorWrapper::getSupportedServiceNames(  )
 {
-    Sequence< OUString > aSNS( 2 );
-    aSNS[0] = SERVICE_SDBCX_COLUMNDESCRIPTOR;
-    aSNS[1] = SERVICE_SDB_COLUMNSETTINGS;
-    return aSNS;
+    return { SERVICE_SDBCX_COLUMNDESCRIPTOR, SERVICE_SDB_COLUMNSETTINGS };
 }
 
 // comphelper::OPropertyArrayUsageHelper
@@ -474,12 +487,9 @@ Sequence< OUString > OTableColumnDescriptorWrapper::getSupportedServiceNames(  )
 
     if ( !m_bIsDescriptor )
     {
-        for (   Property* prop = aDescriptor.getArray();
-                prop != aDescriptor.getArray() + aDescriptor.getLength();
-                ++prop
-            )
+        for ( auto & prop : aDescriptor )
         {
-            prop->Attributes |= PropertyAttribute::READONLY;
+            prop.Attributes |= PropertyAttribute::READONLY;
         }
     }
 
@@ -562,7 +572,7 @@ OTableColumnWrapper::OTableColumnWrapper( const Reference< XPropertySet >& rCol,
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("dbaccess");
         }
     }
     osl_atomic_decrement( &m_refCount );
@@ -576,15 +586,12 @@ IMPLEMENT_GET_IMPLEMENTATION_ID( OTableColumnWrapper )
 
 OUString OTableColumnWrapper::getImplementationName(  )
 {
-    return OUString("com.sun.star.sdb.OTableColumnWrapper" );
+    return "com.sun.star.sdb.OTableColumnWrapper";
 }
 
 Sequence< OUString > OTableColumnWrapper::getSupportedServiceNames(  )
 {
-    Sequence< OUString > aSNS( 2 );
-    aSNS[0] = SERVICE_SDBCX_COLUMN;
-    aSNS[1] = SERVICE_SDB_COLUMNSETTINGS;
-    return aSNS;
+    return { SERVICE_SDBCX_COLUMN, SERVICE_SDB_COLUMNSETTINGS };
 }
 
 ::cppu::IPropertyArrayHelper& OTableColumnWrapper::getInfoHelper()

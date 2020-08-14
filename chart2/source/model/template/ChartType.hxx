@@ -19,16 +19,16 @@
 #ifndef INCLUDED_CHART2_SOURCE_MODEL_TEMPLATE_CHARTTYPE_HXX
 #define INCLUDED_CHART2_SOURCE_MODEL_TEMPLATE_CHARTTYPE_HXX
 
-#include "MutexContainer.hxx"
-#include "OPropertySet.hxx"
+#include <MutexContainer.hxx>
+#include <OPropertySet.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <comphelper/uno3.hxx>
-#include "ModifyListenerHelper.hxx"
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/chart2/XChartType.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/chart2/XDataSeriesContainer.hpp>
 #include <com/sun/star/util/XCloneable.hpp>
+#include <com/sun/star/util/XModifyBroadcaster.hpp>
+#include <com/sun/star/util/XModifyListener.hpp>
 
 #include <vector>
 
@@ -53,7 +53,7 @@ class ChartType :
     public ::property::OPropertySet
 {
 public:
-    explicit ChartType( css::uno::Reference< css::uno::XComponentContext > const & xContext );
+    explicit ChartType();
     virtual ~ChartType() override;
 
     /// merge XInterface implementations
@@ -61,9 +61,6 @@ public:
 
 protected:
     explicit ChartType( const ChartType & rOther );
-
-    const css::uno::Reference< css::uno::XComponentContext >&
-        GetComponentContext() const { return m_xContext;}
 
     // ____ XChartType ____
     // still abstract ! implement !
@@ -126,9 +123,6 @@ private:
         const css::uno::Reference< css::chart2::XDataSeries >& aDataSeries );
 
 private:
-    css::uno::Reference< css::uno::XComponentContext >
-        const m_xContext;
-
     typedef
         std::vector< css::uno::Reference< css::chart2::XDataSeries > >  tDataSeriesContainerType;
 

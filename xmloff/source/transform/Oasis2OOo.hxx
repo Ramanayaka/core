@@ -27,7 +27,7 @@ class XMLTransformerOASISEventMap_Impl;
 
 class Oasis2OOoTransformer : public XMLTransformerBase
 {
-    XMLTransformerActions       *m_aActions[MAX_OASIS_ACTIONS];
+    std::unique_ptr<XMLTransformerActions> m_aActions[MAX_OASIS_ACTIONS];
     XMLTransformerOASISEventMap_Impl *m_pEventMap;
     XMLTransformerOASISEventMap_Impl *m_pFormEventMap;
 
@@ -50,6 +50,7 @@ public:
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames(  ) override;
 
     // XUnoTunnel
+    static const css::uno::Sequence<sal_Int8>& getUnoTunnelId() throw();
     virtual sal_Int64 SAL_CALL getSomething( const css::uno::Sequence< sal_Int8 >& aIdentifier ) override;
 
     virtual OUString GetEventName( const OUString& rName,

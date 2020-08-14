@@ -18,12 +18,9 @@
  */
 #include "vbacolumn.hxx"
 #include <vbahelper/vbahelper.hxx>
-#include <tools/diagnose_ex.h>
-#include "vbatable.hxx"
+#include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/table/XCellRange.hpp>
 #include <com/sun/star/view/XSelectionSupplier.hpp>
-#include <rtl/ustrbuf.hxx>
-#include "wordvbahelper.hxx"
 #include "vbatablehelper.hxx"
 
 using namespace ::ooo::vba;
@@ -32,7 +29,6 @@ using namespace ::com::sun::star;
 SwVbaColumn::SwVbaColumn( const uno::Reference< ooo::vba::XHelperInterface >& rParent, const uno::Reference< uno::XComponentContext >& rContext, const uno::Reference< text::XTextTable >& xTextTable, sal_Int32 nIndex ) :
     SwVbaColumn_BASE( rParent, rContext ), mxTextTable( xTextTable ), mnIndex( nIndex )
 {
-    mxTableColumns = mxTextTable->getColumns();
 }
 
 SwVbaColumn::~SwVbaColumn()
@@ -62,16 +58,14 @@ SwVbaColumn::Select( )
 
 void SwVbaColumn::SelectColumn( const uno::Reference< frame::XModel >& xModel, const uno::Reference< text::XTextTable >& xTextTable, sal_Int32 nStartColumn, sal_Int32 nEndColumn )
 {
-    OUStringBuffer aRangeName;
     OUString sStartCol = SwVbaTableHelper::getColumnStr( nStartColumn );
-    aRangeName.append(sStartCol).append(sal_Int32( 1 ) );
+    OUString aRangeName = sStartCol + OUString::number( 1 );
     OUString sEndCol = SwVbaTableHelper::getColumnStr( nEndColumn );
     sal_Int32 nRowCount = xTextTable->getRows()->getCount();
-    aRangeName.append(':').append( sEndCol ).append( nRowCount );
+    aRangeName += ":" + sEndCol + OUString::number(nRowCount);
 
     uno::Reference< table::XCellRange > xCellRange( xTextTable, uno::UNO_QUERY_THROW );
-    OUString sSelRange = aRangeName.makeStringAndClear();
-    uno::Reference< table::XCellRange > xSelRange = xCellRange->getCellRangeByName( sSelRange );
+    uno::Reference< table::XCellRange > xSelRange = xCellRange->getCellRangeByName( aRangeName );
 
     uno::Reference< view::XSelectionSupplier > xSelection( xModel->getCurrentController(), uno::UNO_QUERY_THROW );
     xSelection->select( uno::makeAny( xSelRange ) );
@@ -80,18 +74,16 @@ void SwVbaColumn::SelectColumn( const uno::Reference< frame::XModel >& xModel, c
 OUString
 SwVbaColumn::getServiceImplName()
 {
-    return OUString("SwVbaColumn");
+    return "SwVbaColumn";
 }
 
 uno::Sequence< OUString >
 SwVbaColumn::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.word.Column";
-    }
+        "ooo.vba.word.Column"
+    };
     return aServiceNames;
 }
 

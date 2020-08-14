@@ -20,22 +20,17 @@
 #ifndef INCLUDED_SAL_TYPES_H
 #define INCLUDED_SAL_TYPES_H
 
-#include <sal/config.h>
+#include "sal/config.h"
 
 #include <stddef.h>
 
-#include <sal/macros.h>
-#include <sal/typesizes.h>
+#include "sal/macros.h"
+#include "sal/typesizes.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-/********************************************************************************/
-/* Data types
-*/
-
-/* Boolean */
 typedef unsigned char sal_Bool;
 #   define sal_False ((sal_Bool)0)
 #   define sal_True  ((sal_Bool)1)
@@ -135,7 +130,7 @@ typedef unsigned char sal_uChar;
 #if defined LIBO_INTERNAL_ONLY && defined __cplusplus
     #define SAL_UNICODE_NOTEQUAL_WCHAR_T
     typedef char16_t sal_Unicode;
-#elif defined(SAL_W32)
+#elif defined(_WIN32)
     typedef wchar_t sal_Unicode;
 #else
     #define SAL_UNICODE_NOTEQUAL_WCHAR_T
@@ -195,10 +190,6 @@ typedef void *                   sal_Handle;
     #error "Please make sure SAL_TYPES_SIZEOFPOINTER is defined for your architecture/compiler"
 #endif
 
-/********************************************************************************/
-/* Useful defines
- */
-
 /* The following SAL_MIN_INTn defines codify the assumption that the signed
  * sal_Int types use two's complement representation.  Defining them as
  * "-0x7F... - 1" instead of as "-0x80..." prevents warnings about applying the
@@ -235,7 +226,6 @@ typedef void *                   sal_Handle;
 #   define SAL_DLLPUBLIC_TEMPLATE
 #   define SAL_DLLPUBLIC_RTTI
 #   define SAL_CALL         __cdecl
-#   define SAL_CALL_ELLIPSE __cdecl
 #elif defined SAL_UNX
 #   if defined(__GNUC__)
 #     if defined(DISABLE_DYNLOADING)
@@ -270,7 +260,6 @@ typedef void *                   sal_Handle;
 #     define SAL_DLLPUBLIC_RTTI
 #   endif
 #   define SAL_CALL
-#   define SAL_CALL_ELLIPSE
 #else
 #   error("unknown platform")
 #endif
@@ -299,7 +288,9 @@ typedef void *                   sal_Handle;
     Compilers that support a construct of this nature will emit a compile
     time warning on unchecked return value.
 */
-#if (defined __GNUC__ \
+#if defined LIBO_INTERNAL_ONLY && defined __cplusplus
+#define SAL_WARN_UNUSED_RESULT [[nodiscard]]
+#elif (defined __GNUC__ \
      && (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 1))) \
     || defined __clang__
 #   define SAL_WARN_UNUSED_RESULT __attribute__((warn_unused_result))
@@ -317,12 +308,11 @@ typedef void *                   sal_Handle;
 #   define SAL_NO_VTABLE
 #endif
 
-#ifdef SAL_W32
+#ifdef _WIN32
 #   pragma pack(push, 8)
 #endif
 
 /** This is the binary specification of a SAL sequence.
-    <br>
 */
 typedef struct _sal_Sequence
 {
@@ -339,7 +329,7 @@ typedef struct _sal_Sequence
 
 #define SAL_SEQUENCE_HEADER_SIZE ((sal_Size) offsetof(sal_Sequence,elements))
 
-#if defined( SAL_W32)
+#if defined( _WIN32)
 #pragma pack(pop)
 #endif
 
@@ -404,7 +394,7 @@ namespace css = ::com::sun::star;
 
 /** C++11 "override" feature.
 
-    For LIBO_INTERNAL_ONLY, force the method to override a existing method in
+    For LIBO_INTERNAL_ONLY, force the method to override an existing method in
     parent, error out if the method with the correct signature does not exist.
 
     @since LibreOffice 4.1
@@ -413,28 +403,6 @@ namespace css = ::com::sun::star;
 #define SAL_OVERRIDE override
 #else
 #define SAL_OVERRIDE
-#endif
-
-/** C++11 "final" feature.
-
-    For LIBO_INTERNAL_ONLY, mark a class as non-derivable or a method as non-overridable.
-
-    @since LibreOffice 4.1
-*/
-#if defined LIBO_INTERNAL_ONLY
-#define SAL_FINAL final
-#else
-#define SAL_FINAL
-#endif
-
-#if defined LIBO_INTERNAL_ONLY
-#if defined __clang__
-#define SAL_FALLTHROUGH [[clang::fallthrough]]
-#elif defined __GNUC__ && __GNUC__ >= 7
-#define SAL_FALLTHROUGH [[fallthrough]]
-#else
-#define SAL_FALLTHROUGH
-#endif
 #endif
 
 #endif /* __cplusplus */
@@ -483,10 +451,12 @@ template< typename T1, typename T2 > inline T1 static_int_cast(T2 n) {
         SAL_DEPRECATED("Don't use, it's evil.") void doit(int nPara);
 */
 
-#if HAVE_GCC_DEPRECATED_MESSAGE
+#if defined __GNUC__ || defined __clang__
+#if defined LIBO_INTERNAL_ONLY
 #    define SAL_DEPRECATED(message) __attribute__((deprecated(message)))
-#elif defined __GNUC__ || defined __clang__
+#else
 #    define SAL_DEPRECATED(message) __attribute__((deprecated))
+#endif
 #elif defined(_MSC_VER)
 #    define SAL_DEPRECATED(message) __declspec(deprecated(message))
 #else
@@ -517,7 +487,7 @@ template< typename T1, typename T2 > inline T1 static_int_cast(T2 n) {
         SAL_WNODEPRECATED_DECLARATIONS_POP
 */
 
-#if HAVE_GCC_PRAGMA_OPERATOR
+#if defined LIBO_INTERNAL_ONLY && defined __GNUC__
 #define SAL_WNODEPRECATED_DECLARATIONS_PUSH \
     _Pragma(SAL_STRINGIFY_ARG(GCC diagnostic push)) \
     _Pragma(SAL_STRINGIFY_ARG(GCC diagnostic ignored "-Wdeprecated-declarations"))
@@ -600,10 +570,8 @@ template< typename T1, typename T2 > inline T1 static_int_cast(T2 n) {
 
 */
 
-#if HAVE_GCC_ATTRIBUTE_WARN_UNUSED
+#if defined LIBO_INTERNAL_ONLY && (defined __GNUC__ || defined __clang__)
 #define SAL_WARN_UNUSED __attribute__((warn_unused))
-#elif defined __clang__
-#define SAL_WARN_UNUSED __attribute__((annotate("lo_warn_unused")))
 #else
 #define SAL_WARN_UNUSED
 #endif
@@ -682,21 +650,6 @@ template< typename T1, typename T2 > inline T1 static_int_cast(T2 n) {
 
 /// @endcond
 
-#if defined LIBO_INTERNAL_ONLY && defined __cplusplus && defined SAL_W32
-/// @cond INTERNAL
-// Temporary scaffolding for the MSVC sal_Unicode wchar_t -> char16_t change; to
-// be removed again:
-inline wchar_t * SAL_W(char16_t * p)
-{ return reinterpret_cast<wchar_t *>(p); }
-inline wchar_t const * SAL_W(char16_t const * p)
-{ return reinterpret_cast<wchar_t const *>(p); }
-inline char16_t * SAL_U(wchar_t * p)
-{ return reinterpret_cast<char16_t *>(p); }
-inline char16_t const * SAL_U(wchar_t const * p)
-{ return reinterpret_cast<char16_t const *>(p); }
-/// @endcond
-#endif
-
 /// @cond INTERNAL
 /** Annotate pointer-returning functions to indicate that such a pointer
     is never nullptr.
@@ -707,7 +660,11 @@ inline char16_t const * SAL_U(wchar_t const * p)
 
     @since LibreOffice 5.5
 */
-#if defined LIBO_INTERNAL_ONLY && ((defined __GNUC__ && __GNUC__ > 4) || defined __clang__)
+#ifndef __has_attribute
+#define __has_attribute(x) 0
+#endif
+
+#if defined LIBO_INTERNAL_ONLY && ((defined __GNUC__ && !defined __clang__) || (defined __clang__ && __has_attribute(returns_nonnull)))
 #define SAL_RETURNS_NONNULL  __attribute__((returns_nonnull))
 #else
 #define SAL_RETURNS_NONNULL

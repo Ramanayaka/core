@@ -16,22 +16,22 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "sal/config.h"
+#include <sal/config.h>
 
-#include "rtl/tencinfo.h"
-#include "rtl/textenc.h"
+#include <rtl/tencinfo.h>
+#include <rtl/textenc.h>
 
 #include "context.hxx"
 #include "convertgb18030.hxx"
 #include "generate/gb180302000.tab"
 
-static ImplGb18030ConverterData const aImplGb18030ConvertData
+ImplGb18030ConverterData const aImplGb18030ConvertData
     = { aImplGb180302000ToUnicodeData,
         aImplGb180302000ToUnicodeRanges,
         aImplUnicodeToGb180302000Data,
         aImplUnicodeToGb180302000Ranges };
 
-static ImplTextEncodingData const aImplGb18030TextEncodingData
+ImplTextEncodingData const aImplGb18030TextEncodingData
     = { { &aImplGb18030ConvertData,
           &ImplConvertGb18030ToUnicode,
           &ImplConvertUnicodeToGb18030,

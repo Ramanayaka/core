@@ -19,55 +19,49 @@
 
 #include <config_folders.h>
 
-#include "contentsink.hxx"
-#include "pdfparse.hxx"
-#include "pdfihelper.hxx"
-#include "wrapper.hxx"
+#include <contentsink.hxx>
+#include <pdfparse.hxx>
+#include <pdfihelper.hxx>
+#include <wrapper.hxx>
 
-#include "osl/file.h"
-#include "osl/file.hxx"
-#include "osl/thread.h"
-#include "osl/process.h"
-#include "osl/diagnose.h"
-#include "rtl/bootstrap.hxx"
-#include "rtl/ustring.hxx"
-#include "rtl/ustrbuf.hxx"
-#include "rtl/strbuf.hxx"
-#include "rtl/byteseq.hxx"
+#include <osl/file.h>
+#include <osl/file.hxx>
+#include <osl/thread.h>
+#include <osl/process.h>
+#include <osl/diagnose.h>
+#include <rtl/bootstrap.hxx>
+#include <rtl/ustring.hxx>
+#include <rtl/ustrbuf.hxx>
+#include <rtl/strbuf.hxx>
+#include <sal/log.hxx>
 
 #include <comphelper/propertysequence.hxx>
-#include "cppuhelper/exc_hlp.hxx"
-#include "com/sun/star/io/XInputStream.hpp"
-#include "com/sun/star/uno/XComponentContext.hpp"
-#include "com/sun/star/awt/FontDescriptor.hpp"
-#include "com/sun/star/beans/XMaterialHolder.hpp"
-#include "com/sun/star/rendering/PathCapType.hpp"
-#include "com/sun/star/rendering/PathJoinType.hpp"
-#include "com/sun/star/rendering/XColorSpace.hpp"
-#include "com/sun/star/rendering/XPolyPolygon2D.hpp"
-#include "com/sun/star/rendering/XBitmap.hpp"
-#include "com/sun/star/geometry/Matrix2D.hpp"
-#include "com/sun/star/geometry/AffineMatrix2D.hpp"
-#include "com/sun/star/geometry/RealRectangle2D.hpp"
-#include "com/sun/star/task/XInteractionHandler.hpp"
+#include <com/sun/star/io/XInputStream.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
+#include <com/sun/star/awt/FontDescriptor.hpp>
+#include <com/sun/star/beans/XMaterialHolder.hpp>
+#include <com/sun/star/rendering/PathCapType.hpp>
+#include <com/sun/star/rendering/PathJoinType.hpp>
+#include <com/sun/star/rendering/XPolyPolygon2D.hpp>
+#include <com/sun/star/geometry/Matrix2D.hpp>
+#include <com/sun/star/geometry/AffineMatrix2D.hpp>
+#include <com/sun/star/geometry/RealRectangle2D.hpp>
+#include <com/sun/star/geometry/RealSize2D.hpp>
+#include <com/sun/star/task/XInteractionHandler.hpp>
 
-#include "basegfx/point/b2dpoint.hxx"
-#include "basegfx/polygon/b2dpolypolygon.hxx"
-#include "basegfx/polygon/b2dpolygon.hxx"
-#include "basegfx/tools/canvastools.hxx"
-#include "basegfx/tools/unopolypolygon.hxx"
+#include <basegfx/point/b2dpoint.hxx>
+#include <basegfx/polygon/b2dpolypolygon.hxx>
+#include <basegfx/polygon/b2dpolygon.hxx>
+#include <basegfx/utils/unopolypolygon.hxx>
 
 #include <vcl/metric.hxx>
 #include <vcl/font.hxx>
 #include <vcl/virdev.hxx>
-#include <vcl/lazydelete.hxx>
 
 #include <memory>
 #include <unordered_map>
 #include <string.h>
 #include <stdlib.h>
-
-#include "rtl/bootstrap.h"
 
 #include <rtl/character.hxx>
 
@@ -136,7 +130,7 @@ enum parseKey {
 #pragma clang diagnostic ignored "-Wdeprecated-register"
 #pragma clang diagnostic ignored "-Wextra-tokens"
 #endif
-#include "hash.cxx"
+#include <hash.cxx>
 #if defined _MSC_VER && defined __clang__
 #pragma clang diagnostic pop
 #endif
@@ -203,58 +197,51 @@ public:
     void parseLine( const OString& rLine );
 };
 
-
-namespace
+/** Unescapes line-ending characters in input string. These
+    characters are encoded as pairs of characters: '\\' 'n', resp.
+    '\\' 'r'. This function converts them back to '\n', resp. '\r'.
+  */
+OString lcl_unescapeLineFeeds(const OString& i_rStr)
 {
+    const size_t nOrigLen(sal::static_int_cast<size_t>(i_rStr.getLength()));
+    const char* const pOrig(i_rStr.getStr());
+    std::unique_ptr<char[]> pBuffer(new char[nOrigLen + 1]);
 
-    /** Unescapes line-ending characters in input string. These
-        characters are encoded as pairs of characters: '\\' 'n', resp.
-        '\\' 'r'. This function converts them back to '\n', resp. '\r'.
-      */
-    OString lcl_unescapeLineFeeds(const OString& i_rStr)
+    const char* pRead(pOrig);
+    char* pWrite(pBuffer.get());
+    const char* pCur(pOrig);
+    while ((pCur = strchr(pCur, '\\')) != nullptr)
     {
-        const size_t nOrigLen(sal::static_int_cast<size_t>(i_rStr.getLength()));
-        const sal_Char* const pOrig(i_rStr.getStr());
-        std::unique_ptr<sal_Char[]> pBuffer(new sal_Char[nOrigLen + 1]);
-
-        const sal_Char* pRead(pOrig);
-        sal_Char* pWrite(pBuffer.get());
-        const sal_Char* pCur(pOrig);
-        while ((pCur = strchr(pCur, '\\')) != nullptr)
+        const char cNext(pCur[1]);
+        if (cNext == 'n' || cNext == 'r' || cNext == '\\')
         {
-            const sal_Char cNext(pCur[1]);
-            if (cNext == 'n' || cNext == 'r' || cNext == '\\')
-            {
-                const size_t nLen(pCur - pRead);
-                strncpy(pWrite, pRead, nLen);
-                pWrite += nLen;
-                *pWrite = cNext == 'n' ? '\n' : (cNext == 'r' ? '\r' : '\\');
-                ++pWrite;
-                pCur = pRead = pCur + 2;
-            }
-            else
-            {
-                // Just continue on the next character. The current
-                // block will be copied the next time it goes through the
-                // 'if' branch.
-                ++pCur;
-            }
-        }
-        // maybe there are some data to copy yet
-        if (sal::static_int_cast<size_t>(pRead - pOrig) < nOrigLen)
-        {
-            const size_t nLen(nOrigLen - (pRead - pOrig));
+            const size_t nLen(pCur - pRead);
             strncpy(pWrite, pRead, nLen);
             pWrite += nLen;
+            *pWrite = cNext == 'n' ? '\n' : (cNext == 'r' ? '\r' : '\\');
+            ++pWrite;
+            pCur = pRead = pCur + 2;
         }
-        *pWrite = '\0';
-
-        OString aResult(pBuffer.get());
-        return aResult;
+        else
+        {
+            // Just continue on the next character. The current
+            // block will be copied the next time it goes through the
+            // 'if' branch.
+            ++pCur;
+        }
     }
+    // maybe there are some data to copy yet
+    if (sal::static_int_cast<size_t>(pRead - pOrig) < nOrigLen)
+    {
+        const size_t nLen(nOrigLen - (pRead - pOrig));
+        strncpy(pWrite, pRead, nLen);
+        pWrite += nLen;
+    }
+    *pWrite = '\0';
 
+    OString aResult(pBuffer.get());
+    return aResult;
 }
-
 
 OString Parser::readNextToken()
 {
@@ -293,9 +280,11 @@ void Parser::readBinaryData( uno::Sequence<sal_Int8>& rBuf )
     sal_Int8*           pBuf( rBuf.getArray() );
     sal_uInt64          nBytesRead(0);
     oslFileError        nRes=osl_File_E_None;
-    while( nFileLen &&
-           osl_File_E_None == (nRes=osl_readFile( m_pErr, pBuf, nFileLen, &nBytesRead )) )
+    while( nFileLen )
     {
+        nRes = osl_readFile( m_pErr, pBuf, nFileLen, &nBytesRead );
+        if (osl_File_E_None != nRes )
+            break;
         pBuf += nBytesRead;
         nFileLen -= sal::static_int_cast<sal_Int32>(nBytesRead);
     }
@@ -401,7 +390,6 @@ void Parser::readLineCap()
     switch( readInt32() )
     {
         default:
-            // FALLTHROUGH intended
         case 0: nCap = rendering::PathCapType::BUTT; break;
         case 1: nCap = rendering::PathCapType::ROUND; break;
         case 2: nCap = rendering::PathCapType::SQUARE; break;
@@ -434,7 +422,6 @@ void Parser::readLineJoin()
     switch( readInt32() )
     {
         default:
-            // FALLTHROUGH intended
         case 0: nJoin = rendering::PathJoinType::MITER; break;
         case 1: nJoin = rendering::PathJoinType::ROUND; break;
         case 2: nJoin = rendering::PathJoinType::BEVEL; break;
@@ -768,7 +755,7 @@ void Parser::readMask()
     readInt32(nHeight);
     readInt32(nInvert);
 
-    m_pSink->drawMask( readImageImpl(), nInvert );
+    m_pSink->drawMask( readImageImpl(), nInvert != 0);
 }
 
 void Parser::readLink()
@@ -911,10 +898,8 @@ static bool checkEncryption( const OUString&                               i_rPa
                              )
 {
     bool bSuccess = false;
-    OString aPDFFile;
-    aPDFFile = OUStringToOString( i_rPath, osl_getThreadTextEncoding() );
+    OString aPDFFile = OUStringToOString( i_rPath, osl_getThreadTextEncoding() );
 
-    pdfparse::PDFReader aParser;
     std::unique_ptr<pdfparse::PDFEntry> pEntry( pdfparse::PDFReader::read( aPDFFile.getStr() ));
     if( pEntry )
     {
@@ -969,6 +954,8 @@ static bool checkEncryption( const OUString&                               i_rPa
     return bSuccess;
 }
 
+namespace {
+
 class Buffering
 {
     static const int SIZE = 64*1024;
@@ -1008,12 +995,14 @@ public:
     }
 };
 
-bool xpdf_ImportFromFile( const OUString&                             rURL,
-                          const ContentSinkSharedPtr&                        rSink,
-                          const uno::Reference< task::XInteractionHandler >& xIHdl,
-                          const OUString&                               rPwd,
-                          const uno::Reference< uno::XComponentContext >&    xContext,
-                          const OUString&                                    rFilterOptions )
+}
+
+bool xpdf_ImportFromFile(const OUString& rURL,
+                         const ContentSinkSharedPtr& rSink,
+                         const uno::Reference<task::XInteractionHandler>& xIHdl,
+                         const OUString& rPwd,
+                         const uno::Reference<uno::XComponentContext>& xContext,
+                         const OUString& rFilterOptions)
 {
     OSL_ASSERT(rSink);
 
@@ -1114,18 +1103,23 @@ bool xpdf_ImportFromFile( const OUString&                             rURL,
                 oslFileError nRes;
 
                 // skip garbage \r \n at start of line
-                while( osl_File_E_None == (nRes = aBuffering.read(&aChar, 1, &nBytesRead)) &&
-                       nBytesRead == 1 &&
-                       (aChar == '\n' || aChar == '\r') ) ;
+                for (;;)
+                {
+                    nRes = aBuffering.read(&aChar, 1, &nBytesRead);
+                    if (osl_File_E_None != nRes || nBytesRead != 1 || (aChar != '\n' && aChar != '\r') )
+                        break;
+                }
                 if ( osl_File_E_None != nRes )
                     break;
 
                 if( aChar != '\n' && aChar != '\r' )
                     line.append( aChar );
 
-                while( osl_File_E_None == (nRes = aBuffering.read(&aChar, 1, &nBytesRead)) &&
-                       nBytesRead == 1 && aChar != '\n' && aChar != '\r' )
+                for (;;)
                 {
+                    nRes = aBuffering.read(&aChar, 1, &nBytesRead);
+                    if ( osl_File_E_None != nRes || nBytesRead != 1 || aChar == '\n' || aChar == '\r' )
+                        break;
                     line.append( aChar );
                 }
                 if ( osl_File_E_None != nRes )

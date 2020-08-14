@@ -19,18 +19,16 @@
 
 
 #include <sdr/contact/viewcontactofe3dextrude.hxx>
-#include <svx/extrud3d.hxx>
+#include <extrud3d.hxx>
 #include <drawinglayer/primitive3d/sdrextrudeprimitive3d.hxx>
-#include <svx/sdr/primitive2d/sdrattributecreator.hxx>
+#include <sdr/primitive2d/sdrattributecreator.hxx>
 #include <sdr/primitive3d/sdrattributecreator3d.hxx>
 #include <basegfx/polygon/b2dpolypolygontools.hxx>
 #include <memory>
 
 
-namespace sdr
+namespace sdr::contact
 {
-    namespace contact
-    {
         ViewContactOfE3dExtrude::ViewContactOfE3dExtrude(E3dExtrudeObj& rExtrude)
         :   ViewContactOfE3d(rExtrude)
         {
@@ -56,13 +54,13 @@ namespace sdr
             // calculate texture size; use size of top/bottom cap to get a perfect mapping
             // for the caps. The in-between geometry will get a stretched size with a
             // relative factor size of caps to extrude depth
-            const basegfx::B2DRange aRange(basegfx::tools::getRange(aPolyPolygon));
+            const basegfx::B2DRange aRange(basegfx::utils::getRange(aPolyPolygon));
             const basegfx::B2DVector aTextureSize(aRange.getWidth(), aRange.getHeight());
 
             // get more data
-            const double fDepth((double)GetE3dExtrudeObj().GetExtrudeDepth());
-            const double fDiagonal((double)GetE3dExtrudeObj().GetPercentDiagonal() / 100.0);
-            const double fBackScale((double)GetE3dExtrudeObj().GetPercentBackScale() / 100.0);
+            const double fDepth(static_cast<double>(GetE3dExtrudeObj().GetExtrudeDepth()));
+            const double fDiagonal(static_cast<double>(GetE3dExtrudeObj().GetPercentDiagonal()) / 100.0);
+            const double fBackScale(static_cast<double>(GetE3dExtrudeObj().GetPercentBackScale()) / 100.0);
             const bool bSmoothNormals(GetE3dExtrudeObj().GetSmoothNormals()); // Plane itself
             const bool bSmoothLids(GetE3dExtrudeObj().GetSmoothLids()); // Front/back
             const bool bCharacterMode(GetE3dExtrudeObj().GetCharacterMode());
@@ -80,7 +78,7 @@ namespace sdr
 
             return xRetval;
         }
-    } // end of namespace contact
-} // end of namespace sdr
+
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -8,12 +8,14 @@
  */
 
 #include <opencl/openclwrapper.hxx>
+#include <formula/vectortoken.hxx>
+#include <sal/log.hxx>
 
 #include "opbase.hxx"
 
 using namespace formula;
 
-namespace sc { namespace opencl {
+namespace sc::opencl {
 
 UnhandledToken::UnhandledToken(
     const char* m, const std::string& fn, int ln ) :
@@ -26,11 +28,14 @@ OpenCLError::OpenCLError( const std::string& function, cl_int error, const std::
     // CLInterpreterContext::launchKernel() where OpenCLError is
     // caught already uses SAL_WARN() to display it.
 
-    // SAL_INFO("sc.opencl", "OpenCL error: " << ::opencl::errorString(mError));
+    // SAL_INFO("sc.opencl", "OpenCL error: " << openclwrapper::errorString(mError));
 }
 
 Unhandled::Unhandled( const std::string& fn, int ln ) :
     mFile(fn), mLineNumber(ln) {}
+
+InvalidParameterCount::InvalidParameterCount( int parameterCount, const std::string& file, int ln ) :
+    mParameterCount(parameterCount), mFile(file), mLineNumber(ln) {}
 
 DynamicKernelArgument::DynamicKernelArgument( const ScCalcConfig& config, const std::string& s,
     const FormulaTreeNodeRef& ft ) :
@@ -47,25 +52,10 @@ std::string DynamicKernelArgument::GenStringSlidingWindowDeclRef( bool ) const
     return std::string("");
 }
 
-bool DynamicKernelArgument::IsMixedArgument() const
-{
-    return false;
-}
-
 /// Generate use/references to the argument
 void DynamicKernelArgument::GenDeclRef( std::stringstream& ss ) const
 {
     ss << mSymName;
-}
-
-void DynamicKernelArgument::GenNumDeclRef( std::stringstream& ss ) const
-{
-    ss << ",";
-}
-
-void DynamicKernelArgument::GenStringDeclRef( std::stringstream& ss ) const
-{
-    ss << ",";
 }
 
 void DynamicKernelArgument::GenSlidingWindowFunction( std::stringstream& ) {}
@@ -109,7 +99,7 @@ VectorRef::~VectorRef()
     {
         cl_int err;
         err = clReleaseMemObject(mpClmem);
-        SAL_WARN_IF(err != CL_SUCCESS, "sc.opencl", "clReleaseMemObject failed: " << ::opencl::errorString(err));
+        SAL_WARN_IF(err != CL_SUCCESS, "sc.opencl", "clReleaseMemObject failed: " << openclwrapper::errorString(err));
     }
 }
 
@@ -207,7 +197,7 @@ void Normal::GenSlidingWindowFunction(
 }
 
 void CheckVariables::GenTmpVariables(
-    std::stringstream& ss, SubArguments& vSubArguments )
+    std::stringstream& ss, const SubArguments& vSubArguments )
 {
     for (size_t i = 0; i < vSubArguments.size(); i++)
     {
@@ -261,23 +251,22 @@ void CheckVariables::CheckSubArgumentIsNan( std::stringstream& ss,
         ss << vSubArguments[i]->GenSlidingWindowDeclRef();
         ss << ";\n";
     }
-    if (vSubArguments[i]->GetFormulaToken()->GetType() == formula::svDouble ||
-        vSubArguments[i]->GetFormulaToken()->GetOpCode() != ocPush)
-    {
-        ss << "    if(";
-        ss << "isnan(";
-        ss << vSubArguments[i]->GenSlidingWindowDeclRef();
-        ss << "))\n";
-        ss << "        tmp";
-        ss << i;
-        ss << "=0;\n    else \n";
-        ss << "        tmp";
-        ss << i;
-        ss << "=";
-        ss << vSubArguments[i]->GenSlidingWindowDeclRef();
-        ss << ";\n";
+    if (vSubArguments[i]->GetFormulaToken()->GetType() != formula::svDouble &&
+        vSubArguments[i]->GetFormulaToken()->GetOpCode() == ocPush)
+        return;
 
-    }
+    ss << "    if(";
+    ss << "isnan(";
+    ss << vSubArguments[i]->GenSlidingWindowDeclRef();
+    ss << "))\n";
+    ss << "        tmp";
+    ss << i;
+    ss << "=0;\n    else \n";
+    ss << "        tmp";
+    ss << i;
+    ss << "=";
+    ss << vSubArguments[i]->GenSlidingWindowDeclRef();
+    ss << ";\n";
 
 }
 
@@ -319,7 +308,7 @@ void CheckVariables::CheckAllSubArgumentIsNan(
 }
 
 void CheckVariables::UnrollDoubleVector( std::stringstream& ss,
-    std::stringstream& unrollstr, const formula::DoubleVectorRefToken* pCurDVR,
+    const std::stringstream& unrollstr, const formula::DoubleVectorRefToken* pCurDVR,
     int nCurWindowSize )
 {
     int unrollSize = 16;
@@ -396,6 +385,6 @@ void CheckVariables::UnrollDoubleVector( std::stringstream& ss,
     ss << "    }\n";
 }
 
-}}
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

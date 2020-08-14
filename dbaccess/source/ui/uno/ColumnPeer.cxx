@@ -18,10 +18,10 @@
  */
 
 #include "ColumnPeer.hxx"
-#include "ColumnControlWindow.hxx"
+#include <ColumnControlWindow.hxx>
 #include <vcl/svapp.hxx>
-#include "dbustrings.hrc"
-#include "FieldDescriptions.hxx"
+#include <strings.hxx>
+#include <FieldDescriptions.hxx>
 
 namespace dbaui
 {
@@ -36,7 +36,7 @@ OColumnPeer::OColumnPeer(vcl::Window* _pParent,const Reference<XComponentContext
 {
     osl_atomic_increment( &m_refCount );
     {
-        VclPtrInstance<OColumnControlWindow> pFieldControl(_pParent, _rxContext);
+        VclPtrInstance<OColumnControlTopLevel> pFieldControl(_pParent, _rxContext);
         pFieldControl->SetComponentInterface(this);
         pFieldControl->Show();
     }
@@ -46,65 +46,66 @@ OColumnPeer::OColumnPeer(vcl::Window* _pParent,const Reference<XComponentContext
 void OColumnPeer::setEditWidth(sal_Int32 _nWidth)
 {
     SolarMutexGuard aGuard;
-    VclPtr<OColumnControlWindow> pFieldControl = GetAs<OColumnControlWindow>();
+    VclPtr<OColumnControlTopLevel> pFieldControl = GetAs<OColumnControlTopLevel>();
     if ( pFieldControl )
-        pFieldControl->setEditWidth(_nWidth);
+        pFieldControl->GetControl().setEditWidth(_nWidth);
 }
 
 void OColumnPeer::setColumn(const Reference< XPropertySet>& _xColumn)
 {
     SolarMutexGuard aGuard;
 
-    VclPtr<OColumnControlWindow> pFieldControl = GetAs<OColumnControlWindow>();
-    if ( pFieldControl )
+    VclPtr<OColumnControlTopLevel> pFieldControl = GetAs<OColumnControlTopLevel>();
+    if ( !pFieldControl )
+        return;
+
+    OColumnControlWindow& rControl = pFieldControl->GetControl();
+
+    if ( m_pActFieldDescr )
     {
-        if ( m_pActFieldDescr )
-        {
-            delete m_pActFieldDescr;
-            m_pActFieldDescr = nullptr;
-        }
-        if ( _xColumn.is() )
-        {
-            sal_Int32 nType         = 0;
-            sal_Int32 nScale        = 0;
-            sal_Int32 nPrecision    = 0;
-            bool bAutoIncrement = false;
-            OUString sTypeName;
-
-            try
-            {
-                // get the properties from the column
-                _xColumn->getPropertyValue(PROPERTY_TYPENAME)       >>= sTypeName;
-                _xColumn->getPropertyValue(PROPERTY_TYPE)           >>= nType;
-                _xColumn->getPropertyValue(PROPERTY_SCALE)          >>= nScale;
-                _xColumn->getPropertyValue(PROPERTY_PRECISION)      >>= nPrecision;
-                _xColumn->getPropertyValue(PROPERTY_ISAUTOINCREMENT)    >>= bAutoIncrement;
-            }
-            catch(const Exception&)
-            {
-            }
-
-            m_pActFieldDescr = new OFieldDescription(_xColumn,true);
-            // search for type
-            OUString const sCreateParam("x");
-            bool bForce;
-            TOTypeInfoSP pTypeInfo = ::dbaui::getTypeInfoFromType(*pFieldControl->getTypeInfo(),nType,sTypeName,sCreateParam,nPrecision,nScale,bAutoIncrement,bForce);
-            if ( !pTypeInfo.get() )
-                pTypeInfo = pFieldControl->getDefaultTyp();
-
-            m_pActFieldDescr->FillFromTypeInfo(pTypeInfo,true,false);
-            m_xColumn = _xColumn;
-        }
-        pFieldControl->DisplayData(m_pActFieldDescr);
+        delete m_pActFieldDescr;
+        m_pActFieldDescr = nullptr;
     }
+    if ( _xColumn.is() )
+    {
+        sal_Int32 nType         = 0;
+        sal_Int32 nScale        = 0;
+        sal_Int32 nPrecision    = 0;
+        bool bAutoIncrement = false;
+        OUString sTypeName;
+
+        try
+        {
+            // get the properties from the column
+            _xColumn->getPropertyValue(PROPERTY_TYPENAME)       >>= sTypeName;
+            _xColumn->getPropertyValue(PROPERTY_TYPE)           >>= nType;
+            _xColumn->getPropertyValue(PROPERTY_SCALE)          >>= nScale;
+            _xColumn->getPropertyValue(PROPERTY_PRECISION)      >>= nPrecision;
+            _xColumn->getPropertyValue(PROPERTY_ISAUTOINCREMENT)    >>= bAutoIncrement;
+        }
+        catch(const Exception&)
+        {
+        }
+
+        m_pActFieldDescr = new OFieldDescription(_xColumn,true);
+        // search for type
+        bool bForce;
+        TOTypeInfoSP pTypeInfo = ::dbaui::getTypeInfoFromType(*rControl.getTypeInfo(),nType,sTypeName,"x",nPrecision,nScale,bAutoIncrement,bForce);
+        if ( !pTypeInfo )
+            pTypeInfo = rControl.getDefaultTyp();
+
+        m_pActFieldDescr->FillFromTypeInfo(pTypeInfo,true,false);
+        m_xColumn = _xColumn;
+    }
+    rControl.DisplayData(m_pActFieldDescr);
 }
 
 void OColumnPeer::setConnection(const Reference< XConnection>& _xCon)
 {
     SolarMutexGuard aGuard;
-    VclPtr<OColumnControlWindow> pFieldControl = GetAs<OColumnControlWindow>();
+    VclPtr<OColumnControlTopLevel> pFieldControl = GetAs<OColumnControlTopLevel>();
     if ( pFieldControl )
-        pFieldControl->setConnection(_xCon);
+        pFieldControl->GetControl().setConnection(_xCon);
 }
 
 void OColumnPeer::setProperty( const OUString& _rPropertyName, const Any& Value)
@@ -128,14 +129,14 @@ void OColumnPeer::setProperty( const OUString& _rPropertyName, const Any& Value)
 Any OColumnPeer::getProperty( const OUString& _rPropertyName )
 {
     Any aProp;
-    VclPtr< OFieldDescControl > pFieldControl = GetAs< OFieldDescControl >();
+    VclPtr<OColumnControlTopLevel> pFieldControl = GetAs<OColumnControlTopLevel>();
     if (pFieldControl && _rPropertyName == PROPERTY_COLUMN)
     {
         aProp <<= m_xColumn;
     }
     else if (pFieldControl && _rPropertyName == PROPERTY_ACTIVE_CONNECTION)
     {
-        aProp <<= pFieldControl->getConnection();
+        aProp <<= pFieldControl->GetControl().getConnection();
     }
     else
         aProp = VCLXWindow::getProperty(_rPropertyName);

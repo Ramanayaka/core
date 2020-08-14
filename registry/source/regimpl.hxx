@@ -20,10 +20,10 @@
 #ifndef INCLUDED_REGISTRY_SOURCE_REGIMPL_HXX
 #define INCLUDED_REGISTRY_SOURCE_REGIMPL_HXX
 
-#include <set>
 #include <unordered_map>
 
 #include <regapi.hxx>
+#include <registry/regtype.h>
 #include <rtl/ustring.hxx>
 #include <osl/mutex.hxx>
 #include <store/store.hxx>
@@ -103,8 +103,8 @@ private:
 
     RegError    deleteSubkeysAndValues(ORegKey* pKey);
 
-    RegError    loadAndSaveValue(ORegKey* pTargetKey,
-                                 ORegKey* pSourceKey,
+    static RegError loadAndSaveValue(ORegKey* pTargetKey,
+                                 ORegKey const * pSourceKey,
                                  const OUString& valueName,
                                  sal_uInt32 nCut,
                                  bool bWarnings,
@@ -113,12 +113,12 @@ private:
     static RegError checkBlop(store::OStoreStream& rValue,
                           const OUString& sTargetPath,
                           sal_uInt32 srcValueSize,
-                          sal_uInt8* pSrcBuffer,
+                          sal_uInt8 const * pSrcBuffer,
                           bool bReport);
 
     static RegError mergeModuleValue(store::OStoreStream& rTargetValue,
-                                 RegistryTypeReader& reader,
-                                 RegistryTypeReader& reader2);
+                                 RegistryTypeReader const & reader,
+                                 RegistryTypeReader const & reader2);
 
     RegError    loadAndSaveKeys(ORegKey* pTargetKey,
                                 ORegKey* pSourceKey,
@@ -135,7 +135,7 @@ private:
                         const OUString& sName,
                         sal_Int16 nSpace) const;
 
-    typedef std::unordered_map< OUString, ORegKey*, OUStringHash > KeyMap;
+    typedef std::unordered_map< OUString, ORegKey* > KeyMap;
 
     sal_uInt32          m_refCount;
     osl::Mutex          m_mutex;
@@ -145,7 +145,7 @@ private:
     store::OStoreFile   m_file;
     KeyMap              m_openKeyTable;
 
-    const OUString ROOT;
+    static constexpr OUStringLiteral ROOT { "/" };
 };
 
 #endif

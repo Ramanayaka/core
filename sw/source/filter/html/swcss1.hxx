@@ -20,7 +20,10 @@
 #ifndef INCLUDED_SW_SOURCE_FILTER_HTML_SWCSS1_HXX
 #define INCLUDED_SW_SOURCE_FILTER_HTML_SWCSS1_HXX
 
-#include "poolfmt.hxx"
+#include <svtools/htmltokn.h>
+#include <tools/solar.h>
+
+#include <poolfmt.hxx>
 
 #include "svxcss1.hxx"
 
@@ -30,34 +33,36 @@ class SwTextFormatColl;
 class SvxBrushItem;
 class SwFormatDrop;
 class SwPageDesc;
+class SwHTMLParser;
 
 // This header looks harmless, but includes still quite
 // inconspicuous one or the other! On the other hand this class
-// is rarely needed. Therefore it's own header.
+// is rarely needed. Therefore its own header.
 
 class SwCSS1Parser : public SvxCSS1Parser
 {
-    SwDoc *pDoc;
+    SwDoc *m_pDoc;
+    SwHTMLParser const& m_rHTMLParser;
 
-    sal_uLong aFontHeights[7];
+    sal_uLong m_aFontHeights[7];
 
-    sal_uInt16 nDropCapCnt;
+    sal_uInt16 m_nDropCapCnt;
 
-    bool bIsNewDoc : 1;
+    bool m_bIsNewDoc : 1;
 
-    bool bBodyBGColorSet : 1;
-    bool bBodyBackgroundSet : 1;
-    bool bBodyTextSet : 1;
-    bool bBodyLinkSet : 1;
-    bool bBodyVLinkSet : 1;
+    bool m_bBodyBGColorSet : 1;
+    bool m_bBodyBackgroundSet : 1;
+    bool m_bBodyTextSet : 1;
+    bool m_bBodyLinkSet : 1;
+    bool m_bBodyVLinkSet : 1;
 
-    bool bSetFirstPageDesc : 1;
-    bool bSetRightPageDesc : 1;
+    bool m_bSetFirstPageDesc : 1;
+    bool m_bSetRightPageDesc : 1;
 
-    bool bTableHeaderTextCollSet : 1;
-    bool bTableTextCollSet : 1;
+    bool m_bTableHeaderTextCollSet : 1;
+    bool m_bTableTextCollSet : 1;
 
-    bool bLinkCharFormatsSet : 1;
+    bool m_bLinkCharFormatsSet : 1;
 
     const SwPageDesc* GetPageDesc( sal_uInt16 nPoolId, bool bCreate );
 
@@ -72,7 +77,8 @@ protected:
     using CSS1Parser::ParseStyleSheet;
 
 public:
-    SwCSS1Parser( SwDoc *pDoc, sal_uInt32 const aFHeight[7], const OUString& rBaseURL, bool bNewDoc );
+    SwCSS1Parser( SwDoc *pDoc, SwHTMLParser const& rParser,
+        sal_uInt32 const aFHeight[7], const OUString& rBaseURL, bool bNewDoc);
     virtual ~SwCSS1Parser() override;
 
     virtual bool ParseStyleSheet( const OUString& rIn ) override;
@@ -130,22 +136,22 @@ public:
     static Css1ScriptFlags GetScriptFromClass( OUString& rClass,
                                                bool bSubClassOnly = true );
 
-    bool IsBodyBGColorSet() const { return bBodyBGColorSet; }
-    bool IsBodyBackgroundSet() const { return bBodyBackgroundSet; }
-    bool IsBodyTextSet() const { return bBodyTextSet; }
-    bool IsBodyLinkSet() const { return bBodyLinkSet; }
-    bool IsBodyVLinkSet() const { return bBodyVLinkSet; }
+    bool IsBodyBGColorSet() const { return m_bBodyBGColorSet; }
+    bool IsBodyBackgroundSet() const { return m_bBodyBackgroundSet; }
+    bool IsBodyTextSet() const { return m_bBodyTextSet; }
+    bool IsBodyLinkSet() const { return m_bBodyLinkSet; }
+    bool IsBodyVLinkSet() const { return m_bBodyVLinkSet; }
 
-    bool IsSetFirstPageDesc() const { return bSetFirstPageDesc; }
-    bool IsSetRightPageDesc() const { return bSetRightPageDesc; }
+    bool IsSetFirstPageDesc() const { return m_bSetFirstPageDesc; }
+    bool IsSetRightPageDesc() const { return m_bSetRightPageDesc; }
 
-    void SetBodyBGColorSet() { bBodyBGColorSet = true; }
-    void SetBodyBackgroundSet() { bBodyBackgroundSet = true; }
-    void SetBodyTextSet() { bBodyTextSet = true; }
-    void SetBodyLinkSet() { bBodyLinkSet = true; }
-    void SetBodyVLinkSet() { bBodyVLinkSet = true; }
+    void SetBodyBGColorSet() { m_bBodyBGColorSet = true; }
+    void SetBodyBackgroundSet() { m_bBodyBackgroundSet = true; }
+    void SetBodyTextSet() { m_bBodyTextSet = true; }
+    void SetBodyLinkSet() { m_bBodyLinkSet = true; }
+    void SetBodyVLinkSet() { m_bBodyVLinkSet = true; }
 
-    SvxBrushItem makePageDescBackground() const;
+    std::unique_ptr<SvxBrushItem> makePageDescBackground() const;
 
     inline void SetTHTagStyles();
     inline void SetTDTagStyles();
@@ -172,19 +178,19 @@ inline const SwPageDesc* SwCSS1Parser::GetLeftPageDesc( bool bCreate )
 
 inline void SwCSS1Parser::SetTHTagStyles()
 {
-    if( !bTableHeaderTextCollSet )
+    if( !m_bTableHeaderTextCollSet )
         SetTableTextColl( true );
 }
 
 inline void SwCSS1Parser::SetTDTagStyles()
 {
-    if( !bTableTextCollSet )
+    if( !m_bTableTextCollSet )
         SetTableTextColl( false );
 }
 
 inline void SwCSS1Parser::SetATagStyles()
 {
-    if( !bLinkCharFormatsSet )
+    if( !m_bLinkCharFormatsSet )
         SetLinkCharFormats();
 }
 

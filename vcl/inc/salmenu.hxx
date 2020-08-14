@@ -29,12 +29,12 @@ class SalFrame;
 
 struct SalItemParams
 {
-    sal_uInt16      nId;                    // item Id
-    MenuItemType    eType;                  // MenuItem-Type
-    MenuItemBits    nBits;                  // MenuItem-Bits
+    Image           aImage;                 // Image
     VclPtr<Menu>    pMenu;                  // Pointer to Menu
     OUString        aText;                  // Menu-Text
-    Image           aImage;                 // Image
+    MenuItemType    eType;                  // MenuItem-Type
+    sal_uInt16      nId;                    // item Id
+    MenuItemBits    nBits;                  // MenuItem-Bits
 };
 
 struct SalMenuButtonItem
@@ -68,6 +68,7 @@ public:
     virtual void RemoveItem( unsigned nPos ) = 0;
     virtual void SetSubMenu( SalMenuItem* pSalMenuItem, SalMenu* pSubMenu, unsigned nPos ) = 0;
     virtual void SetFrame( const SalFrame* pFrame ) = 0;
+    virtual void SetItemBits( unsigned /*nPos*/, MenuItemBits /*nBits*/ ) {}
     virtual void CheckItem( unsigned nPos, bool bCheck ) = 0;
     virtual void EnableItem( unsigned nPos, bool bEnable ) = 0;
     virtual void SetItemText( unsigned nPos, SalMenuItem* pSalMenuItem, const OUString& rText )= 0;
@@ -90,6 +91,10 @@ public:
     // return Rectangle( Point( -1, -1 ), Size( 1, 1 ) ) if menu bar buttons implemented
     // but rectangle cannot be determined
     virtual tools::Rectangle GetMenuBarButtonRectPixel( sal_uInt16 i_nItemId, SalFrame* i_pReferenceFrame );
+
+    virtual int GetMenuBarHeight() const;
+
+    virtual void ApplyPersona();
 };
 
 #endif // INCLUDED_VCL_INC_SALMENU_HXX

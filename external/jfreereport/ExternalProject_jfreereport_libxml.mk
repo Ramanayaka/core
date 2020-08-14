@@ -17,9 +17,10 @@ $(eval $(call gb_ExternalProject_register_targets,jfreereport_libxml,\
 ))
 
 $(call gb_ExternalProject_get_state_target,jfreereport_libxml,build) :
+	$(call gb_Trace_StartRange,jfreereport_libxml,EXTERNAL)
 	$(call gb_ExternalProject_run,build,\
 		$(ICECREAM_RUN) "$(ANT)" \
-			-q \
+			$(if $(verbose),-v,-q) \
 			-f build.xml \
 			-Dbuild.label="build-$(LIBO_VERSION_MAJOR).$(LIBO_VERSION_MINOR).$(LIBO_VERSION_MICRO).$(LIBO_VERSION_PATCH)" \
 			-Dant.build.javac.source=$(JAVA_SOURCE_VER) \
@@ -29,5 +30,6 @@ $(call gb_ExternalProject_get_state_target,jfreereport_libxml,build) :
 			-Dproject.revision="$(LIBXML_VERSION)" \
 			$(if $(debug),-Dbuild.debug="on") jar \
 	)
+	$(call gb_Trace_EndRange,jfreereport_libxml,EXTERNAL)
 
 # vim: set noet sw=4 ts=4:

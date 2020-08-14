@@ -22,13 +22,13 @@
 // Format numbers to be the same! If that's not the case, we need to
 // adapt the code here. The implementation uses the conversions here.
 
-#define UNICODE
-
 #include <string.h>
 #include "ddeimp.hxx"
 #include <svl/svdde.hxx>
+#include <o3tl/char16_t2wchar_t.hxx>
 
 #include <osl/thread.h>
+#include <sot/exchange.hxx>
 
 DdeData::DdeData()
 {
@@ -67,7 +67,7 @@ DdeData::DdeData(const DdeData& rData)
     Lock();
 }
 
-DdeData::DdeData(DdeData&& rData)
+DdeData::DdeData(DdeData&& rData) noexcept
     : xImp(std::move(rData.xImp))
 {
 }
@@ -115,7 +115,7 @@ DdeData& DdeData::operator=(const DdeData& rData)
     return *this;
 }
 
-DdeData& DdeData::operator=(DdeData&& rData)
+DdeData& DdeData::operator=(DdeData&& rData) noexcept
 {
     xImp = std::move(rData.xImp);
     return *this;
@@ -136,7 +136,7 @@ sal_uLong DdeData::GetExternalFormat(SotClipboardFormatId nFmt)
 #if defined(_WIN32)
             OUString aName( SotExchange::GetFormatName( nFmt ) );
             if( !aName.isEmpty() )
-                return RegisterClipboardFormat( reinterpret_cast<LPCWSTR>(aName.getStr()) );
+                return RegisterClipboardFormatW( o3tl::toW(aName.getStr()) );
 #endif
         }
     }
@@ -157,10 +157,10 @@ SotClipboardFormatId DdeData::GetInternalFormat(sal_uLong nFmt)
 #if defined(_WIN32)
         if( nFmt >= CF_MAX )
         {
-            TCHAR szName[ 256 ];
+            WCHAR szName[ 256 ];
 
-            if(GetClipboardFormatName( nFmt, szName, sizeof(szName) ))
-                return SotExchange::RegisterFormatName( OUString(reinterpret_cast<const sal_Unicode*>(szName)) );
+            if(GetClipboardFormatNameW( nFmt, szName, SAL_N_ELEMENTS(szName) ))
+                return SotExchange::RegisterFormatName( o3tl::toU(szName) );
         }
 #endif
         break;

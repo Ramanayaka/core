@@ -22,10 +22,10 @@ namespace
 {
 
 class MemoryVar:
-    public RecursiveASTVisitor<MemoryVar>, public loplugin::Plugin
+    public loplugin::FilteringPlugin<MemoryVar>
 {
 public:
-    explicit MemoryVar(InstantiationData const & data): Plugin(data), mbChecking(false) {}
+    explicit MemoryVar(loplugin::InstantiationData const & data): FilteringPlugin(data), mbChecking(false) {}
 
     virtual void run() override {
         TraverseDecl(compiler.getASTContext().getTranslationUnitDecl());
@@ -50,7 +50,7 @@ private:
 StringRef MemoryVar::getFilename(SourceLocation loc)
 {
     SourceLocation spellingLocation = compiler.getSourceManager().getSpellingLoc(loc);
-    StringRef name { compiler.getSourceManager().getFilename(spellingLocation) };
+    StringRef name { getFilenameOfLocation(spellingLocation) };
     return name;
 }
 
@@ -80,10 +80,10 @@ bool MemoryVar::TraverseFunctionDecl(FunctionDecl * decl)
         // I'm not getting accurate results from clang right now
         StringRef aFileName = getFilename(varLoc);
         // TODO these files are doing some weird stuff I don't know how to ignore yet
-        if (loplugin::hasPathnamePrefix(aFileName, SRCDIR "/vcl/source/filter")) {
+        if (loplugin::hasPathnamePrefix(aFileName, SRCDIR "/vcl/source/filter/")) {
            return true;
         }
-        if (loplugin::hasPathnamePrefix(aFileName, SRCDIR "/sw/source/core/layout/frmtool.cxx")) {
+        if (loplugin::isSamePathname(aFileName, SRCDIR "/sw/source/core/layout/frmtool.cxx")) {
            return true;
         }
 
@@ -130,8 +130,7 @@ bool MemoryVar::VisitCXXDeleteExpr(const CXXDeleteExpr *deleteExpr)
 
     SourceLocation loc = varDecl->getLocation();
 
-    if (maVarUsesSet.find(loc) == maVarUsesSet.end()) {
-        maVarUsesSet.insert(loc);
+    if (maVarUsesSet.insert(loc).second) {
         maVarDeclSourceRangeMap[loc] = varDecl->getSourceRange();
         maVarDeleteSourceRangeMap[loc] = declRefExpr->getSourceRange();
     }
@@ -145,7 +144,7 @@ bool MemoryVar::VisitCXXNewExpr(const CXXNewExpr *newExpr)
     if (ignoreLocation(newExpr)) {
         return true;
     }
-    const Stmt* stmt = parentStmt(newExpr);
+    const Stmt* stmt = getParentStmt(newExpr);
 
     const DeclStmt* declStmt = dyn_cast<DeclStmt>(stmt);
     if (declStmt) {

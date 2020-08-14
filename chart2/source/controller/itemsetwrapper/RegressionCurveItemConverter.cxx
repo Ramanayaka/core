@@ -17,12 +17,10 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "RegressionCurveHelper.hxx"
-#include "RegressionCurveItemConverter.hxx"
+#include <RegressionCurveHelper.hxx>
+#include <RegressionCurveItemConverter.hxx>
 #include "SchWhichPairs.hxx"
-#include "macros.hxx"
-#include "ItemPropertyMap.hxx"
-#include "GraphicPropertyItemConverter.hxx"
+#include <GraphicPropertyItemConverter.hxx>
 
 #include <com/sun/star/chart2/XRegressionCurve.hpp>
 #include <osl/diagnose.h>
@@ -30,9 +28,6 @@
 #include <svl/eitem.hxx>
 #include <svl/intitem.hxx>
 #include <svl/stritem.hxx>
-
-#include <functional>
-#include <algorithm>
 
 using namespace ::com::sun::star;
 
@@ -85,9 +80,7 @@ void lclConvertToItemSetDouble(SfxItemSet& rItemSet, sal_uInt16 nWhichId, const 
 
 } // anonymous namespace
 
-namespace chart
-{
-namespace wrapper
+namespace chart::wrapper
 {
 
 RegressionCurveItemConverter::RegressionCurveItemConverter(
@@ -97,7 +90,7 @@ RegressionCurveItemConverter::RegressionCurveItemConverter(
     SdrModel& rDrawModel,
     const uno::Reference< lang::XMultiServiceFactory > & xNamedPropertyContainerFactory ) :
         ItemConverter( rPropertySet, rItemPool ),
-        m_spGraphicConverter( new GraphicPropertyItemConverter(
+        m_spGraphicConverter( std::make_shared<GraphicPropertyItemConverter>(
                                   rPropertySet, rItemPool, rDrawModel,
                                   xNamedPropertyContainerFactory,
                                   GraphicObjectType::LineProperties )),
@@ -162,8 +155,7 @@ bool RegressionCurveItemConverter::ApplySpecialItem(
                 xCurve = RegressionCurveHelper::changeRegressionCurveType(
                             eNewRegress,
                             m_xCurveContainer,
-                            xCurve,
-                            uno::Reference< uno::XComponentContext >());
+                            xCurve);
                 uno::Reference<beans::XPropertySet> xProperties( xCurve, uno::UNO_QUERY );
                 resetPropertySet( xProperties );
                 bChanged = true;
@@ -338,7 +330,6 @@ void RegressionCurveItemConverter::FillSpecialItem(sal_uInt16 nWhichId, SfxItemS
     }
 }
 
-} //  namespace wrapper
-} //  namespace chart
+} //  namespace chart::wrapper
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

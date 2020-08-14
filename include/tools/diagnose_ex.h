@@ -25,32 +25,52 @@
 #include <com/sun/star/uno/RuntimeException.hpp>
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
 
+#include <sal/log.hxx>
 #include <tools/toolsdllapi.h>
+#include <cppuhelper/exc_hlp.hxx>
 
 TOOLS_DLLPUBLIC void DbgUnhandledException(const css::uno::Any& caughtException,
         const char* currentFunction, const char* fileAndLineNo,
-        const char* explanatory = nullptr);
+        const char* area, const char* explanatory = nullptr);
 
-#if OSL_DEBUG_LEVEL > 0
-    #include <com/sun/star/configuration/CorruptedConfigurationException.hpp>
-    #include <cppuhelper/exc_hlp.hxx>
-    #include <osl/thread.h>
+//getCaughtException throws exceptions in never-going-to-happen situations which
+//floods coverity with warnings
+inline css::uno::Any DbgGetCaughtException()
+{
+#if defined(__COVERITY__)
+    try
+    {
+        return ::cppu::getCaughtException();
+    }
+    catch (...)
+    {
+        std::abort();
+    }
+#else
+    return ::cppu::getCaughtException();
+#endif
+}
 
-    /** reports a caught UNO exception via OSL diagnostics
+/** reports a caught UNO exception via OSL diagnostics
 
-        Note that whenever you use this, it might be an indicator that your error
-        handling is not correct ....
-    */
-    #define DBG_UNHANDLED_EXCEPTION()   \
-        DbgUnhandledException( ::cppu::getCaughtException(), OSL_THIS_FUNC, SAL_DETAIL_WHERE);
+    Note that whenever you use this, it might be an indicator that your error
+    handling is not correct...
+    This takes two optional parameters: area and explanatory
+*/
+#define DBG_UNHANDLED_EXCEPTION_0_ARGS() \
+    DbgUnhandledException( DbgGetCaughtException(), OSL_THIS_FUNC, SAL_DETAIL_WHERE );
+#define DBG_UNHANDLED_EXCEPTION_1_ARGS(area) \
+    DbgUnhandledException( DbgGetCaughtException(), OSL_THIS_FUNC, SAL_DETAIL_WHERE, area );
+#define DBG_UNHANDLED_EXCEPTION_2_ARGS(area, explanatory) \
+    DbgUnhandledException( DbgGetCaughtException(), OSL_THIS_FUNC, SAL_DETAIL_WHERE, area, explanatory );
 
-    #define DBG_UNHANDLED_EXCEPTION_WHEN(explain)   \
-        DbgUnhandledException( ::cppu::getCaughtException(), OSL_THIS_FUNC, SAL_DETAIL_WHERE, explain);
+#define DBG_UNHANDLED_FUNC_CHOOSER(_f1, _f2, _f3, ...) _f3
+#define DBG_UNHANDLED_FUNC_RECOMPOSER(argsWithParentheses) DBG_UNHANDLED_FUNC_CHOOSER argsWithParentheses
+#define DBG_UNHANDLED_CHOOSE_FROM_ARG_COUNT(...) DBG_UNHANDLED_FUNC_RECOMPOSER((__VA_ARGS__, DBG_UNHANDLED_EXCEPTION_2_ARGS, DBG_UNHANDLED_EXCEPTION_1_ARGS, DBG_UNHANDLED_EXCEPTION_0_ARGS, ))
+#define DBG_UNHANDLED_NO_ARG_EXPANDER() ,,DBG_UNHANDLED_EXCEPTION_0_ARGS
+#define DBG_UNHANDLED_MACRO_CHOOSER(...) DBG_UNHANDLED_CHOOSE_FROM_ARG_COUNT(DBG_UNHANDLED_NO_ARG_EXPANDER __VA_ARGS__ ())
+#define DBG_UNHANDLED_EXCEPTION(...) DBG_UNHANDLED_MACRO_CHOOSER(__VA_ARGS__)(__VA_ARGS__)
 
-#else   // OSL_DEBUG_LEVEL
-    #define DBG_UNHANDLED_EXCEPTION()
-    #define DBG_UNHANDLED_EXCEPTION_WHEN(explain)
-#endif  // OSL_DEBUG_LEVEL
 
 /** This macro asserts the given condition (in debug mode), and throws
     an IllegalArgumentException afterwards.
@@ -71,7 +91,7 @@ TOOLS_DLLPUBLIC void DbgUnhandledException(const css::uno::Any& caughtException,
                                                arg ); }
 
 /** This macro asserts the given condition (in debug mode), and throws
-    an RuntimeException afterwards.
+    a RuntimeException afterwards.
  */
 #define ENSURE_OR_THROW(c, m) \
     if( !(c) ){ \
@@ -109,6 +129,61 @@ TOOLS_DLLPUBLIC void DbgUnhandledException(const css::uno::Any& caughtException,
         OSL_ENSURE( c, m ); \
         return;   \
     }
+
+/** Convert a caught exception to a string suitable for logging.
+*/
+TOOLS_DLLPUBLIC OString exceptionToString(css::uno::Any const & caughtEx);
+
+/**
+   Logs an message along with a nicely formatted version of the current exception.
+   This must be called as the FIRST thing in a catch block.
+*/
+#if defined SAL_LOG_WARN
+#define TOOLS_WARN_EXCEPTION(area, stream) \
+    do { \
+        css::uno::Any tools_warn_exception( DbgGetCaughtException() ); \
+        SAL_WARN(area, stream << " " << exceptionToString(tools_warn_exception)); \
+    } while (false)
+#else
+#define TOOLS_WARN_EXCEPTION(area, stream) \
+    do { \
+        SAL_WARN(area, stream); \
+    } while (false)
+#endif
+
+/**
+   Logs an message along with a nicely formatted version of the current exception.
+   This must be called as the FIRST thing in a catch block.
+*/
+#if defined SAL_LOG_WARN
+#define TOOLS_WARN_EXCEPTION_IF(cond, area, stream) \
+    do { \
+        css::uno::Any tools_warn_exception( DbgGetCaughtException() ); \
+        SAL_WARN_IF(cond, area, stream << " " << exceptionToString(tools_warn_exception)); \
+    } while (false)
+#else
+#define TOOLS_WARN_EXCEPTION_IF(cond, area, stream) \
+    do { \
+        SAL_WARN_IF(cond, area, stream); \
+    } while (false)
+#endif
+
+/**
+   Logs an message along with a nicely formatted version of the current exception.
+   This must be called as the FIRST thing in a catch block.
+*/
+#if defined SAL_LOG_INFO
+#define TOOLS_INFO_EXCEPTION(area, stream) \
+    do { \
+        css::uno::Any tools_warn_exception( DbgGetCaughtException() ); \
+        SAL_INFO(area, stream << " " << exceptionToString(tools_warn_exception)); \
+    } while (false)
+#else
+#define TOOLS_INFO_EXCEPTION(area, stream) \
+    do { \
+        SAL_INFO(area, stream); \
+    } while (false)
+#endif
 
 #endif
 

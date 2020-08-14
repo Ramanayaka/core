@@ -21,12 +21,13 @@
 #include <com/sun/star/style/TabStop.hpp>
 #include <com/sun/star/style/TabAlign.hpp>
 #include <rtl/ustrbuf.hxx>
-#include <xmloff/nmspmap.hxx>
-#include <xmloff/xmlnmspe.hxx>
+#include <osl/diagnose.h>
+#include <xmloff/xmlement.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmltoken.hxx>
 #include <xmloff/xmluconv.hxx>
 #include <xmloff/xmlexp.hxx>
-#include <xmloff/xmltabe.hxx>
+#include <xmltabe.hxx>
 
 
 using namespace ::com::sun::star;
@@ -39,7 +40,7 @@ SvXMLEnumMapEntry<style::TabAlign> const pXML_tabstop_style[] =
     { XML_RIGHT,    style::TabAlign_RIGHT   },
     { XML_CHAR,     style::TabAlign_DECIMAL },
     { XML_DEFAULT,  style::TabAlign_DEFAULT  }, // ?????????????????????????????????????
-    { XML_TOKEN_INVALID,        (style::TabAlign)0 }
+    { XML_TOKEN_INVALID,        style::TabAlign(0) }
 };
 
 void SvxXMLTabStopExport::exportTabStop( const css::style::TabStop* pTabStop )
@@ -108,16 +109,13 @@ void SvxXMLTabStopExport::Export( const uno::Any& rAny )
     }
     else
     {
-        const css::style::TabStop* pTabs = aSeq.getConstArray();
-        const sal_Int32 nTabs   = aSeq.getLength();
-
         SvXMLElementExport rElem( rExport, XML_NAMESPACE_STYLE, XML_TAB_STOPS,
                                   true, true );
 
-        for( sal_Int32 nIndex = 0; nIndex < nTabs; nIndex++ )
+        for( const auto& rTab : std::as_const(aSeq) )
         {
-            if( style::TabAlign_DEFAULT != pTabs[nIndex].Alignment )
-                exportTabStop( &(pTabs[nIndex]) );
+            if( style::TabAlign_DEFAULT != rTab.Alignment )
+                exportTabStop( &rTab );
         }
     }
 }

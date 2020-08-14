@@ -22,10 +22,9 @@
 #include <com/sun/star/container/XNameContainer.hpp>
 #include <com/sun/star/lang/Locale.hpp>
 #include <com/sun/star/lang/NoSupportException.hpp>
+#include <com/sun/star/lang/XSingleServiceFactory.hpp>
 #include <com/sun/star/linguistic2/ConversionDictionaryType.hpp>
-#include <com/sun/star/linguistic2/XConversionDictionary.hpp>
 #include <com/sun/star/linguistic2/XConversionDictionaryList.hpp>
-#include <com/sun/star/registry/XRegistryKey.hpp>
 #include <com/sun/star/uno/Reference.h>
 #include <com/sun/star/util/XFlushable.hpp>
 #include <cppuhelper/factory.hxx>
@@ -34,20 +33,17 @@
 #include <comphelper/sequence.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <rtl/instance.hxx>
-#include <tools/stream.hxx>
+#include <tools/debug.hxx>
 #include <tools/urlobj.hxx>
 #include <ucbhelper/content.hxx>
 #include <unotools/localfilehelper.hxx>
 #include <unotools/lingucfg.hxx>
-#include <unotools/pathoptions.hxx>
-#include <unotools/useroptions.hxx>
+#include <tools/diagnose_ex.h>
 
 #include "convdic.hxx"
 #include "convdiclist.hxx"
-#include "defs.hxx"
 #include "hhconvdic.hxx"
-#include "lngreg.hxx"
-#include "linguistic/misc.hxx"
+#include <linguistic/misc.hxx>
 
 using namespace osl;
 using namespace com::sun::star;
@@ -57,9 +53,7 @@ using namespace com::sun::star::container;
 using namespace com::sun::star::linguistic2;
 using namespace linguistic;
 
-#define SN_CONV_DICTIONARY_LIST  "com.sun.star.linguistic2.ConversionDictionaryList"
-
-OUString GetConvDicMainURL( const OUString &rDicName, const OUString &rDirectoryURL )
+static OUString GetConvDicMainURL( const OUString &rDicName, const OUString &rDirectoryURL )
 {
     // build URL to use for new (persistent) dictionaries
 
@@ -170,7 +164,7 @@ uno::Reference< XConversionDictionary > ConvDicNameContainer::GetByName(
 uno::Type SAL_CALL ConvDicNameContainer::getElementType(  )
 {
     MutexGuard  aGuard( GetLinguMutex() );
-    return uno::Type( cppu::UnoType<XConversionDictionary>::get());
+    return cppu::UnoType<XConversionDictionary>::get();
 }
 
 sal_Bool SAL_CALL ConvDicNameContainer::hasElements(  )
@@ -192,12 +186,13 @@ uno::Sequence< OUString > SAL_CALL ConvDicNameContainer::getElementNames(  )
 {
     MutexGuard  aGuard( GetLinguMutex() );
 
-    sal_Int32 nLen = aConvDics.size();
-    uno::Sequence< OUString > aRes( nLen );
-    OUString *pName = aRes.getArray();
-    for (sal_Int32 i = 0;  i < nLen;  ++i)
-        pName[i] = aConvDics[i]->getName();
-    return aRes;
+    std::vector<OUString> aRes;
+    aRes.reserve(aConvDics.size());
+
+    std::transform(aConvDics.begin(), aConvDics.end(), std::back_inserter(aRes),
+        [](const uno::Reference<XConversionDictionary>& rDic) { return rDic->getName(); });
+
+    return comphelper::containerToSequence(aRes);
 }
 
 sal_Bool SAL_CALL ConvDicNameContainer::hasByName( const OUString& rName )
@@ -261,13 +256,9 @@ void SAL_CALL ConvDicNameContainer::removeByName( const OUString& rName )
                                     comphelper::getProcessComponentContext() );
             aCnt.executeCommand( "delete", makeAny( true ) );
         }
-        catch( css::ucb::CommandAbortedException& )
-        {
-            SAL_WARN( "linguistic", "HangulHanjaOptionsDialog::OkHdl(): CommandAbortedException" );
-        }
         catch( ... )
         {
-            SAL_WARN( "linguistic", "HangulHanjaOptionsDialog::OkHdl(): Any other exception" );
+            TOOLS_WARN_EXCEPTION( "linguistic", "HangulHanjaOptionsDialog::OkHdl()" );
         }
     }
 
@@ -280,13 +271,9 @@ void ConvDicNameContainer::AddConvDics(
 {
     const Sequence< OUString > aDirCnt(
                 utl::LocalFileHelper::GetFolderContents( rSearchDirPathURL, false ) );
-    const OUString *pDirCnt = aDirCnt.getConstArray();
-    sal_Int32 nEntries = aDirCnt.getLength();
 
-    for (sal_Int32 i = 0;  i < nEntries;  ++i)
+    for (const OUString& aURL : aDirCnt)
     {
-        OUString aURL( pDirCnt[i] );
-
         sal_Int32 nPos = aURL.lastIndexOf('.');
         OUString aExt( aURL.copy(nPos + 1).toAsciiLowerCase() );
         OUString aSearchExt( rExtension.toAsciiLowerCase() );
@@ -325,9 +312,9 @@ void ConvDicNameContainer::AddConvDics(
 namespace
 {
     struct StaticConvDicList : public rtl::StaticWithInit<
-        uno::Reference<XInterface>, StaticConvDicList> {
-        uno::Reference<XInterface> operator () () {
-            return static_cast<cppu::OWeakObject *>(new ConvDicList);
+        rtl::Reference<ConvDicList>, StaticConvDicList> {
+        rtl::Reference<ConvDicList> operator () () {
+            return new ConvDicList;
         }
     };
 }
@@ -373,26 +360,24 @@ ConvDicNameContainer & ConvDicList::GetNameContainer()
         // access list of text conversion dictionaries to activate
         SvtLinguOptions aOpt;
         SvtLinguConfig().GetOptions( aOpt );
-        sal_Int32 nLen = aOpt.aActiveConvDics.getLength();
-        const OUString *pActiveConvDics = aOpt.aActiveConvDics.getConstArray();
-        for (sal_Int32 i = 0;  i < nLen;  ++i)
+        for (const OUString& rActiveConvDic : std::as_const(aOpt.aActiveConvDics))
         {
             uno::Reference< XConversionDictionary > xDic =
-                    mxNameContainer->GetByName( pActiveConvDics[i] );
+                    mxNameContainer->GetByName( rActiveConvDic );
             if (xDic.is())
                 xDic->setActive( true );
         }
 
         // since there is no UI to active/deactivate the dictionaries
         // for chinese text conversion they should be activated by default
-        uno::Reference< XConversionDictionary > xS2TDic(
-                    mxNameContainer->GetByName( "ChineseS2T" ), UNO_QUERY );
-        uno::Reference< XConversionDictionary > xT2SDic(
-                    mxNameContainer->GetByName( "ChineseT2S" ), UNO_QUERY );
-            if (xS2TDic.is())
-                xS2TDic->setActive( true );
-            if (xT2SDic.is())
-                xT2SDic->setActive( true );
+        uno::Reference< XConversionDictionary > xS2TDic =
+                    mxNameContainer->GetByName( "ChineseS2T" );
+        uno::Reference< XConversionDictionary > xT2SDic =
+                    mxNameContainer->GetByName( "ChineseT2S" );
+        if (xS2TDic.is())
+            xS2TDic->setActive( true );
+        if (xT2SDic.is())
+            xT2SDic->setActive( true );
 
     }
     return *mxNameContainer;
@@ -433,11 +418,9 @@ uno::Reference< XConversionDictionary > SAL_CALL ConvDicList::addNewDictionary(
 
     if (!xRes.is())
         throw NoSupportException();
-    else
-    {
-        xRes->setActive( true );
-        GetNameContainer().insertByName( rName, Any(xRes) );
-    }
+
+    xRes->setActive( true );
+    GetNameContainer().insertByName( rName, Any(xRes) );
     return xRes;
 }
 
@@ -465,15 +448,10 @@ uno::Sequence< OUString > SAL_CALL ConvDicList::queryConversions(
         bSupported |= bMatch;
         if (bMatch  &&  xDic->isActive())
         {
-            Sequence< OUString > aNewConv( xDic->getConversions(
+            const Sequence< OUString > aNewConv( xDic->getConversions(
                                 rText, nStartPos, nLength,
                                 eDirection, nTextConversionOptions ) );
-            sal_Int32 nNewLen = aNewConv.getLength();
-            if (nNewLen > 0)
-            {
-                for (sal_Int32 k = 0;  k < nNewLen;  ++k)
-                    aRes.push_back(aNewConv[k]);
-            }
+            aRes.insert( aRes.end(), aNewConv.begin(), aNewConv.end() );
         }
     }
 
@@ -539,7 +517,7 @@ void SAL_CALL ConvDicList::removeEventListener(
 
 OUString SAL_CALL ConvDicList::getImplementationName()
 {
-    return getImplementationName_Static();
+    return "com.sun.star.lingu2.ConvDicList";
 }
 
 sal_Bool SAL_CALL ConvDicList::supportsService( const OUString& rServiceName )
@@ -549,41 +527,15 @@ sal_Bool SAL_CALL ConvDicList::supportsService( const OUString& rServiceName )
 
 uno::Sequence< OUString > SAL_CALL ConvDicList::getSupportedServiceNames()
 {
-    return getSupportedServiceNames_Static();
+    return { "com.sun.star.linguistic2.ConversionDictionaryList" };
 }
 
-uno::Sequence< OUString > ConvDicList::getSupportedServiceNames_Static()
-    throw()
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+linguistic_ConvDicList_get_implementation(
+    css::uno::XComponentContext* , css::uno::Sequence<css::uno::Any> const&)
 {
-    uno::Sequence<OUString> aSNS { SN_CONV_DICTIONARY_LIST };
-    return aSNS;
+    return cppu::acquire(StaticConvDicList::get().get());
 }
 
-/// @throws css::uno::Exception
-uno::Reference< uno::XInterface > SAL_CALL ConvDicList_CreateInstance(
-        const uno::Reference< XMultiServiceFactory > & /*rSMgr*/ )
-{
-    return StaticConvDicList::get();
-}
-
-void * SAL_CALL ConvDicList_getFactory(
-        const sal_Char * pImplName,
-        XMultiServiceFactory * pServiceManager  )
-{
-    void * pRet = nullptr;
-    if ( ConvDicList::getImplementationName_Static().equalsAscii( pImplName ) )
-    {
-        uno::Reference< XSingleServiceFactory > xFactory =
-            cppu::createOneInstanceFactory(
-                pServiceManager,
-                ConvDicList::getImplementationName_Static(),
-                ConvDicList_CreateInstance,
-                ConvDicList::getSupportedServiceNames_Static());
-        // acquire, because we return an interface pointer instead of a reference
-        xFactory->acquire();
-        pRet = xFactory.get();
-    }
-    return pRet;
-}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

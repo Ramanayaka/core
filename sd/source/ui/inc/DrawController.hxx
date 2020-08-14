@@ -20,26 +20,28 @@
 #ifndef INCLUDED_SD_SOURCE_UI_INC_DRAWCONTROLLER_HXX
 #define INCLUDED_SD_SOURCE_UI_INC_DRAWCONTROLLER_HXX
 
-#include "ViewShell.hxx"
-
-#include <osl/mutex.hxx>
 #include <cppuhelper/propshlp.hxx>
 #include <sfx2/sfxbasecontroller.hxx>
 #include <com/sun/star/view/XSelectionSupplier.hpp>
 #include <com/sun/star/view/XFormLayerAccess.hpp>
-#include <com/sun/star/drawing/XDrawSubController.hpp>
 #include <com/sun/star/drawing/XDrawView.hpp>
-#include <com/sun/star/drawing/framework/XConfigurationController.hpp>
 #include <com/sun/star/drawing/framework/XControllerManager.hpp>
-#include <com/sun/star/drawing/framework/ModuleController.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/lang/DisposedException.hpp>
+#include <com/sun/star/lang/XUnoTunnel.hpp>
 #include <comphelper/uno3.hxx>
 #include <cppuhelper/implbase.hxx>
-#include <tools/weakbase.hxx>
+#include <tools/weakbase.h>
+#include <tools/gen.hxx>
 #include <memory>
 #include <vector>
-#include <com/sun/star/drawing/XLayer.hpp>
+
+namespace com::sun::star::drawing { class XDrawSubController; }
+namespace com::sun::star::drawing::framework { class XConfigurationController; }
+namespace com::sun::star::drawing::framework { class XModuleController; }
+namespace com::sun::star::drawing { class XLayer; }
+namespace osl { class Mutex; }
+
+class SdPage;
 
 namespace sd {
 
@@ -61,9 +63,7 @@ public:
     ::cppu::OBroadcastHelper maBroadcastHelper;
 };
 
-class DrawSubController;
 class ViewShellBase;
-class ViewShell;
 
 /** The DrawController is the UNO controller for Impress and Draw.  It
     relies objects that implement the DrawSubController interface for view
@@ -74,7 +74,7 @@ class ViewShell;
     The implementation of the XControllerManager interface is not yet in its
     final form.
 */
-class DrawController
+class DrawController final
     : public DrawControllerInterfaceBase,
       private BroadcastHelperOwner,
       public ::cppu::OPropertySetHelper
@@ -143,7 +143,6 @@ public:
     // change the parameter to int
     //void fireSwitchCurrentPage( String pageName) throw();
     void fireSwitchCurrentPage( sal_Int32 pageIndex) throw();
-    css::uno::Reference< css::drawing::XLayer>* mpCurrentLayer;
     bool IsDisposing() const { return mbDisposing; }
 
     /** Return a pointer to the ViewShellBase object that the DrawController
@@ -226,7 +225,7 @@ public:
 
     virtual sal_Int64 SAL_CALL getSomething (const css::uno::Sequence<sal_Int8>& rId) override;
 
-protected:
+private:
     /** This method must return the name to index table. This table
         contains all property names and types of this object.
      */
@@ -236,7 +235,7 @@ protected:
         ::std::vector< css::beans::Property>& rProperties);
 
     /**
-     * The same as getFastProperyValue, but return the value through
+     * The same as getFastPropertyValue, but return the value through
      * rValue and nHandle is always valid.
      */
     virtual void SAL_CALL getFastPropertyValue(
@@ -252,7 +251,7 @@ protected:
         @param rOldValue
             The old value. Only set if return is true.
         @param nHandle
-            The handle of the proberty.
+            The handle of the property.
         @return
             <TRUE/> if the value is converted successfully.
         @throws IllegalArgumentException
@@ -263,7 +262,7 @@ protected:
         sal_Int32 nHandle,
         const css::uno::Any& rValue ) override;
 
-    /** The same as setFastProperyValue, but no exception is thrown and nHandle
+    /** The same as setFastPropertyValue, but no exception is thrown and nHandle
         is always valid. You must not broadcast the changes in this method.
      */
     virtual void SAL_CALL setFastPropertyValue_NoBroadcast(
@@ -280,7 +279,8 @@ protected:
     using cppu::OPropertySetHelper::disposing;
     using cppu::OPropertySetHelper::getFastPropertyValue;
 
-private:
+    css::uno::Reference< css::drawing::XLayer>* mpCurrentLayer;
+
     const css::uno::Type m_aSelectionTypeIdentifier;
 
     /** This pointer to the ViewShellBase can be NULL (after a call to
@@ -289,7 +289,7 @@ private:
     ViewShellBase* mpBase;
 
     ::tools::Rectangle maLastVisArea;
-    ::tools::WeakReference<SdrPage> mpCurrentPage;
+    ::tools::WeakReference<SdPage> mpCurrentPage;
     bool mbMasterPageMode;
     bool mbLayerMode;
 

@@ -22,14 +22,10 @@
 #include <sal/config.h>
 
 #include <com/sun/star/sdbc/SQLException.hpp>
-#include <com/sun/star/sdbc/XResultSet.hpp>
-#include <com/sun/star/sdbc/XResultSetMetaData.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/util/XNumberFormatter.hpp>
 #include <com/sun/star/container/XNameAccess.hpp>
-#include <com/sun/star/container/XIndexAccess.hpp>
 #include <com/sun/star/lang/Locale.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/util/Date.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <map>
@@ -40,7 +36,7 @@
 #include "commontypes.hxx"
 #include "IUpdateHelper.hxx"
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace awt{
         struct FontDescriptor;
     }
@@ -48,9 +44,9 @@ namespace com { namespace sun { namespace star {
         class XPreparedStatement;
         class XDatabaseMetaData;
     }
-}}}
+}
 
-#define COLUMN_POSITION_NOT_FOUND   ((sal_Int32)-1)
+#define COLUMN_POSITION_NOT_FOUND   (sal_Int32(-1))
 
 class SvNumberFormatter;
 namespace dbaui
@@ -64,7 +60,7 @@ namespace dbaui
         typedef std::vector< std::pair<sal_Int32,sal_Int32> >   TPositions;
 
     protected:
-        TPositions                      m_vColumns;     ///< columns to be used
+        TPositions                      m_vColumnPositions;  ///< columns to be used
         std::vector<sal_Int32>        m_vColumnTypes; ///< ColumnTypes for faster access
         std::vector<sal_Int32>        m_vColumnSize;
         std::vector<sal_Int16>        m_vNumberFormat;
@@ -89,7 +85,6 @@ namespace dbaui
 
         OUString            m_sTextToken;   ///< cell content
         OUString            m_sNumToken;    ///< SDNUM value
-        OUString            m_sValToken;    ///< SDVAL value
         TOTypeInfoSP        m_pTypeInfo;    ///< contains the default type
         const TColumnVector* m_pColumnList;
         const OTypeInfoMap* m_pInfoMap;
@@ -114,7 +109,7 @@ namespace dbaui
         void                adjustFormat();
         void                eraseTokens();
         void                insertValueIntoColumn();
-        bool                createRowSet();
+        void                createRowSet();
         void                showErrorDialog(const css::sdbc::SQLException& e);
         void                ensureFormatter();
 
@@ -156,14 +151,12 @@ namespace dbaui
 
         void SetTableName(const OUString &_sTableName){ m_sDefaultTableName = _sTableName ; }
 
-        virtual void release() = 0;
-
         void enableCheckOnly() { m_bCheckOnly = true; }
         bool isCheckEnabled() const { return m_bCheckOnly; }
 
         static css::uno::Reference< css::sdbc::XPreparedStatement > createPreparedStatment( const css::uno::Reference< css::sdbc::XDatabaseMetaData>& _xMetaData
                                                        ,const css::uno::Reference< css::beans::XPropertySet>& _xDestTable
-                                                       ,const TPositions& _rvColumns);
+                                                       ,const TPositions& _rvColumnPositions);
     };
 }
 

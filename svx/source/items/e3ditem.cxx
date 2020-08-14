@@ -18,8 +18,8 @@
  */
 
 #include <com/sun/star/drawing/Direction3D.hpp>
-#include <tools/stream.hxx>
 #include <rtl/math.hxx>
+#include <libxml/xmlwriter.h>
 
 #include <svx/e3ditem.hxx>
 
@@ -51,40 +51,14 @@ bool SvxB3DVectorItem::operator==( const SfxPoolItem &rItem ) const
     return static_cast<const SvxB3DVectorItem&>(rItem).aVal == aVal;
 }
 
-
-SfxPoolItem* SvxB3DVectorItem::Clone( SfxItemPool* /*pPool*/ ) const
+SvxB3DVectorItem* SvxB3DVectorItem::Clone( SfxItemPool* /*pPool*/ ) const
 {
     return new SvxB3DVectorItem( *this );
 }
 
-
-SfxPoolItem* SvxB3DVectorItem::Create(SvStream &rStream, sal_uInt16 /*nVersion*/) const
-{
-    basegfx::B3DVector aStr;
-    double fValue;
-    rStream.ReadDouble( fValue ); aStr.setX(fValue);
-    rStream.ReadDouble( fValue ); aStr.setY(fValue);
-    rStream.ReadDouble( fValue ); aStr.setZ(fValue);
-    return new SvxB3DVectorItem(Which(), aStr);
-}
-
-
-SvStream& SvxB3DVectorItem::Store(SvStream &rStream, sal_uInt16 /*nItemVersion*/) const
-{
-
-    // ## if (nItemVersion)
-    double fValue;
-    fValue = aVal.getX(); rStream.WriteDouble( fValue );
-    fValue = aVal.getY(); rStream.WriteDouble( fValue );
-    fValue = aVal.getZ(); rStream.WriteDouble( fValue );
-
-    return rStream;
-}
-
-
 bool SvxB3DVectorItem::QueryValue( uno::Any& rVal, sal_uInt8 /*nMemberId*/ ) const
 {
-    assert(!rtl::math::isNan(aVal.getX()) && !rtl::math::isNan(aVal.getY()) && !rtl::math::isNan(aVal.getZ()));
+    assert(!std::isnan(aVal.getX()) && !std::isnan(aVal.getY()) && !std::isnan(aVal.getZ()));
 
     drawing::Direction3D aDirection;
 
@@ -108,15 +82,20 @@ bool SvxB3DVectorItem::PutValue( const uno::Any& rVal, sal_uInt8 /*nMemberId*/ )
     aVal.setY(aDirection.DirectionY);
     aVal.setZ(aDirection.DirectionZ);
 
-    assert(!rtl::math::isNan(aVal.getX()) && !rtl::math::isNan(aVal.getY()) && !rtl::math::isNan(aVal.getZ()));
+    assert(!std::isnan(aVal.getX()) && !std::isnan(aVal.getY()) && !std::isnan(aVal.getZ()));
 
     return true;
 }
 
 
-sal_uInt16 SvxB3DVectorItem::GetVersion (sal_uInt16 nFileFormatVersion) const
+void SvxB3DVectorItem::dumpAsXml(xmlTextWriterPtr pWriter) const
 {
-    return (nFileFormatVersion == SOFFICE_FILEFORMAT_31) ? USHRT_MAX : 0;
+    xmlTextWriterStartElement(pWriter, BAD_CAST("SvxB3DVectorItem"));
+    xmlTextWriterWriteAttribute(pWriter, BAD_CAST("whichId"), BAD_CAST(OString::number(Which()).getStr()));
+    xmlTextWriterWriteAttribute(pWriter, BAD_CAST("x"), BAD_CAST(OString::number(aVal.getX()).getStr()));
+    xmlTextWriterWriteAttribute(pWriter, BAD_CAST("y"), BAD_CAST(OString::number(aVal.getY()).getStr()));
+    xmlTextWriterWriteAttribute(pWriter, BAD_CAST("z"), BAD_CAST(OString::number(aVal.getZ()).getStr()));
+    xmlTextWriterEndElement(pWriter);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

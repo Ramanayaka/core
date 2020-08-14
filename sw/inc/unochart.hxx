@@ -37,22 +37,19 @@
 #include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/lang/XEventListener.hpp>
 #include <com/sun/star/util/XModifiable.hpp>
-#include <com/sun/star/util/XModifyBroadcaster.hpp>
 #include <com/sun/star/util/XModifyListener.hpp>
-#include <com/sun/star/chart/ChartDataRowSource.hpp>
-#include <com/sun/star/table/XCell.hpp>
 
 #include <comphelper/interfacecontainer2.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/weakref.hxx>
 
 #include <rtl/ref.hxx>
+#include <svl/listener.hxx>
 #include <tools/link.hxx>
 #include <vcl/timer.hxx>
 
-#include <calbck.hxx>
-#include <frmfmt.hxx>
-#include <unocrsr.hxx>
+#include "frmfmt.hxx"
+#include "unocrsr.hxx"
 
 class SfxItemPropertySet;
 class SwDoc;
@@ -60,7 +57,7 @@ class SwTable;
 class SwTableBox;
 struct SwRangeDescriptor;
 class SwSelBoxes;
-class SwFrameFormat;
+namespace com::sun::star::table { class XCell; }
 
 bool FillRangeDescriptor( SwRangeDescriptor &rDesc, const OUString &rCellRangeName );
 
@@ -72,11 +69,11 @@ public:
 
 class SwChartLockController_Helper
 {
-    SwDoc   *pDoc;
+    SwDoc   *m_pDoc;
 
     DECL_LINK( DoUnlockAllCharts, Timer *, void );
-    Timer   aUnlockTimer;   // timer to unlock chart controllers
-    bool    bIsLocked;
+    Timer   m_aUnlockTimer;   // timer to unlock chart controllers
+    bool    m_bIsLocked;
 
     SwChartLockController_Helper( const SwChartLockController_Helper & ) = delete;
     SwChartLockController_Helper & operator = ( const SwChartLockController_Helper & ) = delete;
@@ -102,9 +99,8 @@ typedef cppu::WeakImplHelper
 >
 SwChartDataProviderBaseClass;
 
-class SwChartDataProvider :
-    public SwChartDataProviderBaseClass,
-    public SwClient
+class SwChartDataProvider final :
+    public SwChartDataProviderBaseClass
 {
 
     // used to keep weak-references to all data-sequences of a single table
@@ -127,27 +123,23 @@ class SwChartDataProvider :
     // data-source) by this object. Since there is only one object of this type
     // for each document it should hold references to all used data-sequences for
     // all tables of the document.
-    mutable Map_Set_DataSequenceRef_t       aDataSequences;
+    mutable Map_Set_DataSequenceRef_t       m_aDataSequences;
 
-    ::comphelper::OInterfaceContainerHelper2      aEvtListeners;
-    const SwDoc *                           pDoc;
-    bool                                    bDisposed;
+    ::comphelper::OInterfaceContainerHelper2      m_aEventListeners;
+    const SwDoc *                           m_pDoc;
+    bool                                    m_bDisposed;
 
     SwChartDataProvider( const SwChartDataProvider & ) = delete;
     SwChartDataProvider & operator = ( const SwChartDataProvider & ) = delete;
 
     /// @throws css::lang::IllegalArgumentException
     /// @throws css::uno::RuntimeException
-    css::uno::Reference< css::chart2::data::XDataSource > SAL_CALL Impl_createDataSource( const css::uno::Sequence< css::beans::PropertyValue >& aArguments, bool bTestOnly = false );
+    css::uno::Reference< css::chart2::data::XDataSource > Impl_createDataSource( const css::uno::Sequence< css::beans::PropertyValue >& aArguments, bool bTestOnly = false );
     /// @throws css::lang::IllegalArgumentException
     /// @throws css::uno::RuntimeException
-    css::uno::Reference< css::chart2::data::XDataSequence > SAL_CALL Impl_createDataSequenceByRangeRepresentation( const OUString& aRangeRepresentation, bool bTestOnly = false );
+    css::uno::Reference< css::chart2::data::XDataSequence > Impl_createDataSequenceByRangeRepresentation( const OUString& aRangeRepresentation, bool bTestOnly = false );
 
     static OUString GetBrokenCellRangeForExport( const OUString &rCellRangeRepresentation );
-
-protected:
-    //SwClient
-    virtual void Modify( const SfxPoolItem* pOld, const SfxPoolItem *pNew) override;
 
 public:
     SwChartDataProvider( const SwDoc* pDoc );
@@ -179,12 +171,12 @@ public:
     virtual sal_Bool SAL_CALL supportsService( const OUString& ServiceName ) override;
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames(  ) override;
 
-    void        AddDataSequence( const SwTable &rTable, css::uno::Reference< css::chart2::data::XDataSequence > &rxDataSequence );
-    void        RemoveDataSequence( const SwTable &rTable, css::uno::Reference< css::chart2::data::XDataSequence > &rxDataSequence );
+    void        AddDataSequence( const SwTable &rTable, css::uno::Reference< css::chart2::data::XDataSequence > const &rxDataSequence );
+    void        RemoveDataSequence( const SwTable &rTable, css::uno::Reference< css::chart2::data::XDataSequence > const &rxDataSequence );
 
     // will send modified events for all data-sequences of the table
     void        InvalidateTable( const SwTable *pTable );
-    bool        DeleteBox( const SwTable *pTable, const SwTableBox &rBox );
+    void        DeleteBox( const SwTable *pTable, const SwTableBox &rBox );
     void        DisposeAllDataSequences( const SwTable *pTable );
 
     // functionality needed to get notified about new added rows/cols
@@ -198,11 +190,11 @@ typedef cppu::WeakImplHelper
 >
 SwChartDataSourceBaseClass;
 
-class SwChartDataSource :
+class SwChartDataSource final :
     public SwChartDataSourceBaseClass
 {
     css::uno::Sequence<
-        css::uno::Reference< css::chart2::data::XLabeledDataSequence > > aLDS;
+        css::uno::Reference< css::chart2::data::XLabeledDataSequence > > m_aLDS;
 
     SwChartDataSource( const SwChartDataSource & ) = delete;
     SwChartDataSource & operator = ( const SwChartDataSource & ) = delete;
@@ -235,10 +227,11 @@ typedef cppu::WeakImplHelper
 >
 SwChartDataSequenceBaseClass;
 
-class SwChartDataSequence :
+class SwChartDataSequence final :
     public SwChartDataSequenceBaseClass,
-    public SwClient
+    public SvtListener
 {
+    SwFrameFormat* m_pFormat;
     ::comphelper::OInterfaceContainerHelper2          m_aEvtListeners;
     ::comphelper::OInterfaceContainerHelper2          m_aModifyListeners;
     css::chart2::data::DataSequenceRole               m_aRole;
@@ -256,10 +249,6 @@ class SwChartDataSequence :
 
     SwChartDataSequence( const SwChartDataSequence &rObj );
     SwChartDataSequence & operator = ( const SwChartDataSequence & ) = delete;
-
-protected:
-    //SwClient
-    virtual void Modify( const SfxPoolItem* pOld, const SfxPoolItem *pNew) override;
 
 public:
     SwChartDataSequence( SwChartDataProvider &rProvider,
@@ -317,12 +306,14 @@ public:
     virtual void SAL_CALL addEventListener( const css::uno::Reference< css::lang::XEventListener >& xListener ) override;
     virtual void SAL_CALL removeEventListener( const css::uno::Reference< css::lang::XEventListener >& aListener ) override;
 
-    SwFrameFormat*   GetFrameFormat() const { return const_cast<SwFrameFormat*>(static_cast<const SwFrameFormat*>(GetRegisteredIn())); }
-    bool    DeleteBox( const SwTableBox &rBox );
+    SwFrameFormat* GetFrameFormat() const { return m_pFormat; }
+    bool DeleteBox( const SwTableBox &rBox );
 
     void        FillRangeDesc( SwRangeDescriptor &rRangeDesc ) const;
-    bool        ExtendTo( bool bExtendCol, sal_Int32 nFirstNew, sal_Int32 nCount );
+    void        ExtendTo( bool bExtendCol, sal_Int32 nFirstNew, sal_Int32 nCount );
     std::vector< css::uno::Reference< css::table::XCell > > GetCells();
+
+    virtual void Notify(const SfxHint& rHint) override;
 };
 
 typedef cppu::WeakImplHelper
@@ -334,16 +325,16 @@ typedef cppu::WeakImplHelper
 >
 SwChartLabeledDataSequenceBaseClass;
 
-class SwChartLabeledDataSequence :
+class SwChartLabeledDataSequence final :
     public SwChartLabeledDataSequenceBaseClass
 {
-    ::comphelper::OInterfaceContainerHelper2                           aEvtListeners;
-    ::comphelper::OInterfaceContainerHelper2                           aModifyListeners;
+    ::comphelper::OInterfaceContainerHelper2                           m_aEventListeners;
+    ::comphelper::OInterfaceContainerHelper2                           m_aModifyListeners;
 
-    css::uno::Reference< css::chart2::data::XDataSequence >     xData;
-    css::uno::Reference< css::chart2::data::XDataSequence >     xLabels;
+    css::uno::Reference< css::chart2::data::XDataSequence >     m_xData;
+    css::uno::Reference< css::chart2::data::XDataSequence >     m_xLabels;
 
-    bool    bDisposed;
+    bool    m_bDisposed;
 
     SwChartLabeledDataSequence( const SwChartLabeledDataSequence & ) = delete;
     SwChartLabeledDataSequence & operator = ( const SwChartLabeledDataSequence & ) = delete;

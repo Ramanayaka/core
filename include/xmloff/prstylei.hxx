@@ -22,39 +22,39 @@
 #include <sal/config.h>
 #include <xmloff/dllapi.h>
 #include <sal/types.h>
-#include <com/sun/star/style/XStyle.hpp>
 #include <vector>
 #include <xmloff/xmlstyle.hxx>
 
 #include <unordered_set>
 
 struct XMLPropertyState;
-class SvXMLStylesContext;
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace beans { class XPropertySet; }
-} } }
+}
 
-typedef std::unordered_set<OUString, OUStringHash> OldFillStyleDefinitionSet;
+namespace com::sun::star::style { class XStyle; }
+
+typedef std::unordered_set<OUString> OldFillStyleDefinitionSet;
 
 class XMLOFF_DLLPUBLIC XMLPropStyleContext : public SvXMLStyleContext
 {
 private:
-    const OUString msIsPhysical;
-    const OUString msFollowStyle;
     ::std::vector< XMLPropertyState >          maProperties;
     css::uno::Reference < css::style::XStyle > mxStyle;
-    SvXMLImportContextRef                      mxStyles;
+    rtl::Reference<SvXMLStylesContext>         mxStyles;
 
-    XMLPropStyleContext(XMLPropStyleContext &) = delete;
-    void operator =(XMLPropStyleContext &) = delete;
+    XMLPropStyleContext(XMLPropStyleContext const &) = delete;
+    XMLPropStyleContext& operator =(XMLPropStyleContext const &) = delete;
 
-protected:
+public:
 
     // Helper to check if the local maProperties contains the given
     // FillStyle tag and if the FillStyle there is different from FillStyle_NONE
     bool doNewDrawingLayerFillStyleDefinitionsExist(
-        const ::rtl::OUString& rFillStyleTag) const;
+        const OUString& rFillStyleTag) const;
+
+protected:
 
     // Helper which will deactivate all old fill definitions (identified by
     // the given OldFillStyleDefinitionSet) in the local maProperties. Deactivation
@@ -77,7 +77,7 @@ protected:
     virtual void SetAttribute( sal_uInt16 nPrefixKey,
                                const OUString& rLocalName,
                                const OUString& rValue ) override;
-    SvXMLStylesContext *GetStyles() { return static_cast<SvXMLStylesContext *>(mxStyles.get()); }
+    SvXMLStylesContext *GetStyles() { return mxStyles.get(); }
     ::std::vector< XMLPropertyState > & GetProperties() { return maProperties; }
 
     // Override this method to create a new style. It's called by
@@ -91,17 +91,19 @@ public:
     XMLPropStyleContext( SvXMLImport& rImport, sal_uInt16 nPrfx,
             const OUString& rLName,
             const css::uno::Reference< css::xml::sax::XAttributeList > & xAttrList,
-            SvXMLStylesContext& rStyles, sal_uInt16 nFamily,
+            SvXMLStylesContext& rStyles, XmlStyleFamily nFamily,
             bool bDefaultStyle=false );
     virtual ~XMLPropStyleContext() override;
 
-    virtual SvXMLImportContext *CreateChildContext(
+    virtual SvXMLImportContextRef CreateChildContext(
             sal_uInt16 nPrefix,
             const OUString& rLocalName,
             const css::uno::Reference< css::xml::sax::XAttributeList > & xAttrList ) override;
 
     virtual void FillPropertySet(
             const css::uno::Reference< css::beans::XPropertySet > & rPropSet );
+
+    virtual bool isEmptyDataStyleName() { return false; };
 
     const SvXMLStylesContext *GetStyles() const { return static_cast<const SvXMLStylesContext *>(mxStyles.get()); }
     const ::std::vector< XMLPropertyState > & GetProperties() const { return maProperties; }

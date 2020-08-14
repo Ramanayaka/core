@@ -20,6 +20,7 @@
 #ifndef INCLUDED_UCBHELPER_ACTIVEDATASINK_HXX
 #define INCLUDED_UCBHELPER_ACTIVEDATASINK_HXX
 
+#include <config_options.h>
 #include <com/sun/star/io/XActiveDataSink.hpp>
 #include <ucbhelper/ucbhelperdllapi.h>
 #include <cppuhelper/implbase.hxx>
@@ -27,14 +28,15 @@
 namespace ucbhelper
 {
 
+// workaround for incremental linking bugs in MSVC2015
+class SAL_DLLPUBLIC_TEMPLATE ActiveDataSink_Base : public cppu::WeakImplHelper< css::io::XActiveDataSink > {};
+
 /**
   * This class implements the interface css::io::XActiveDataSink.
   * Instances of this class can be passed with the parameters of an
   * "open" command.
   */
-
-class UCBHELPER_DLLPUBLIC ActiveDataSink :
-        public cppu::WeakImplHelper< css::io::XActiveDataSink >
+class UNLESS_MERGELIBS(UCBHELPER_DLLPUBLIC) ActiveDataSink final : public ActiveDataSink_Base
 {
     css::uno::Reference< css::io::XInputStream > m_xStream;
 

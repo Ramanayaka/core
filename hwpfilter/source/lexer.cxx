@@ -71,7 +71,7 @@
  * we want to instead treat it as an 8-bit unsigned char, hence the
  * double cast.
  */
-#define YY_SC_TO_UI(c) ((unsigned int) (unsigned char) c)
+#define YY_SC_TO_UI(c) (static_cast<unsigned int>(static_cast<unsigned char>(c)))
 
 /* Translate the current start state into a value that can be later handed
  * to BEGIN to return to the state.
@@ -89,7 +89,11 @@
 /* Size of default input buffer. */
 #define YY_BUF_SIZE 16384
 
+namespace {
+
 typedef struct yy_buffer_state *YY_BUFFER_STATE;
+
+}
 
 #define EOB_ACT_CONTINUE_SCAN 0
 #define EOB_ACT_END_OF_FILE 1
@@ -103,6 +107,7 @@ typedef struct yy_buffer_state *YY_BUFFER_STATE;
  */
 typedef unsigned int yy_size_t;
 
+namespace {
 
 struct yy_buffer_state
     {
@@ -161,6 +166,8 @@ struct yy_buffer_state
 #define YY_BUFFER_EOF_PENDING 2
     };
 
+}
+
 static YY_BUFFER_STATE yy_current_buffer = nullptr;
 
 /* We provide macros for accessing buffer states in case in the
@@ -188,18 +195,18 @@ static int yy_start = 0;    /* start state number */
  */
 static int yy_did_buffer_switch_on_eof;
 
-void yyrestart YY_PROTO(( FILE *input_file ));
+static void yyrestart YY_PROTO(( FILE *input_file ));
 
-void yy_switch_to_buffer YY_PROTO(( YY_BUFFER_STATE new_buffer ));
-void yy_load_buffer_state YY_PROTO(( void ));
-YY_BUFFER_STATE yy_create_buffer YY_PROTO(( FILE *file, int size ));
-void yy_delete_buffer YY_PROTO(( YY_BUFFER_STATE b ));
-void yy_init_buffer YY_PROTO(( YY_BUFFER_STATE b, FILE *file ));
-void yy_flush_buffer YY_PROTO(( YY_BUFFER_STATE b ));
+static void yy_switch_to_buffer YY_PROTO(( YY_BUFFER_STATE new_buffer ));
+static void yy_load_buffer_state YY_PROTO(( ));
+static YY_BUFFER_STATE yy_create_buffer YY_PROTO(( FILE *file, int size ));
+static void yy_delete_buffer YY_PROTO(( YY_BUFFER_STATE b ));
+static void yy_init_buffer YY_PROTO(( YY_BUFFER_STATE b, FILE *file ));
+static void yy_flush_buffer YY_PROTO(( YY_BUFFER_STATE b ));
 
-YY_BUFFER_STATE yy_scan_buffer YY_PROTO(( char *base, yy_size_t size ));
-YY_BUFFER_STATE yy_scan_string YY_PROTO(( yyconst char *yy_str ));
-YY_BUFFER_STATE yy_scan_bytes YY_PROTO(( yyconst char *bytes, int len ));
+static YY_BUFFER_STATE yy_scan_buffer YY_PROTO(( char *base, yy_size_t size ));
+static YY_BUFFER_STATE yy_scan_string YY_PROTO(( yyconst char *yy_str ));
+static YY_BUFFER_STATE yy_scan_bytes YY_PROTO(( yyconst char *bytes, int len ));
 
 static void *yy_flex_alloc YY_PROTO(( yy_size_t ));
 static void *yy_flex_realloc YY_PROTO(( void *, yy_size_t ));
@@ -210,9 +217,9 @@ static FILE *yyin = nullptr, *yyout = nullptr;
 typedef int yy_state_type;
 #define yytext_ptr yytext
 
-static yy_state_type yy_get_previous_state YY_PROTO(( void ));
+static yy_state_type yy_get_previous_state YY_PROTO(( ));
 static yy_state_type yy_try_NUL_trans YY_PROTO(( yy_state_type current_state ));
-static int yy_get_next_buffer YY_PROTO(( void ));
+static int yy_get_next_buffer YY_PROTO(( ));
 static void yy_fatal_error YY_PROTO(( yyconst char msg[] ));
 
 /* Done after the current pattern has been matched and before the
@@ -220,13 +227,13 @@ static void yy_fatal_error YY_PROTO(( yyconst char msg[] ));
  */
 #define YY_DO_BEFORE_ACTION \
     yytext_ptr = yy_bp; \
-    yyleng = (int) (yy_cp - yy_bp); \
+    yyleng = static_cast<int>(yy_cp - yy_bp); \
     yy_hold_char = *yy_cp; \
     *yy_cp = '\0'; \
     yy_c_buf_p = yy_cp;
 
 #define YY_END_OF_BUFFER 46
-static yyconst short int yy_accept[994] =
+yyconst short int yy_accept[994] =
     {   0,
         0,    0,   46,   44,   41,   41,   44,   42,   39,   37,
        37,   36,   39,   39,   44,   44,   38,   40,   35,   43,
@@ -340,7 +347,7 @@ static yyconst short int yy_accept[994] =
 
     } ;
 
-static yyconst int yy_ec[256] =
+yyconst int yy_ec[256] =
     {   0,
         1,    1,    1,    1,    1,    1,    1,    1,    2,    3,
         1,    1,    2,    1,    1,    1,    1,    1,    1,    1,
@@ -372,7 +379,7 @@ static yyconst int yy_ec[256] =
        73,   73,   73,   73,    1
     } ;
 
-static yyconst int yy_meta[74] =
+yyconst int yy_meta[74] =
     {   0,
         1,    1,    1,    1,    1,    1,    1,    1,    1,    1,
         1,    1,    1,    1,    1,    1,    1,    1,    1,    1,
@@ -384,7 +391,7 @@ static yyconst int yy_meta[74] =
         1,    1,    1
     } ;
 
-static yyconst short int yy_base[995] =
+yyconst short int yy_base[995] =
     {   0,
         0,   72, 1314, 1315, 1315, 1315, 1297, 1315, 1315, 1315,
      1295,    2,    8, 1294, 1281,  142, 1315, 1315, 1315, 1236,
@@ -498,7 +505,7 @@ static yyconst short int yy_base[995] =
 
     } ;
 
-static yyconst short int yy_def[995] =
+yyconst short int yy_def[995] =
     {   0,
       994,  994,  993,  993,  993,  993,  993,  993,  993,  993,
       993,  993,  993,  993,  993,  993,  993,  993,  993,  993,
@@ -612,7 +619,7 @@ static yyconst short int yy_def[995] =
 
     } ;
 
-static yyconst short int yy_nxt[1389] =
+yyconst short int yy_nxt[1389] =
     {   0,
       993,    5,    6,    7,    8,    9,    9,   10,  993,   11,
       993,   12,   23,   24,   13,   10,   14,   25,   23,   24,
@@ -768,7 +775,7 @@ static yyconst short int yy_nxt[1389] =
       993,  993,  993,  993,  993,  993,  993,  993
     } ;
 
-static yyconst short int yy_chk[1389] =
+yyconst short int yy_chk[1389] =
     {   0,
         0,    1,    1,    1,    1,    1,    1,    1,    0,    1,
         0,    1,   12,   12,    1,    1,    1,   13,   24,   24,
@@ -942,13 +949,13 @@ static char *yytext;
 
 extern "C" {
 #include "grammar.h"
-int yywrap();
+static int yywrap();
 }
 
 #ifdef TOKEN_DEBUG
 #define token_debug printf
 #else
-int token_debug(const char *format, ...);
+static int token_debug(const char *format, ...);
 #endif
 
 /* Macros after this point can all be overridden by user definitions in
@@ -998,7 +1005,7 @@ YY_MALLOC_DECL
 #endif
 #endif
 
-#include <lexer.hxx>
+#include "lexer.hxx"
 
 /* Amount of stuff to slurp up with each read. */
 #ifndef YY_READ_BUF_SIZE
@@ -1011,7 +1018,7 @@ YY_MALLOC_DECL
 /* This used to be an fputs(), but since the string might contain NUL's,
  * we now use fwrite().
  */
-#define ECHO do { if (fwrite( yytext, yyleng, 1, yyout )) {} } while (false)
+#define ECHO do { fwrite( yytext, yyleng, 1, yyout ); } while (false)
 #endif
 
 /* Gets input and stuffs it into "buf".  number of characters read, or YY_NULL,
@@ -1024,9 +1031,9 @@ YY_MALLOC_DECL
         int c = '*', n; \
         for ( n = 0; n < max_size && \
                  (c = getc( yyin )) != EOF && c != '\n'; ++n ) \
-            buf[n] = (char) c; \
+            buf[n] = static_cast<char>(c); \
         if ( c == '\n' ) \
-            buf[n++] = (char) c; \
+            buf[n++] = static_cast<char>(c); \
         if ( c == EOF && ferror( yyin ) ) \
             YY_FATAL_ERROR( "input in flex scanner failed" ); \
         result = n; \
@@ -1125,11 +1132,11 @@ yy_match:
                 }
             while ( yy_chk[yy_base[yy_current_state] + yy_c] != yy_current_state )
                 {
-                yy_current_state = (int) yy_def[yy_current_state];
+                yy_current_state = static_cast<int>(yy_def[yy_current_state]);
                 if ( yy_current_state >= 994 )
-                    yy_c = sal::static_int_cast<YY_CHAR>(yy_meta[(unsigned int) yy_c]);
+                    yy_c = sal::static_int_cast<YY_CHAR>(yy_meta[static_cast<unsigned int>(yy_c)]);
                 }
-            yy_current_state = yy_nxt[yy_base[yy_current_state] + (unsigned int) yy_c];
+            yy_current_state = yy_nxt[yy_base[yy_current_state] + static_cast<unsigned int>(yy_c)];
             ++yy_cp;
             }
         while ( yy_base[yy_current_state] != 1315 );
@@ -1251,7 +1258,7 @@ case 23:
 YY_RULE_SETUP
 { token_debug(" ==>Ignore[\\rm]\n"); }
     //YY_BREAK
-SAL_FALLTHROUGH;
+[[fallthrough]];
 case 24:
 YY_RULE_SETUP
 { yylval.str = yytext+1; token_debug("  ==>General_Iden[%s]\n",yytext+1); return GENERAL_IDEN; }
@@ -1296,12 +1303,12 @@ case 34:
 YY_RULE_SETUP
 { yylval.str = yytext+1; token_debug("  ==>Space_Symbol[%s]\n",yytext+1); /*return SPACE_SYMBOL;*/ }
     //YY_BREAK
-SAL_FALLTHROUGH;
+[[fallthrough]];
 case 35:
 YY_RULE_SETUP
 { yylval.str = strdup("quad"); token_debug("    ==>Space_Symbol[quad]\n"); /* return SPACE_SYMBOL;*/ }
     //YY_BREAK
-SAL_FALLTHROUGH;
+[[fallthrough]];
 case 36:
 YY_RULE_SETUP
 { yylval.dval = yytext;  token_debug("  ==>Digit[%s]\n",yytext); return DIGIT; }
@@ -1348,7 +1355,7 @@ case YY_STATE_EOF(INITIAL):
     case YY_END_OF_BUFFER:
         {
         /* Amount of text matched not including the EOB char. */
-        int yy_amount_of_matched_text = (int) (yy_cp - yytext_ptr) - 1;
+        int yy_amount_of_matched_text = static_cast<int>(yy_cp - yytext_ptr) - 1;
 
         /* Undo the effects of YY_DO_BEFORE_ACTION. */
         *yy_cp = yy_hold_char;
@@ -1441,8 +1448,8 @@ case YY_STATE_EOF(INITIAL):
                     if ( ! yy_did_buffer_switch_on_eof )
                         YY_NEW_FILE;
                     }
-                break;
                 }
+                break;
 
             case EOB_ACT_CONTINUE_SCAN:
                 yy_c_buf_p =
@@ -1453,6 +1460,7 @@ case YY_STATE_EOF(INITIAL):
                 yy_cp = yy_c_buf_p;
                 yy_bp = yytext_ptr + YY_MORE_ADJ;
                 goto yy_match;
+                break;
 
             case EOB_ACT_LAST_MATCH:
                 yy_c_buf_p =
@@ -1463,6 +1471,7 @@ case YY_STATE_EOF(INITIAL):
                 yy_cp = yy_c_buf_p;
                 yy_bp = yytext_ptr + YY_MORE_ADJ;
                 goto yy_find_action;
+                break;
             }
         break;
         }
@@ -1516,7 +1525,7 @@ static int yy_get_next_buffer()
     /* Try to read more data. */
 
     /* First move last chars to start of buffer. */
-    number_to_move = (int) (yy_c_buf_p - yytext_ptr) - 1;
+    number_to_move = static_cast<int>(yy_c_buf_p - yytext_ptr) - 1;
 
     for ( i = 0; i < number_to_move; ++i )
         *(dest++) = *(source++);
@@ -1543,7 +1552,7 @@ static int yy_get_next_buffer()
             YY_BUFFER_STATE b = yy_current_buffer;
 
             int yy_c_buf_p_offset =
-                (int) (yy_c_buf_p - b->yy_ch_buf);
+                static_cast<int>(yy_c_buf_p - b->yy_ch_buf);
 
             if ( b->yy_is_our_buffer )
                 {
@@ -1632,11 +1641,11 @@ static yy_state_type yy_get_previous_state()
             }
         while ( yy_chk[yy_base[yy_current_state] + yy_c] != yy_current_state )
             {
-            yy_current_state = (int) yy_def[yy_current_state];
+            yy_current_state = static_cast<int>(yy_def[yy_current_state]);
             if ( yy_current_state >= 994 )
-                yy_c = sal::static_int_cast<YY_CHAR>(yy_meta[(unsigned int) yy_c]);
+                yy_c = sal::static_int_cast<YY_CHAR>(yy_meta[static_cast<unsigned int>(yy_c)]);
             }
-        yy_current_state = yy_nxt[yy_base[yy_current_state] + (unsigned int) yy_c];
+        yy_current_state = yy_nxt[yy_base[yy_current_state] + static_cast<unsigned int>(yy_c)];
         }
 
     return yy_current_state;
@@ -1667,11 +1676,11 @@ yy_state_type yy_current_state;
         }
     while ( yy_chk[yy_base[yy_current_state] + yy_c] != yy_current_state )
         {
-        yy_current_state = (int) yy_def[yy_current_state];
+        yy_current_state = static_cast<int>(yy_def[yy_current_state]);
         if ( yy_current_state >= 994 )
-            yy_c = sal::static_int_cast<YY_CHAR>(yy_meta[(unsigned int) yy_c]);
+            yy_c = sal::static_int_cast<YY_CHAR>(yy_meta[static_cast<unsigned int>(yy_c)]);
         }
-    yy_current_state = yy_nxt[yy_base[yy_current_state] + (unsigned int) yy_c];
+    yy_current_state = yy_nxt[yy_base[yy_current_state] + static_cast<unsigned int>(yy_c)];
     yy_is_jam = (yy_current_state == 993);
 
     return yy_is_jam ? 0 : yy_current_state;

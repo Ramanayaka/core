@@ -19,20 +19,16 @@
 #ifndef INCLUDED_WRITERFILTER_SOURCE_OOXML_OOXMLFASTHELPER_HXX
 #define INCLUDED_WRITERFILTER_SOURCE_OOXML_OOXMLFASTHELPER_HXX
 
-#include <iostream>
-#include <ooxml/QNameToString.hxx>
 #include "OOXMLFastContextHandler.hxx"
 
-namespace writerfilter {
-
-namespace ooxml
+namespace writerfilter::ooxml
 {
 
 template <class T>
 class OOXMLFastHelper
 {
 public:
-    static css::uno::Reference<css::xml::sax::XFastContextHandler> createAndSetParentAndDefine
+    static OOXMLFastContextHandler* createAndSetParentAndDefine
     (OOXMLFastContextHandler * pHandler, sal_uInt32 nToken, Id nId, Id nDefine);
 
     static void newProperty(OOXMLFastContextHandler * pHandler,
@@ -40,7 +36,7 @@ public:
 };
 
 template <class T>
-css::uno::Reference<css::xml::sax::XFastContextHandler> OOXMLFastHelper<T>::createAndSetParentAndDefine (OOXMLFastContextHandler * pHandler, sal_uInt32 nToken, Id nId, Id nDefine)
+OOXMLFastContextHandler* OOXMLFastHelper<T>::createAndSetParentAndDefine (OOXMLFastContextHandler * pHandler, sal_uInt32 nToken, Id nId, Id nDefine)
 {
     OOXMLFastContextHandler * pTmp = new T(pHandler);
 
@@ -48,9 +44,7 @@ css::uno::Reference<css::xml::sax::XFastContextHandler> OOXMLFastHelper<T>::crea
     pTmp->setId(nId);
     pTmp->setDefine(nDefine);
 
-    css::uno::Reference<css::xml::sax::XFastContextHandler> aResult(pTmp);
-
-    return aResult;
+    return pTmp;
 }
 
 template <class T>
@@ -63,7 +57,7 @@ void OOXMLFastHelper<T>::newProperty(OOXMLFastContextHandler * pHandler,
     pHandler->newProperty(nId, pVal);
 }
 
-}}
+}
 #endif // INCLUDED_WRITERFILTER_SOURCE_OOXML_OOXMLFASTHELPER_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

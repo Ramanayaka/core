@@ -22,20 +22,12 @@
 #include <dbaccess/dataview.hxx>
 #include <com/sun/star/report/XSection.hpp>
 #include <com/sun/star/report/XReportComponent.hpp>
-#include <vcl/split.hxx>
-#include <vcl/scrbar.hxx>
-#include <com/sun/star/container/XNameContainer.hpp>
-#include <com/sun/star/datatransfer/DataFlavor.hpp>
 #include <tools/link.hxx>
 #include <tools/gen.hxx>
 #include <vcl/timer.hxx>
 #include <vcl/idle.hxx>
-#include <svl/hint.hxx>
 #include <svl/SfxBroadcaster.hxx>
 #include "ReportDefines.hxx"
-#include <svtools/colorcfg.hxx>
-#include <svx/svdedtv.hxx>
-#include <vcl/tabpage.hxx>
 #include <vcl/splitwin.hxx>
 #include "MarkedSection.hxx"
 #include "ScrollHelper.hxx"
@@ -64,9 +56,9 @@ namespace rptui
         VclPtr<OScrollWindowHelper>         m_aScrollWindow;
         VclPtr<vcl::Window>                 m_pTaskPane;
         VclPtr<PropBrw>                     m_pPropWin;
-        VclPtr<OAddFieldWindow>             m_pAddField;
+        std::shared_ptr<OAddFieldWindow>    m_xAddField;
         OSectionView*                       m_pCurrentView;
-        VclPtr<ONavigator>                  m_pReportExplorer;
+        std::shared_ptr<ONavigator>         m_xReportExplorer;
         Idle                                m_aMarkIdle;
         DlgEdMode                           m_eMode;
         sal_uInt16                          m_eActObj;
@@ -80,8 +72,8 @@ namespace rptui
 
         void ImplInitSettings();
 
-        ODesignView(ODesignView&) = delete;
-        void operator =(ODesignView&) = delete;
+        ODesignView(ODesignView const &) = delete;
+        void operator =(ODesignView const &) = delete;
     protected:
         // return the Rectangle where I can paint myself
         virtual void resizeDocumentView(tools::Rectangle& rRect) override;
@@ -107,7 +99,7 @@ namespace rptui
         void            SetMode( DlgEdMode m_eMode );
         void            SetInsertObj( sal_uInt16 eObj,const OUString& _sShapeType = OUString());
         sal_uInt16          GetInsertObj() const { return m_eActObj;}
-        OUString   GetInsertObjString() const;
+        OUString const &    GetInsertObjString() const;
         DlgEdMode       GetMode() const { return m_eMode; }
 
         /** cuts the current selection in this section
@@ -172,7 +164,7 @@ namespace rptui
         */
         void            toggleGrid(bool _bGridVisible);
 
-        void            togglePropertyBrowser(bool _bToogleOn);
+        void            togglePropertyBrowser(bool _bToggleOn);
 
         bool            isAddFieldVisible() const;
         void            toggleAddField();
@@ -213,11 +205,11 @@ namespace rptui
         */
         void fillCollapsedSections(::std::vector<sal_uInt16>& _rCollapsedPositions) const;
 
-        /** collpase all sections given by their position
+        /** collapse all sections given by their position
         *
-        * \param _aCollpasedSections The position of the sections which should be collapsed.
+        * \param _aCollapsedSections The position of the sections which should be collapsed.
         */
-        void collapseSections(const css::uno::Sequence< css::beans::PropertyValue>& _aCollpasedSections);
+        void collapseSections(const css::uno::Sequence< css::beans::PropertyValue>& _aCollapsedSections);
 
         OUString  getCurrentPage() const;
         void             setCurrentPage(const OUString& _sLastActivePage);

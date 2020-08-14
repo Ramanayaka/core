@@ -20,11 +20,10 @@
 #include <svgellipsenode.hxx>
 #include <basegfx/polygon/b2dpolygon.hxx>
 #include <basegfx/polygon/b2dpolygontools.hxx>
+#include <basegfx/polygon/b2dpolypolygon.hxx>
 
-namespace svgio
+namespace svgio::svgreader
 {
-    namespace svgreader
-    {
         SvgEllipseNode::SvgEllipseNode(
             SvgDocument& rDocument,
             SvgNode* pParent)
@@ -33,8 +32,7 @@ namespace svgio
             maCx(0),
             maCy(0),
             maRx(0),
-            maRy(0),
-            mpaTransform(nullptr)
+            maRy(0)
         {
         }
 
@@ -130,32 +128,31 @@ namespace svgio
         {
             const SvgStyleAttributes* pStyle = getSvgStyleAttributes();
 
-            if(pStyle && getRx().isSet() && getRy().isSet())
+            if(!(pStyle && getRx().isSet() && getRy().isSet()))
+                return;
+
+            const double fRx(getRx().solve(*this, xcoordinate));
+            const double fRy(getRy().solve(*this, ycoordinate));
+
+            if(fRx <= 0.0 || fRy <= 0.0)
+                return;
+
+            const basegfx::B2DPolygon aPath(
+                basegfx::utils::createPolygonFromEllipse(
+                    basegfx::B2DPoint(
+                        getCx().isSet() ? getCx().solve(*this, xcoordinate) : 0.0,
+                        getCy().isSet() ? getCy().solve(*this, ycoordinate) : 0.0),
+                    fRx, fRy));
+
+            drawinglayer::primitive2d::Primitive2DContainer aNewTarget;
+
+            pStyle->add_path(basegfx::B2DPolyPolygon(aPath), aNewTarget, nullptr);
+
+            if(!aNewTarget.empty())
             {
-                const double fRx(getRx().solve(*this, xcoordinate));
-                const double fRy(getRy().solve(*this, ycoordinate));
-
-                if(fRx > 0.0 && fRy > 0.0)
-                {
-                    const basegfx::B2DPolygon aPath(
-                        basegfx::tools::createPolygonFromEllipse(
-                            basegfx::B2DPoint(
-                                getCx().isSet() ? getCx().solve(*this, xcoordinate) : 0.0,
-                                getCy().isSet() ? getCy().solve(*this, ycoordinate) : 0.0),
-                            fRx, fRy));
-
-                    drawinglayer::primitive2d::Primitive2DContainer aNewTarget;
-
-                    pStyle->add_path(basegfx::B2DPolyPolygon(aPath), aNewTarget, nullptr);
-
-                    if(!aNewTarget.empty())
-                    {
-                        pStyle->add_postProcess(rTarget, aNewTarget, getTransform());
-                    }
-                }
+                pStyle->add_postProcess(rTarget, aNewTarget, getTransform());
             }
         }
-    } // end of namespace svgreader
-} // end of namespace svgio
+} // end of namespace svgio::svgreader
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -20,13 +20,14 @@
 #ifndef INCLUDED_COMPHELPER_ACCESSIBLESELECTIONHELPER_HXX
 #define INCLUDED_COMPHELPER_ACCESSIBLESELECTIONHELPER_HXX
 
+#include <config_options.h>
 #include <comphelper/uno3.hxx>
 #include <comphelper/accessiblecomponenthelper.hxx>
 #include <cppuhelper/implbase1.hxx>
 #include <com/sun/star/accessibility/XAccessibleSelection.hpp>
 #include <comphelper/comphelperdllapi.h>
 
-#define ACCESSIBLE_SELECTION_CHILD_ALL  ((sal_Int32)-1)
+#define ACCESSIBLE_SELECTION_CHILD_ALL  (sal_Int32(-1))
 #define ACCESSIBLE_SELECTION_CHILD_SELF ((sal_Int32)-2)
 
 
@@ -71,22 +72,22 @@ namespace comphelper
             @throws css::lang::IndexOutOfBoundsException
             @throws css::uno::RuntimeException
         */
-        void SAL_CALL selectAccessibleChild( sal_Int32 nChildIndex );
+        void selectAccessibleChild( sal_Int32 nChildIndex );
         /// @throws css::lang::IndexOutOfBoundsException
         /// @throws css::uno::RuntimeException
-        bool SAL_CALL isAccessibleChildSelected( sal_Int32 nChildIndex );
+        bool isAccessibleChildSelected( sal_Int32 nChildIndex );
         /// @throws css::uno::RuntimeException
-        void SAL_CALL clearAccessibleSelection(  );
+        void clearAccessibleSelection(  );
         /// @throws css::uno::RuntimeException
-        void SAL_CALL selectAllAccessibleChildren(  );
+        void selectAllAccessibleChildren(  );
         /// @throws css::uno::RuntimeException
-        sal_Int32 SAL_CALL getSelectedAccessibleChildCount(  );
+        sal_Int32 getSelectedAccessibleChildCount(  );
         /// @throws css::lang::IndexOutOfBoundsException
         /// @throws css::uno::RuntimeException
-        css::uno::Reference< css::accessibility::XAccessible > SAL_CALL getSelectedAccessibleChild( sal_Int32 nSelectedChildIndex );
+        css::uno::Reference< css::accessibility::XAccessible > getSelectedAccessibleChild( sal_Int32 nSelectedChildIndex );
         /// @throws css::lang::IndexOutOfBoundsException
         /// @throws css::uno::RuntimeException
-        void SAL_CALL deselectAccessibleChild( sal_Int32 nSelectedChildIndex );
+        void deselectAccessibleChild( sal_Int32 nSelectedChildIndex );
     };
 
 
@@ -98,7 +99,7 @@ namespace comphelper
     /** a helper class for implementing an AccessibleSelection which at the same time
         supports an XAccessibleSelection interface.
     */
-    class COMPHELPER_DLLPUBLIC OAccessibleSelectionHelper : public OAccessibleComponentHelper,
+    class UNLESS_MERGELIBS(COMPHELPER_DLLPUBLIC) OAccessibleSelectionHelper : public OAccessibleComponentHelper,
                                        public OCommonAccessibleSelection,
                                        public OAccessibleSelectionHelper_Base
     {

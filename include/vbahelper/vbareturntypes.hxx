@@ -27,9 +27,7 @@
 #include <sal/types.h>
 #include <vbahelper/vbahelper.hxx>
 
-namespace ooo
-{
-    namespace vba
+namespace ooo::vba
     {
         template< typename T1,  typename T2 >
         class DefaultReturnHelper : public ::cppu::WeakImplHelper< T2, css::script::XDefaultProperty >
@@ -37,20 +35,19 @@ namespace ooo
             T1 mnValue;
             public:
             DefaultReturnHelper( const T1& nValue ) : mnValue( nValue ) {}
-            virtual void  SAL_CALL setValue( T1 nValue ) SAL_OVERRIDE { mnValue = nValue; }
-            virtual T1  SAL_CALL getValue() SAL_OVERRIDE { return mnValue; }
-            OUString SAL_CALL getDefaultPropertyName(  ) SAL_OVERRIDE { return OUString("Value"); }
+            virtual void  SAL_CALL setValue( T1 nValue ) override { mnValue = nValue; }
+            virtual T1  SAL_CALL getValue() override { return mnValue; }
+            OUString SAL_CALL getDefaultPropertyName(  ) override { return "Value"; }
         };
 
         typedef DefaultReturnHelper< sal_Int32, ov::msforms::XReturnInteger > ReturnInteger_BASE;
-        class ReturnInteger : public ReturnInteger_BASE
+        class ReturnInteger final : public ReturnInteger_BASE
         {
             public:
             ReturnInteger( sal_Int32 nValue ) : ReturnInteger_BASE( nValue ){}
         };
 
-    } // vba
-} // ooo
+} // ooo::vba
 
 #endif
 

@@ -22,9 +22,9 @@
 
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
+#include <tools/color.hxx>
 
 class SdrObject;
-class Ppt97Animation;
 class SvStream;
 
 /// helper class for reading PPT AnimationInfoAtom
@@ -33,7 +33,7 @@ class Ppt97AnimationInfoAtom
     friend class Ppt97Animation;
 
 //-- member
-    sal_uInt32          nDimColor;
+    Color               nDimColor;
     sal_uInt32          nFlags;         ///< 0x0004: time instead of click
     sal_uInt32          nSoundRef;
     sal_Int32           nDelayTime;     ///< 1/1000 sec
@@ -101,7 +101,7 @@ public: //public methods
     bool HasAnimateAssociatedShape() const;
 
     //set methods
-    void SetDimColor( sal_Int32 nDimColor );
+    void SetDimColor( Color nDimColor );
     void SetSoundFileUrl( const OUString& rSoundFileUrl );
     void SetAnimateAssociatedShape( bool bAnimate ); //true if the shape should be animated in addition to the text
 

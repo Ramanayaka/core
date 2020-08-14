@@ -22,10 +22,11 @@
 
 #include <svl/svldllapi.h>
 #include <svl/poolitem.hxx>
-#include <com/sun/star/uno/Sequence.hxx>
 #include <vector>
 
-class SVL_DLLPUBLIC SfxIntegerListItem : public SfxPoolItem
+namespace com::sun::star::uno { template <class E> class Sequence; }
+
+class SVL_DLLPUBLIC SfxIntegerListItem final : public SfxPoolItem
 {
     std::vector < sal_Int32 > m_aList;
 
@@ -34,13 +35,17 @@ public:
     SfxIntegerListItem();
     SfxIntegerListItem( sal_uInt16 nWhich, const ::std::vector < sal_Int32 >& rList );
     SfxIntegerListItem( sal_uInt16 nWhich, const css::uno::Sequence < sal_Int32 >& rList );
-    SfxIntegerListItem( const SfxIntegerListItem& rItem );
     virtual ~SfxIntegerListItem() override;
+
+    SfxIntegerListItem(SfxIntegerListItem const &) = default;
+    SfxIntegerListItem(SfxIntegerListItem &&) = default;
+    SfxIntegerListItem & operator =(SfxIntegerListItem const &) = delete; // due to SfxPoolItem
+    SfxIntegerListItem & operator =(SfxIntegerListItem &&) = delete; // due to SfxPoolItem
 
     const std::vector< sal_Int32 >& GetList() const { return m_aList; }
 
     virtual bool            operator==( const SfxPoolItem& ) const override;
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
+    virtual SfxIntegerListItem* Clone( SfxItemPool *pPool = nullptr ) const override;
     virtual bool            PutValue  ( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
     virtual bool            QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
 };

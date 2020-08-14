@@ -20,19 +20,16 @@
 #ifndef INCLUDED_SLIDESHOW_SOURCE_ENGINE_SLIDE_USERPAINTOVERLAY_HXX
 #define INCLUDED_SLIDESHOW_SOURCE_ENGINE_SLIDE_USERPAINTOVERLAY_HXX
 
-#include <basegfx/polygon/b2dpolypolygon.hxx>
+#include <cppcanvas/canvasgraphic.hxx>
 
-#include "unoview.hxx"
-#include "rgbcolor.hxx"
+#include <rgbcolor.hxx>
 
 #include <memory>
 #include <vector>
 
 /* Definition of UserPaintOverlay class */
 
-namespace slideshow
-{
-    namespace internal
+namespace slideshow::internal
     {
         class EventMultiplexer;
         struct SlideShowContext;
@@ -65,7 +62,7 @@ namespace slideshow
             ~UserPaintOverlay();
             UserPaintOverlay(const UserPaintOverlay&) = delete;
             UserPaintOverlay& operator=(const UserPaintOverlay&) = delete;
-            PolyPolygonVector getPolygons();
+            PolyPolygonVector const & getPolygons() const;
             void drawPolygons();
 
         private:
@@ -78,7 +75,7 @@ namespace slideshow
             ::std::shared_ptr<PaintOverlayHandler>    mpHandler;
             EventMultiplexer&                           mrMultiplexer;
         };
-    }
+
 }
 
 #endif // INCLUDED_SLIDESHOW_SOURCE_ENGINE_SLIDE_USERPAINTOVERLAY_HXX

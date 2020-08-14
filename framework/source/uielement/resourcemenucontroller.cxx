@@ -11,12 +11,14 @@
 
 #include <cppuhelper/implbase.hxx>
 #include <svtools/popupmenucontrollerbase.hxx>
+#include <toolkit/awt/vclxmenu.hxx>
+#include <vcl/svapp.hxx>
+#include <sal/log.hxx>
 
 #include <com/sun/star/embed/VerbAttributes.hpp>
 #include <com/sun/star/embed/VerbDescriptor.hpp>
 #include <com/sun/star/frame/ModuleManager.hpp>
 #include <com/sun/star/frame/XStorable.hpp>
-#include <com/sun/star/ui/ItemType.hpp>
 #include <com/sun/star/ui/theModuleUIConfigurationManagerSupplier.hpp>
 #include <com/sun/star/ui/XUIConfigurationManagerSupplier.hpp>
 #include <com/sun/star/util/URL.hpp>
@@ -62,7 +64,6 @@ private:
     css::uno::Reference< css::uno::XComponentContext > m_xContext;
     css::uno::Reference< css::ui::XUIConfigurationManager > m_xConfigManager, m_xModuleConfigManager;
     void addVerbs( const css::uno::Sequence< css::embed::VerbDescriptor >& rVerbs );
-    void fillToolbarData();
     virtual void SAL_CALL disposing() override;
 };
 
@@ -205,10 +206,7 @@ void ResourceMenuController::updatePopupMenu()
 
     // Now fill the menu with the configuration data.
     css::uno::Reference< css::frame::XDispatchProvider > xDispatchProvider( m_xFrame, css::uno::UNO_QUERY );
-    if ( m_bToolbarContainer )
-        fillToolbarData();
-    else
-        framework::MenuBarManager::FillMenu( m_nNewMenuId, VCLXMenu::GetImplementation( m_xPopupMenu )->GetMenu(), m_aModuleName, m_xMenuContainer, xDispatchProvider );
+    framework::MenuBarManager::FillMenu( m_nNewMenuId, comphelper::getUnoTunnelImplementation<VCLXMenu>( m_xPopupMenu )->GetMenu(), m_aModuleName, m_xMenuContainer, xDispatchProvider );
 
     // For context menus, add object verbs.
     if ( m_bContextMenu )
@@ -241,7 +239,7 @@ void ResourceMenuController::addVerbs( const css::uno::Sequence< css::embed::Ver
         xStorable.set( xController->getModel(), css::uno::UNO_QUERY );
 
     bool bReadOnly = xStorable.is() && xStorable->isReadonly();
-    VCLXMenu* pAwtMenu = VCLXMenu::GetImplementation( m_xPopupMenu );
+    VCLXMenu* pAwtMenu = comphelper::getUnoTunnelImplementation<VCLXMenu>( m_xPopupMenu );
     Menu* pVCLMenu = pAwtMenu->GetMenu();
 
     for ( const auto& rVerb : rVerbs )
@@ -256,66 +254,12 @@ void ResourceMenuController::addVerbs( const css::uno::Sequence< css::embed::Ver
     }
 }
 
-void ResourceMenuController::fillToolbarData()
-{
-    VCLXMenu* pAwtMenu = VCLXMenu::GetImplementation( m_xPopupMenu );
-    Menu* pVCLMenu = pAwtMenu->GetMenu();
-
-    css::uno::Sequence< css::beans::PropertyValue > aPropSequence;
-    for ( sal_Int32 i = 0; i < m_xMenuContainer->getCount(); ++i )
-    {
-        try
-        {
-            if ( m_xMenuContainer->getByIndex( i ) >>= aPropSequence )
-            {
-                OUString aCommandURL;
-                OUString aLabel;
-                sal_uInt16 nType = css::ui::ItemType::DEFAULT;
-                bool bVisible = true;
-
-                for ( const auto& aProp: aPropSequence )
-                {
-                    if ( aProp.Name == "CommandURL" )
-                        aProp.Value >>= aCommandURL;
-                    else if ( aProp.Name == "Label" )
-                        aProp.Value >>= aLabel;
-                    else if ( aProp.Name == "Type" )
-                        aProp.Value >>= nType;
-                    else if ( aProp.Name == "IsVisible" )
-                        aProp.Value >>= bVisible;
-                }
-
-                switch ( nType )
-                {
-                case css::ui::ItemType::DEFAULT:
-                    if ( bVisible )
-                    {
-                        pVCLMenu->InsertItem( m_nNewMenuId, aLabel );
-                        pVCLMenu->SetItemCommand( m_nNewMenuId++, aCommandURL );
-                    }
-                    break;
-                case css::ui::ItemType::SEPARATOR_LINE:
-                case css::ui::ItemType::SEPARATOR_LINEBREAK:
-                    if ( bVisible && pVCLMenu->GetItemId( pVCLMenu->GetItemCount() - 1 ) != 0 )
-                        pVCLMenu->InsertSeparator();
-                    break;
-                default: ;
-                }
-            }
-        }
-        catch ( const css::uno::Exception& )
-        {
-            break;
-        }
-    }
-}
-
 void ResourceMenuController::itemActivated( const css::awt::MenuEvent& /*rEvent*/ )
 {
     // Must initialize MenuBarManager here, because we want to let the app do context menu interception before.
     if ( !m_xMenuBarManager.is() )
     {
-        VCLXMenu* pAwtMenu = VCLXMenu::GetImplementation( m_xPopupMenu );
+        VCLXMenu* pAwtMenu = comphelper::getUnoTunnelImplementation<VCLXMenu>( m_xPopupMenu );
         css::uno::Reference< css::frame::XDispatchProvider > xDispatchProvider( m_xFrame, css::uno::UNO_QUERY );
         m_xMenuBarManager.set( new framework::MenuBarManager(
             m_xContext, m_xFrame, m_xURLTransformer, xDispatchProvider, m_aModuleName, pAwtMenu->GetMenu(), false, !m_bContextMenu && !m_bInToolbar ) );
@@ -386,9 +330,9 @@ void ResourceMenuController::disposing()
 OUString ResourceMenuController::getImplementationName()
 {
     if ( m_bToolbarContainer )
-        return OUString( "com.sun.star.comp.framework.ToolbarAsMenuController" );
+        return "com.sun.star.comp.framework.ToolbarAsMenuController";
 
-    return OUString( "com.sun.star.comp.framework.ResourceMenuController" );
+    return "com.sun.star.comp.framework.ResourceMenuController";
 }
 
 css::uno::Sequence< OUString > ResourceMenuController::getSupportedServiceNames()
@@ -417,7 +361,7 @@ SaveAsMenuController::SaveAsMenuController( const css::uno::Reference< css::uno:
 
 void SaveAsMenuController::impl_setPopupMenu()
 {
-    VCLXMenu* pPopupMenu    = VCLXMenu::GetImplementation( m_xPopupMenu );
+    VCLXMenu* pPopupMenu    = comphelper::getUnoTunnelImplementation<VCLXMenu>( m_xPopupMenu );
     Menu*     pVCLPopupMenu = nullptr;
 
     SolarMutexGuard aGuard;
@@ -437,12 +381,12 @@ void SaveAsMenuController::impl_setPopupMenu()
 
 OUString SaveAsMenuController::getImplementationName()
 {
-    return OUString( "com.sun.star.comp.framework.SaveAsMenuController" );
+    return "com.sun.star.comp.framework.SaveAsMenuController";
 }
 
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_framework_ResourceMenuController_get_implementation(
     css::uno::XComponentContext* context,
     css::uno::Sequence< css::uno::Any > const & args )
@@ -450,7 +394,7 @@ com_sun_star_comp_framework_ResourceMenuController_get_implementation(
     return cppu::acquire( new ResourceMenuController( context, args, false ) );
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_framework_ToolbarAsMenuController_get_implementation(
     css::uno::XComponentContext* context,
     css::uno::Sequence< css::uno::Any > const & args )
@@ -458,7 +402,7 @@ com_sun_star_comp_framework_ToolbarAsMenuController_get_implementation(
     return cppu::acquire( new ResourceMenuController( context, args, true ) );
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_framework_SaveAsMenuController_get_implementation(
     css::uno::XComponentContext* context,
     css::uno::Sequence< css::uno::Any > const & args )

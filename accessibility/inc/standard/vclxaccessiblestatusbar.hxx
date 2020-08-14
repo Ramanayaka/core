@@ -17,21 +17,18 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_ACCESSIBILITY_INC_STANDARD_VCLXACCESSIBLESTATUSBAR_HXX
-#define INCLUDED_ACCESSIBILITY_INC_STANDARD_VCLXACCESSIBLESTATUSBAR_HXX
+#pragma once
 
 #include <toolkit/awt/vclxaccessiblecomponent.hxx>
+#include <vcl/status.hxx>
 #include <vcl/vclptr.hxx>
 
 #include <vector>
 
-class StatusBar;
 
 
-//  class VCLXAccessibleStatusBar
 
-
-class VCLXAccessibleStatusBar : public VCLXAccessibleComponent
+class VCLXAccessibleStatusBar final : public VCLXAccessibleComponent
 {
 private:
     typedef std::vector< css::uno::Reference< css::accessibility::XAccessible > > AccessibleChildren;
@@ -39,7 +36,6 @@ private:
     AccessibleChildren      m_aAccessibleChildren;
     VclPtr<StatusBar>       m_pStatusBar;
 
-protected:
     void                    UpdateShowing( sal_Int32 i, bool bShowing );
     void                    UpdateItemName( sal_Int32 i );
     void                    UpdateItemText( sal_Int32 i );
@@ -54,7 +50,6 @@ protected:
 
 public:
     VCLXAccessibleStatusBar( VCLXWindow* pVCLXWindow );
-    virtual ~VCLXAccessibleStatusBar() override;
 
     // XServiceInfo
     virtual OUString SAL_CALL getImplementationName() override;
@@ -69,6 +64,5 @@ public:
 };
 
 
-#endif // INCLUDED_ACCESSIBILITY_INC_STANDARD_VCLXACCESSIBLESTATUSBAR_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

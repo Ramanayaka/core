@@ -21,14 +21,15 @@
 #include <fmtclds.hxx>
 #include <fmtfordr.hxx>
 #include <frmfmt.hxx>
-#include "frmtool.hxx"
-#include "colfrm.hxx"
-#include "pagefrm.hxx"
-#include "bodyfrm.hxx"
-#include "rootfrm.hxx"
-#include "sectfrm.hxx"
+#include <frmatr.hxx>
+#include <frmtool.hxx>
+#include <colfrm.hxx>
+#include <pagefrm.hxx>
+#include <bodyfrm.hxx>
+#include <rootfrm.hxx>
+#include <sectfrm.hxx>
 #include <calbck.hxx>
-#include "ftnfrm.hxx"
+#include <ftnfrm.hxx>
 #include <IDocumentState.hxx>
 #include <IDocumentLayoutAccess.hxx>
 #include <IDocumentUndoRedo.hxx>
@@ -51,6 +52,9 @@ void SwColumnFrame::DestroyImpl()
         //I'm the only one, delete the format.
         //Get default format before, so the base class can cope with it.
         pDoc->GetDfltFrameFormat()->Add( this );
+        // tdf#134009, like #i32968# avoid SwUndoFrameFormatDelete creation,
+        // the format is owned by the SwColumnFrame, see lcl_AddColumns()
+        ::sw::UndoGuard const ug(pDoc->GetIDocumentUndoRedo());
         pDoc->DelFrameFormat( pFormat );
     }
 
@@ -158,7 +162,7 @@ static bool lcl_AddColumns( SwLayoutFrame *pCont, sal_uInt16 nCount )
         ::sw::UndoGuard const undoGuard(pDoc->GetIDocumentUndoRedo());
         for ( sal_uInt16 i = 0; i < nCount; ++i )
         {
-            SwFrameFormat *pFormat = pDoc->MakeFrameFormat(aEmptyOUStr, pDoc->GetDfltFrameFormat());
+            SwFrameFormat *pFormat = pDoc->MakeFrameFormat(OUString(), pDoc->GetDfltFrameFormat());
             SwColumnFrame *pTmp = new SwColumnFrame( pFormat, pCont );
             pTmp->SetMaxFootnoteHeight( nMax );
             pTmp->Paste( pCont );
@@ -294,13 +298,13 @@ void SwLayoutFrame::AdjustColumns( const SwFormatCol *pAttr, bool bAdjustAttribu
 {
     if( !Lower()->GetNext() )
     {
-        Lower()->ChgSize( Prt().SSize() );
+        Lower()->ChgSize( getFramePrintArea().SSize() );
         return;
     }
 
     const bool bVert = IsVertical();
 
-    SwRectFn fnRect = bVert ? ( IsVertLR() ? fnRectVertL2R : fnRectVert ) : fnRectHori;
+    SwRectFn fnRect = bVert ? ( IsVertLR() ? (IsVertLRBT() ? fnRectVertL2RB2T : fnRectVertL2R) : fnRectVert ) : fnRectHori;
 
     //If we have a pointer or we have to configure an attribute, we set the
     //column widths in any case. Otherwise we check if a configuration is needed.
@@ -309,11 +313,11 @@ void SwLayoutFrame::AdjustColumns( const SwFormatCol *pAttr, bool bAdjustAttribu
         pAttr = &GetFormat()->GetCol();
         if ( !bAdjustAttributes )
         {
-            long nAvail = (Prt().*fnRect->fnGetWidth)();
+            long nAvail = (getFramePrintArea().*fnRect->fnGetWidth)();
             for ( SwLayoutFrame *pCol = static_cast<SwLayoutFrame*>(Lower());
                   pCol;
                   pCol = static_cast<SwLayoutFrame*>(pCol->GetNext()) )
-                nAvail -= (pCol->Frame().*fnRect->fnGetWidth)();
+                nAvail -= (pCol->getFrameArea().*fnRect->fnGetWidth)();
             if ( !nAvail )
                 return;
         }
@@ -321,7 +325,7 @@ void SwLayoutFrame::AdjustColumns( const SwFormatCol *pAttr, bool bAdjustAttribu
 
     //The columns can now be easily adjusted.
     //The widths get counted so we can give the reminder to the last one.
-    SwTwips nAvail = (Prt().*fnRect->fnGetWidth)();
+    SwTwips nAvail = (getFramePrintArea().*fnRect->fnGetWidth)();
     const bool bLine = pAttr->GetLineAdj() != COLADJ_NONE;
     const sal_uInt16 nMin = bLine ? sal_uInt16( 20 + ( pAttr->GetLineWidth() / 2) ) : 0;
 
@@ -340,11 +344,11 @@ void SwLayoutFrame::AdjustColumns( const SwFormatCol *pAttr, bool bAdjustAttribu
         {
             const SwTwips nWidth = i == (pAttr->GetNumCols() - 1) ?
                                    nAvail :
-                                   pAttr->CalcColWidth( i, sal_uInt16( (Prt().*fnRect->fnGetWidth)() ) );
+                                   pAttr->CalcColWidth( i, sal_uInt16( (getFramePrintArea().*fnRect->fnGetWidth)() ) );
 
             const Size aColSz = bVert ?
-                                Size( Prt().Width(), nWidth ) :
-                                Size( nWidth, Prt().Height() );
+                                Size( getFramePrintArea().Width(), nWidth ) :
+                                Size( nWidth, getFramePrintArea().Height() );
 
             pCol->ChgSize( aColSz );
 
@@ -407,34 +411,34 @@ void SwLayoutFrame::AdjustColumns( const SwFormatCol *pAttr, bool bAdjustAttribu
         pCol = bR2L ? pCol->GetPrev() : pCol->GetNext();
     }
 
-    if( bOrtho )
+    if( !bOrtho )
+        return;
+
+    long nInnerWidth = ( nAvail - nGutter ) / pAttr->GetNumCols();
+    pCol = Lower();
+    for( sal_uInt16 i = 0; i < pAttr->GetNumCols() && pCol; pCol = pCol->GetNext(), ++i ) //i118878, value returned by GetNumCols() can't be trusted
     {
-        long nInnerWidth = ( nAvail - nGutter ) / pAttr->GetNumCols();
-        pCol = Lower();
-        for( sal_uInt16 i = 0; i < pAttr->GetNumCols() && pCol; pCol = pCol->GetNext(), ++i ) //i118878, value returned by GetNumCols() can't be trusted
+        SwTwips nWidth;
+        if ( i == pAttr->GetNumCols() - 1 )
+            nWidth = nAvail;
+        else
         {
-            SwTwips nWidth;
-            if ( i == pAttr->GetNumCols() - 1 )
-                nWidth = nAvail;
-            else
-            {
-                SvxLRSpaceItem aLR( pCol->GetAttrSet()->GetLRSpace() );
-                nWidth = nInnerWidth + aLR.GetLeft() + aLR.GetRight();
-            }
-            if( nWidth < 0 )
-                nWidth = 0;
-
-            const Size aColSz = bVert ?
-                                Size( Prt().Width(), nWidth ) :
-                                Size( nWidth, Prt().Height() );
-
-            pCol->ChgSize( aColSz );
-
-            if( IsBodyFrame() )
-                static_cast<SwLayoutFrame*>(pCol)->Lower()->ChgSize( aColSz );
-
-            nAvail -= nWidth;
+            SvxLRSpaceItem aLR( pCol->GetAttrSet()->GetLRSpace() );
+            nWidth = nInnerWidth + aLR.GetLeft() + aLR.GetRight();
         }
+        if( nWidth < 0 )
+            nWidth = 0;
+
+        const Size aColSz = bVert ?
+                            Size( getFramePrintArea().Width(), nWidth ) :
+                            Size( nWidth, getFramePrintArea().Height() );
+
+        pCol->ChgSize( aColSz );
+
+        if( IsBodyFrame() )
+            static_cast<SwLayoutFrame*>(pCol)->Lower()->ChgSize( aColSz );
+
+        nAvail -= nWidth;
     }
 }
 

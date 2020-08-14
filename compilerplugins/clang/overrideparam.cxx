@@ -6,17 +6,17 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
+#ifndef LO_CLANG_SHARED_PLUGINS
 
 #include <string>
 #include <set>
 
 #include "plugin.hxx"
-#include "compat.hxx"
 #include "check.hxx"
 
 /*
   Find overridden methods that :
-  (a) declare default params in different palces to their super-method(s)
+  (a) declare default params in different places to their super-method(s)
 
   Still TODO
   (b) Find places where the values of the default parameters are different
@@ -26,10 +26,11 @@
 namespace {
 
 class OverrideParam:
-    public RecursiveASTVisitor<OverrideParam>, public loplugin::Plugin
+    public loplugin::FilteringPlugin<OverrideParam>
 {
 public:
-    explicit OverrideParam(InstantiationData const & data): Plugin(data) {}
+    explicit OverrideParam(loplugin::InstantiationData const & data):
+        FilteringPlugin(data) {}
 
     virtual void run() override;
 
@@ -37,18 +38,12 @@ public:
 
 private:
     bool hasSameDefaultParams(const ParmVarDecl * parmVarDecl, const ParmVarDecl * superParmVarDecl);
-    bool evaluate(const Expr* expr, APSInt& x);
 };
 
 void OverrideParam::run()
 {
-    /*
-    StringRef fn( compiler.getSourceManager().getFileEntryForID(
-                      compiler.getSourceManager().getMainFileID())->getName() );
-    if (fn == SRCDIR "/include/svx/checklbx.hxx")
-         return;
-*/
-    TraverseDecl(compiler.getASTContext().getTranslationUnitDecl());
+    if (preRun())
+        TraverseDecl(compiler.getASTContext().getTranslationUnitDecl());
 }
 
 bool OverrideParam::VisitCXXMethodDecl(const CXXMethodDecl * methodDecl) {
@@ -59,10 +54,6 @@ bool OverrideParam::VisitCXXMethodDecl(const CXXMethodDecl * methodDecl) {
         return true;
     }
     loplugin::DeclCheck dc(methodDecl);
-    // there is an InsertEntry override here which causes trouble if I modify it
-    if (dc.Function("InsertEntry").Class("SvxCheckListBox").GlobalNamespace()) {
-        return true;
-    }
     // This class is overriding ShowCursor(bool) AND declaring a ShowCursor() method.
     // Adding a default param causes 'ambiguous override'.
     if (dc.Function("ShowCursor").Class("ScTabViewShell").GlobalNamespace()) {
@@ -77,7 +68,7 @@ bool OverrideParam::VisitCXXMethodDecl(const CXXMethodDecl * methodDecl) {
             continue;
         }
         int i = 0;
-        for (const ParmVarDecl *superParmVarDecl : compat::parameters(*superMethodDecl)) {
+        for (const ParmVarDecl *superParmVarDecl : superMethodDecl->parameters()) {
             const ParmVarDecl *parmVarDecl = methodDecl->getParamDecl(i);
             if (parmVarDecl->hasDefaultArg() && !superParmVarDecl->hasDefaultArg()) {
                 report(
@@ -147,39 +138,10 @@ bool OverrideParam::hasSameDefaultParams(const ParmVarDecl * parmVarDecl, const 
     if (parmVarDecl->hasUninstantiatedDefaultArg() || superParmVarDecl->hasUninstantiatedDefaultArg()) {
         return true;
     }
-    const Expr* defaultArgExpr = parmVarDecl->getDefaultArg();
-    const Expr* superDefaultArgExpr = superParmVarDecl->getDefaultArg();
-
-    if (defaultArgExpr->isNullPointerConstant(compiler.getASTContext(), Expr::NPC_NeverValueDependent)
-        && superDefaultArgExpr->isNullPointerConstant(compiler.getASTContext(), Expr::NPC_NeverValueDependent))
-    {
-        return true;
-    }
-    APSInt x1, x2;
-    if (evaluate(defaultArgExpr, x1) && evaluate(superDefaultArgExpr, x2))
-    {
-        return x1 == x2;
-    }
-#if CLANG_VERSION >= 30900
-    APFloat f1(0.0f), f2(0.0f);
-    if (defaultArgExpr->EvaluateAsFloat(f1, compiler.getASTContext())
-        && superDefaultArgExpr->EvaluateAsFloat(f2, compiler.getASTContext()))
-    {
-        return f1.bitwiseIsEqual(f2);
-    }
-#endif
-    // catch params with defaults like "= OUString()"
-    if (isa<MaterializeTemporaryExpr>(defaultArgExpr)
-        && isa<MaterializeTemporaryExpr>(superDefaultArgExpr))
-    {
-        return true;
-    }
-    if (isa<CXXBindTemporaryExpr>(defaultArgExpr)
-        && isa<CXXBindTemporaryExpr>(superDefaultArgExpr))
-    {
-        return true;
-    }
-    return true;
+    return
+        checkIdenticalDefaultArguments(
+            parmVarDecl->getDefaultArg(), superParmVarDecl->getDefaultArg())
+        != IdenticalDefaultArgumentsResult::No;
         // for one, Clang 3.8 doesn't have EvaluateAsFloat; for another, since
         // <http://llvm.org/viewvc/llvm-project?view=revision&revision=291318>
         // "PR23135: Don't instantiate constexpr functions referenced in
@@ -195,21 +157,10 @@ bool OverrideParam::hasSameDefaultParams(const ParmVarDecl * parmVarDecl, const 
         // that would probably have unwanted side-effects)
 }
 
-bool OverrideParam::evaluate(const Expr* expr, APSInt& x)
-{
-    if (expr->EvaluateAsInt(x, compiler.getASTContext()))
-    {
-        return true;
-    }
-    if (isa<CXXNullPtrLiteralExpr>(expr)) {
-        x = 0;
-        return true;
-    }
-    return false;
-}
+loplugin::Plugin::Registration< OverrideParam > overrideparam("overrideparam");
 
-loplugin::Plugin::Registration< OverrideParam > X("overrideparam");
+} // namespace
 
-}
+#endif // LO_CLANG_SHARED_PLUGINS
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

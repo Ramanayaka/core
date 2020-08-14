@@ -23,13 +23,11 @@
 #include "binding.hxx"
 #include "mip.hxx"
 #include "evaluationcontext.hxx"
-#include "unohelper.hxx"
 #include "submission/submission_put.hxx"
 #include "submission/submission_post.hxx"
 #include "submission/submission_get.hxx"
 
 #include <rtl/ustring.hxx>
-#include <rtl/ustrbuf.hxx>
 #include <com/sun/star/lang/NoSupportException.hpp>
 #include <com/sun/star/uno/Sequence.hxx>
 #include <com/sun/star/uno/Reference.hxx>
@@ -45,15 +43,13 @@
 #include <com/sun/star/task/XInteractionContinuation.hpp>
 #include <com/sun/star/xforms/InvalidDataOnSubmitException.hpp>
 #include <com/sun/star/frame/XFrame.hpp>
+#include <cppuhelper/exc_hlp.hxx>
 #include <cppuhelper/typeprovider.hxx>
-#include <comphelper/propertysetinfo.hxx>
 #include <comphelper/interaction.hxx>
 #include <comphelper/processfactory.hxx>
+#include <comphelper/servicehelper.hxx>
 #include <memory>
 
-using com::sun::star::beans::UnknownPropertyException;
-using com::sun::star::beans::PropertyVetoException;
-using com::sun::star::lang::IllegalArgumentException;
 using com::sun::star::util::VetoException;
 using com::sun::star::form::submission::XSubmissionVetoListener;
 using com::sun::star::lang::WrappedTargetException;
@@ -206,7 +202,7 @@ bool Submission::doSubmit( const Reference< XInteractionHandler >& xHandler )
     ComputedExpression aExpression;
     if( !msBind.isEmpty() )
     {
-        Binding* pBinding = Binding::getBinding( mxModel->getBinding(msBind) );
+        Binding* pBinding = comphelper::getUnoTunnelImplementation<Binding>( mxModel->getBinding(msBind) );
         if( pBinding != nullptr )
         {
             aExpression.setExpression( pBinding->getBindingExpression() );
@@ -217,12 +213,12 @@ bool Submission::doSubmit( const Reference< XInteractionHandler >& xHandler )
     else if( !maRef.getExpression().isEmpty() )
     {
         aExpression.setExpression( maRef.getExpression() );
-        aEvalContext = Model::getModel( mxModel )->getEvaluationContext();
+        aEvalContext = comphelper::getUnoTunnelImplementation<Model>( mxModel )->getEvaluationContext();
     }
     else
     {
         aExpression.setExpression( "/" );
-        aEvalContext = Model::getModel( mxModel )->getEvaluationContext();
+        aEvalContext = comphelper::getUnoTunnelImplementation<Model>( mxModel )->getEvaluationContext();
     }
     aExpression.evaluate( aEvalContext );
     Reference<XXPathObject> xResult = aExpression.getXPath();
@@ -254,7 +250,9 @@ bool Submission::doSubmit( const Reference< XInteractionHandler >& xHandler )
         return false;
     }
 
-    xSubmission->setEncoding(getEncoding());
+    if (!xSubmission->IsWebProtocol())
+        return false;
+
     CSubmission::SubmissionResult aResult = xSubmission->submit( xHandler );
 
     if (aResult == CSubmission::SUCCESS)
@@ -266,20 +264,10 @@ bool Submission::doSubmit( const Reference< XInteractionHandler >& xHandler )
     return ( aResult == CSubmission::SUCCESS );
 }
 
-Sequence<sal_Int8> Submission::getUnoTunnelID()
+Sequence<sal_Int8> Submission::getUnoTunnelId()
 {
     static cppu::OImplementationId aImplementationId;
     return aImplementationId.getImplementationId();
-}
-
-Submission* Submission::getSubmission(
-    const Reference<XPropertySet>& xPropertySet )
-{
-    Reference<XUnoTunnel> xTunnel( xPropertySet, UNO_QUERY );
-    return xTunnel.is()
-        ? reinterpret_cast<Submission*>(
-            xTunnel->getSomething( getUnoTunnelID() ) )
-        : nullptr;
 }
 
 
@@ -295,7 +283,7 @@ Model* Submission::getModelImpl() const
 {
     Model* pModel = nullptr;
     if( mxModel.is() )
-        pModel = Model::getModel( mxModel );
+        pModel = comphelper::getUnoTunnelImplementation<Model>( mxModel );
     return pModel;
 }
 
@@ -367,7 +355,7 @@ sal_Bool SAL_CALL Submission::convertFastPropertyValue(
             while ( p >= 0 )
                 aPrefixes.push_back( sTokenList.getToken( 0, ',', p ) );
 
-            Sequence< OUString > aConvertedPrefixes( &aPrefixes[0], aPrefixes.size() );
+            Sequence< OUString > aConvertedPrefixes( aPrefixes.data(), aPrefixes.size() );
             return PropertySetBase::convertFastPropertyValue( rConvertedValue, rOldValue, nHandle, makeAny( aConvertedPrefixes ) );
         }
     }
@@ -389,7 +377,7 @@ void SAL_CALL Submission::setName( const OUString& sID )
 sal_Int64 SAL_CALL Submission::getSomething(
     const Sequence<sal_Int8>& aId )
 {
-    return ( aId == getUnoTunnelID() ) ? reinterpret_cast<sal_Int64>(this) : 0;
+    return ( aId == getUnoTunnelId() ) ? reinterpret_cast<sal_Int64>(this) : 0;
 }
 
 
@@ -413,7 +401,7 @@ void SAL_CALL Submission::submitWithInteraction(
                 *this
               );
 
-    Model* pModel = Model::getModel( xModel );
+    Model* pModel = comphelper::getUnoTunnelImplementation<Model>( xModel );
     OSL_ENSURE( pModel != nullptr, "illegal model?" );
 
     // #i36765# #i47248# warning on submission of illegal data
@@ -469,24 +457,22 @@ void SAL_CALL Submission::submitWithInteraction(
         // allowed to leave
         throw;
     }
-    catch( const Exception& e )
+    catch( const Exception& )
     {
+        css::uno::Any anyEx = cppu::getCaughtException();
         // exception caught: re-throw as wrapped target exception
         throw WrappedTargetException(
             lcl_message( sID, " due to exception being thrown" ),
-            *this, makeAny( e ) );
+            *this, anyEx );
     }
 
-    if( bResult )
-    {
-        mxModel->rebuild();
-    }
-    else
+    if( !bResult )
     {
         // other failure: throw wrapped target exception, too.
         throw WrappedTargetException(
             lcl_message( sID, OUString() ), *this, Any() );
     }
+    mxModel->rebuild();
 }
 
 void SAL_CALL Submission::submit( )
@@ -527,18 +513,18 @@ static void cloneNodes(Model& aModel, const Reference< XNode >& dstParent, const
     Reference< XDocument > dstDoc = dstParent->getOwnerDocument();
     Reference< XNode > imported;
 
-    if (cur.is())
+    if (!cur.is())
+        return;
+
+    //  is this node relevant?
+    MIP mip = aModel.queryMIP(cur);
+    if(mip.isRelevant() && !(bRemoveWSNodes && isIgnorable(cur)))
     {
-        //  is this node relevant?
-        MIP mip = aModel.queryMIP(cur);
-        if(mip.isRelevant() && !(bRemoveWSNodes && isIgnorable(cur)))
-        {
-            imported = dstDoc->importNode(cur, false);
-            imported = dstParent->appendChild(imported);
-            // append source children to new imported parent
-            for( cur = cur->getFirstChild(); cur.is(); cur = cur->getNextSibling() )
-                cloneNodes(aModel, imported, cur, bRemoveWSNodes);
-        }
+        imported = dstDoc->importNode(cur, false);
+        imported = dstParent->appendChild(imported);
+        // append source children to new imported parent
+        for( cur = cur->getFirstChild(); cur.is(); cur = cur->getNextSibling() )
+            cloneNodes(aModel, imported, cur, bRemoveWSNodes);
     }
 }
 Reference< XDocument > Submission::getInstanceDocument(const Reference< XXPathObject >& aObj)
@@ -572,7 +558,7 @@ Reference< XDocumentFragment > Submission::createSubmissionDocument(const Refere
         {
             aListItem = aList->item(i);
             if (aListItem->getNodeType()==NodeType_DOCUMENT_NODE)
-                aListItem.set( (Reference< XDocument >(aListItem, UNO_QUERY))->getDocumentElement(), UNO_QUERY);
+                aListItem = (Reference< XDocument >(aListItem, UNO_QUERY))->getDocumentElement();
             // copy relevant nodes from instance into fragment
             cloneNodes(*getModelImpl(), aFragment, aListItem, bRemoveWSNodes);
         }

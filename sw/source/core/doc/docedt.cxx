@@ -19,70 +19,86 @@
 
 #include <fmtanchr.hxx>
 #include <fmtcntnt.hxx>
-#include <txtftn.hxx>
 #include <acorrect.hxx>
-#include <UndoManager.hxx>
 #include <IDocumentRedlineAccess.hxx>
-#include <IDocumentState.hxx>
 #include <IDocumentLayoutAccess.hxx>
+#include <IDocumentUndoRedo.hxx>
 #include <docsh.hxx>
 #include <docary.hxx>
-#include <doctxm.hxx>
-#include <ftnidx.hxx>
 #include <mdiexp.hxx>
 #include <mvsave.hxx>
 #include <redline.hxx>
 #include <rootfrm.hxx>
 #include <splargs.hxx>
+#include <swcrsr.hxx>
 #include <txtfrm.hxx>
-#include <breakit.hxx>
-#include <vcl/layout.hxx>
-#include "comcore.hrc"
-#include "editsh.hxx"
-#include <fmtfld.hxx>
-#include <docufld.hxx>
 #include <unoflatpara.hxx>
 #include <SwGrammarMarkUp.hxx>
 #include <docedt.hxx>
 #include <frmfmt.hxx>
+#include <ndtxt.hxx>
+#include <undobj.hxx>
+#include <frameformats.hxx>
 
 #include <vector>
+#include <com/sun/star/linguistic2/XProofreadingIterator.hpp>
+#include <com/sun/star/frame/XModel.hpp>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::linguistic2;
 using namespace ::com::sun::star::i18n;
 
 
-void RestFlyInRange( SaveFlyArr & rArr, const SwNodeIndex& rSttIdx,
+void RestFlyInRange( SaveFlyArr & rArr, const SwPosition& rStartPos,
                       const SwNodeIndex* pInsertPos )
 {
-    SwPosition aPos( rSttIdx );
-    for(SaveFly & rSave : rArr)
+    SwPosition aPos(rStartPos);
+    for(const SaveFly & rSave : rArr)
     {
         // create new anchor
         SwFrameFormat* pFormat = rSave.pFrameFormat;
+        SwFormatAnchor aAnchor( pFormat->GetAnchor() );
 
-        if( rSave.bInsertPosition )
+        if (rSave.isAtInsertNode)
         {
             if( pInsertPos != nullptr )
-                aPos.nNode = *pInsertPos;
+            {
+                if (aAnchor.GetAnchorId() == RndStdIds::FLY_AT_PARA)
+                {
+                    aPos.nNode = *pInsertPos;
+                    aPos.nContent.Assign(dynamic_cast<SwIndexReg*>(&aPos.nNode.GetNode()),
+                        rSave.nContentIndex);
+                }
+                else
+                {
+                    assert(aAnchor.GetAnchorId() == RndStdIds::FLY_AT_CHAR);
+                    aPos = rStartPos;
+                }
+            }
             else
-                aPos.nNode = rSttIdx.GetIndex();
+            {
+                aPos.nNode = rStartPos.nNode;
+                aPos.nContent.Assign(dynamic_cast<SwIndexReg*>(&aPos.nNode.GetNode()), 0);
+            }
         }
         else
-            aPos.nNode = rSttIdx.GetIndex() + rSave.nNdDiff;
+        {
+            aPos.nNode = rStartPos.nNode.GetIndex() + rSave.nNdDiff;
+            aPos.nContent.Assign(dynamic_cast<SwIndexReg*>(&aPos.nNode.GetNode()),
+                rSave.nNdDiff == 0
+                    ? rStartPos.nContent.GetIndex() + rSave.nContentIndex
+                    : rSave.nContentIndex);
+        }
 
-        aPos.nContent.Assign(dynamic_cast<SwIndexReg*>(&aPos.nNode.GetNode()), 0);
-        SwFormatAnchor aAnchor( pFormat->GetAnchor() );
         aAnchor.SetAnchor( &aPos );
         pFormat->GetDoc()->GetSpzFrameFormats()->push_back( pFormat );
         // SetFormatAttr should call Modify() and add it to the node
         pFormat->SetFormatAttr( aAnchor );
         SwContentNode* pCNd = aPos.nNode.GetNode().GetContentNode();
-        if( pCNd && pCNd->getLayoutFrame( pFormat->GetDoc()->getIDocumentLayoutAccess().GetCurrentLayout(), nullptr, nullptr, false ) )
+        if (pCNd && pCNd->getLayoutFrame(pFormat->GetDoc()->getIDocumentLayoutAccess().GetCurrentLayout(), nullptr, nullptr))
             pFormat->MakeFrames();
     }
-    sw::CheckAnchoredFlyConsistency(*rSttIdx.GetNode().GetDoc());
+    sw::CheckAnchoredFlyConsistency(*rStartPos.nNode.GetNode().GetDoc());
 }
 
 void SaveFlyInRange( const SwNodeRange& rRg, SaveFlyArr& rArr )
@@ -99,6 +115,9 @@ void SaveFlyInRange( const SwNodeRange& rRg, SaveFlyArr& rArr )
             rRg.aStart <= pAPos->nNode && pAPos->nNode < rRg.aEnd )
         {
             SaveFly aSave( pAPos->nNode.GetIndex() - rRg.aStart.GetIndex(),
+                            (RndStdIds::FLY_AT_CHAR == pAnchor->GetAnchorId())
+                                ? pAPos->nContent.GetIndex()
+                                : 0,
                             pFormat, false );
             rArr.push_back( aSave );
             pFormat->DelFrames();
@@ -112,7 +131,7 @@ void SaveFlyInRange( const SwNodeRange& rRg, SaveFlyArr& rArr )
     sw::CheckAnchoredFlyConsistency(*rRg.aStart.GetNode().GetDoc());
 }
 
-void SaveFlyInRange( const SwPaM& rPam, const SwNodeIndex& rInsPos,
+void SaveFlyInRange( const SwPaM& rPam, const SwPosition& rInsPos,
                        SaveFlyArr& rArr, bool bMoveAllFlys )
 {
     SwFrameFormats& rFormats = *rPam.GetPoint()->nNode.GetNode().GetDoc()->GetSpzFrameFormats();
@@ -121,14 +140,15 @@ void SaveFlyInRange( const SwPaM& rPam, const SwNodeIndex& rInsPos,
 
     const SwPosition* pPos = rPam.Start();
     const SwNodeIndex& rSttNdIdx = pPos->nNode;
-    short nSttOff = (!bMoveAllFlys && rSttNdIdx.GetNode().IsContentNode() &&
-                    pPos->nContent.GetIndex()) ? 1 : 0;
 
-    pPos = rPam.GetPoint() == pPos ? rPam.GetMark() : rPam.GetPoint();
-    const SwNodeIndex& rEndNdIdx = pPos->nNode;
-    short nOff = ( bMoveAllFlys || ( rEndNdIdx.GetNode().IsContentNode() &&
-                pPos->nContent == rEndNdIdx.GetNode().GetContentNode()->Len() ))
-                    ? 0 : 1;
+    SwPosition atParaEnd(*rPam.End());
+    if (bMoveAllFlys)
+    {
+        assert(!rPam.End()->nNode.GetNode().IsTextNode() // can be table end-node
+            || rPam.End()->nContent.GetIndex() == rPam.End()->nNode.GetNode().GetTextNode()->Len());
+        ++atParaEnd.nNode;
+        atParaEnd.nContent.Assign(atParaEnd.nNode.GetNode().GetContentNode(), 0);
+    }
 
     for( SwFrameFormats::size_type n = 0; n < rFormats.size(); ++n )
     {
@@ -141,30 +161,29 @@ void SaveFlyInRange( const SwPaM& rPam, const SwNodeIndex& rInsPos,
              (RndStdIds::FLY_AT_CHAR == pAnchor->GetAnchorId())) &&
             // do not move if the InsPos is in the ContentArea of the Fly
             ( nullptr == ( pContentIdx = pFormat->GetContent().GetContentIdx() ) ||
-              !( *pContentIdx < rInsPos &&
-                rInsPos < pContentIdx->GetNode().EndOfSectionIndex() )) )
+              (*pContentIdx >= rInsPos.nNode ||
+                rInsPos.nNode >= pContentIdx->GetNode().EndOfSectionIndex())))
         {
             bool bInsPos = false;
 
-            if( !bMoveAllFlys && rEndNdIdx == pAPos->nNode )
-            {
-                // Do not touch Anchor, if only a part of the EndNode
-                // or the whole EndNode is identical with the SttNode
-                if( rSttNdIdx != pAPos->nNode )
-                {
-                    // Only attach an anchor to the beginning or end
-                    SwPosition aPos( rSttNdIdx );
-                    SwFormatAnchor aAnchor( *pAnchor );
-                    aAnchor.SetAnchor( &aPos );
-                    pFormat->SetFormatAttr( aAnchor );
-                }
-            }
-            else if( ( rSttNdIdx.GetIndex() + nSttOff <= pAPos->nNode.GetIndex()
-                    && pAPos->nNode.GetIndex() <= rEndNdIdx.GetIndex() - nOff ) ||
-                        ( bInsPos = (rInsPos == pAPos->nNode) ))
-
+            if (       (RndStdIds::FLY_AT_CHAR == pAnchor->GetAnchorId()
+                        && IsDestroyFrameAnchoredAtChar(*pAPos, *rPam.Start(), *rPam.End()))
+                    || (RndStdIds::FLY_AT_PARA == pAnchor->GetAnchorId()
+                        && IsSelectFrameAnchoredAtPara(*pAPos, *rPam.Start(), atParaEnd,
+                            bMoveAllFlys
+                                ? DelContentType::CheckNoCntnt|DelContentType::AllMask
+                                : DelContentType::AllMask))
+                    || (RndStdIds::FLY_AT_PARA == pAnchor->GetAnchorId()
+                            && (bInsPos = (rInsPos.nNode == pAPos->nNode)))
+                    || (RndStdIds::FLY_AT_CHAR == pAnchor->GetAnchorId()
+                            && (bInsPos = (rInsPos == *pAPos))))
             {
                 SaveFly aSave( pAPos->nNode.GetIndex() - rSttNdIdx.GetIndex(),
+                    (RndStdIds::FLY_AT_CHAR == pAnchor->GetAnchorId())
+                        ? (pAPos->nNode == rSttNdIdx)
+                            ? pAPos->nContent.GetIndex() - rPam.Start()->nContent.GetIndex()
+                            : pAPos->nContent.GetIndex()
+                        : 0,
                                 pFormat, bInsPos );
                 rArr.push_back( aSave );
                 pFormat->DelFrames();
@@ -182,9 +201,18 @@ void SaveFlyInRange( const SwPaM& rPam, const SwNodeIndex& rInsPos,
 /// Delete and move all Flys at the paragraph, that are within the selection.
 /// If there is a Fly at the SPoint, it is moved onto the Mark.
 void DelFlyInRange( const SwNodeIndex& rMkNdIdx,
-                    const SwNodeIndex& rPtNdIdx )
+                    const SwNodeIndex& rPtNdIdx,
+                    SwIndex const*const pMkIdx, SwIndex const*const pPtIdx)
 {
-    const bool bDelFwrd = rMkNdIdx.GetIndex() <= rPtNdIdx.GetIndex();
+    assert((pMkIdx == nullptr) == (pPtIdx == nullptr));
+    SwPosition const point(pPtIdx
+                            ? SwPosition(rPtNdIdx, *pPtIdx)
+                            : SwPosition(rPtNdIdx));
+    SwPosition const mark(pPtIdx
+                            ? SwPosition(rMkNdIdx, *pMkIdx)
+                            : SwPosition(rMkNdIdx));
+    SwPosition const& rStart = mark <= point ? mark : point;
+    SwPosition const& rEnd   = mark <= point ? point : mark;
 
     SwDoc* pDoc = rMkNdIdx.GetNode().GetDoc();
     SwFrameFormats& rTable = *pDoc->GetSpzFrameFormats();
@@ -194,43 +222,35 @@ void DelFlyInRange( const SwNodeIndex& rMkNdIdx,
         const SwFormatAnchor &rAnch = pFormat->GetAnchor();
         SwPosition const*const pAPos = rAnch.GetContentAnchor();
         if (pAPos &&
-            ((rAnch.GetAnchorId() == RndStdIds::FLY_AT_PARA) ||
-             (rAnch.GetAnchorId() == RndStdIds::FLY_AT_CHAR)) &&
-            ( bDelFwrd
-                ? rMkNdIdx < pAPos->nNode && pAPos->nNode <= rPtNdIdx
-                : rPtNdIdx <= pAPos->nNode && pAPos->nNode < rMkNdIdx ))
+            (((rAnch.GetAnchorId() == RndStdIds::FLY_AT_PARA)
+                && IsSelectFrameAnchoredAtPara(*pAPos, rStart, rEnd, pPtIdx
+                    ? DelContentType::AllMask|DelContentType::WriterfilterHack
+                    : DelContentType::AllMask|DelContentType::WriterfilterHack|DelContentType::CheckNoCntnt))
+            || ((rAnch.GetAnchorId() == RndStdIds::FLY_AT_CHAR)
+                && IsDestroyFrameAnchoredAtChar(*pAPos, rStart, rEnd, pPtIdx
+                    ? DelContentType::AllMask|DelContentType::WriterfilterHack
+                    : DelContentType::AllMask|DelContentType::WriterfilterHack|DelContentType::CheckNoCntnt))))
         {
-            // Only move the Anchor??
-            if( rPtNdIdx == pAPos->nNode )
+            // If the Fly is deleted, all Flys in its content have to be deleted too.
+            const SwFormatContent &rContent = pFormat->GetContent();
+            // But only fly formats own their content, not draw formats.
+            if (rContent.GetContentIdx() && pFormat->Which() == RES_FLYFRMFMT)
             {
-                SwFormatAnchor aAnch( pFormat->GetAnchor() );
-                SwPosition aPos( rMkNdIdx );
-                aAnch.SetAnchor( &aPos );
-                pFormat->SetFormatAttr( aAnch );
-            }
-            else
-            {
-                // If the Fly is deleted, all Flys in its content have to be deleted too.
-                const SwFormatContent &rContent = pFormat->GetContent();
-                // But only fly formats own their content, not draw formats.
-                if (rContent.GetContentIdx() && pFormat->Which() == RES_FLYFRMFMT)
-                {
-                    DelFlyInRange( *rContent.GetContentIdx(),
-                                    SwNodeIndex( *rContent.GetContentIdx()->
-                                            GetNode().EndOfSectionNode() ));
-                    // Position could have been moved!
-                    if( i > rTable.size() )
-                        i = rTable.size();
-                    else if( pFormat != rTable[i] )
-                        i = std::distance(rTable.begin(), rTable.find( pFormat ));
-                }
-
-                pDoc->getIDocumentLayoutAccess().DelLayoutFormat( pFormat );
-
-                // DelLayoutFormat can also trigger the deletion of objects.
-                if( i > rTable.size() )
+                DelFlyInRange( *rContent.GetContentIdx(),
+                                SwNodeIndex( *rContent.GetContentIdx()->
+                                        GetNode().EndOfSectionNode() ));
+                // Position could have been moved!
+                if (i > rTable.size())
                     i = rTable.size();
+                else if (pFormat != rTable[i])
+                    i = std::distance(rTable.begin(), rTable.find( pFormat ));
             }
+
+            pDoc->getIDocumentLayoutAccess().DelLayoutFormat( pFormat );
+
+            // DelLayoutFormat can also trigger the deletion of objects.
+            if (i > rTable.size())
+                i = rTable.size();
         }
     }
 }
@@ -240,99 +260,99 @@ void DelFlyInRange( const SwNodeIndex& rMkNdIdx,
 // From now on this class saves the redline positions of all redlines which ends exact at the
 // insert position (node _and_ content index)
 SaveRedlEndPosForRestore::SaveRedlEndPosForRestore( const SwNodeIndex& rInsIdx, sal_Int32 nCnt )
-    : pSavArr( nullptr ), pSavIdx( nullptr ), nSavContent( nCnt )
+    : mnSaveContent( nCnt )
 {
     SwNode& rNd = rInsIdx.GetNode();
     SwDoc* pDest = rNd.GetDoc();
-    if( !pDest->getIDocumentRedlineAccess().GetRedlineTable().empty() )
+    if( pDest->getIDocumentRedlineAccess().GetRedlineTable().empty() )
+        return;
+
+    SwRedlineTable::size_type nFndPos;
+    const SwPosition* pEnd;
+    SwPosition aSrcPos( rInsIdx, SwIndex( rNd.GetContentNode(), nCnt ));
+    pDest->getIDocumentRedlineAccess().GetRedline( aSrcPos, &nFndPos );
+    const SwRangeRedline* pRedl;
+    while( nFndPos--
+          && *( pEnd = ( pRedl = pDest->getIDocumentRedlineAccess().GetRedlineTable()[ nFndPos ] )->End() ) == aSrcPos
+          && *pRedl->Start() < aSrcPos )
     {
-        SwRedlineTable::size_type nFndPos;
-        const SwPosition* pEnd;
-        SwPosition aSrcPos( rInsIdx, SwIndex( rNd.GetContentNode(), nCnt ));
-        pDest->getIDocumentRedlineAccess().GetRedline( aSrcPos, &nFndPos );
-        const SwRangeRedline* pRedl;
-        while( nFndPos--
-              && *( pEnd = ( pRedl = pDest->getIDocumentRedlineAccess().GetRedlineTable()[ nFndPos ] )->End() ) == aSrcPos
-              && *pRedl->Start() < aSrcPos )
+        if( !mpSaveIndex )
         {
-            if( !pSavArr )
-            {
-                pSavArr = new std::vector<SwPosition*>;
-                pSavIdx = new SwNodeIndex( rInsIdx, -1 );
-            }
-            pSavArr->push_back( const_cast<SwPosition*>(pEnd) );
+            mpSaveIndex.reset(new SwNodeIndex( rInsIdx, -1 ));
         }
+        mvSavArr.push_back( const_cast<SwPosition*>(pEnd) );
     }
 }
 
 SaveRedlEndPosForRestore::~SaveRedlEndPosForRestore()
 {
-    delete pSavArr;
-    delete pSavIdx;
+    mpSaveIndex.reset();
 }
 
-void SaveRedlEndPosForRestore::Restore_()
+void SaveRedlEndPosForRestore::Restore()
 {
-    ++(*pSavIdx);
-    SwContentNode* pNode = pSavIdx->GetNode().GetContentNode();
+    if (mvSavArr.empty())
+        return;
+    ++(*mpSaveIndex);
+    SwContentNode* pNode = mpSaveIndex->GetNode().GetContentNode();
     // If there's no content node at the remembered position, we will not restore the old position
     // This may happen if a table (or section?) will be inserted.
     if( pNode )
     {
-        SwPosition aPos( *pSavIdx, SwIndex( pNode, nSavContent ));
-        for( auto n = pSavArr->size(); n; )
-            *(*pSavArr)[ --n ] = aPos;
+        SwPosition aPos( *mpSaveIndex, SwIndex( pNode, mnSaveContent ));
+        for( auto n = mvSavArr.size(); n; )
+            *mvSavArr[ --n ] = aPos;
     }
 }
 
 /// Convert list of ranges of whichIds to a corresponding list of whichIds
-static std::vector<sal_uInt16> * lcl_RangesToVector(const sal_uInt16 * pRanges)
+static std::vector<sal_uInt16> lcl_RangesToVector(const sal_uInt16 * pRanges)
 {
-    std::vector<sal_uInt16> * pResult = new std::vector<sal_uInt16>;
+    std::vector<sal_uInt16> aResult;
 
     int i = 0;
     while (pRanges[i] != 0)
     {
         OSL_ENSURE(pRanges[i+1] != 0, "malformed ranges");
 
-        for (sal_uInt16 j = pRanges[i]; j < pRanges[i+1]; j++)
-            pResult->push_back(j);
+        for (sal_uInt16 j = pRanges[i]; j <= pRanges[i+1]; j++)
+            aResult.push_back(j);
 
         i += 2;
     }
 
-    return pResult;
+    return aResult;
 }
 
 void sw_GetJoinFlags( SwPaM& rPam, bool& rJoinText, bool& rJoinPrev )
 {
     rJoinText = false;
     rJoinPrev = false;
-    if( rPam.GetPoint()->nNode != rPam.GetMark()->nNode )
-    {
-        const SwPosition* pStt = rPam.Start(), *pEnd = rPam.End();
-        SwTextNode *pSttNd = pStt->nNode.GetNode().GetTextNode();
-        if( pSttNd )
-        {
-            SwTextNode *pEndNd = pEnd->nNode.GetNode().GetTextNode();
-            rJoinText = nullptr != pEndNd;
-            if( rJoinText )
-            {
-                bool bExchange = pStt == rPam.GetPoint();
-                if( !pStt->nContent.GetIndex() &&
-                    pEndNd->GetText().getLength() != pEnd->nContent.GetIndex())
-                    bExchange = !bExchange;
-                if( bExchange )
-                    rPam.Exchange();
-                rJoinPrev = rPam.GetPoint() == pStt;
-                OSL_ENSURE( !pStt->nContent.GetIndex() &&
-                    pEndNd->GetText().getLength() != pEnd->nContent.GetIndex()
-                    ? (rPam.GetPoint()->nNode < rPam.GetMark()->nNode)
-                    : (rPam.GetPoint()->nNode > rPam.GetMark()->nNode),
-                    "sw_GetJoinFlags");
-            }
-        }
-    }
+    if( rPam.GetPoint()->nNode == rPam.GetMark()->nNode )
+        return;
+
+    const SwPosition* pStt = rPam.Start(), *pEnd = rPam.End();
+    SwTextNode *pSttNd = pStt->nNode.GetNode().GetTextNode();
+    if( !pSttNd )
+        return;
+
+    SwTextNode *pEndNd = pEnd->nNode.GetNode().GetTextNode();
+    rJoinText = nullptr != pEndNd;
+    if( !rJoinText )
+        return;
+
+    bool bExchange = pStt == rPam.GetPoint();
+    if( !pStt->nContent.GetIndex() &&
+        pEndNd->GetText().getLength() != pEnd->nContent.GetIndex())
+        bExchange = !bExchange;
+    if( bExchange )
+        rPam.Exchange();
+    rJoinPrev = rPam.GetPoint() == pStt;
+    OSL_ENSURE( !pStt->nContent.GetIndex() &&
+        pEndNd->GetText().getLength() != pEnd->nContent.GetIndex()
+        ? (rPam.GetPoint()->nNode < rPam.GetMark()->nNode)
+        : (rPam.GetPoint()->nNode > rPam.GetMark()->nNode),
+        "sw_GetJoinFlags");
 }
 
 bool sw_JoinText( SwPaM& rPam, bool bJoinPrev )
@@ -348,7 +368,7 @@ bool sw_JoinText( SwPaM& rPam, bool bJoinPrev )
         if( bJoinPrev )
         {
             // We do not need to handle xmlids in this case, because
-            // it is only invoked if one paragraph is completely empty
+            // it is only invoked if one paragraph is/becomes completely empty
             // (see sw_GetJoinFlags)
             {
                 // If PageBreaks are deleted/set, it must not be added to the Undo history!
@@ -360,8 +380,9 @@ bool sw_JoinText( SwPaM& rPam, bool bJoinPrev )
                 // PageDesc, etc. we also have to change SwUndoDelete.
                 // There, we copy the AUTO PageBreak from the GetMarkNode!
 
-                /* The GetMarkNode */
-                if( ( pTextNd = aIdx.GetNode().GetTextNode())->HasSwAttrSet() )
+                /* The MarkNode */
+                pTextNd = aIdx.GetNode().GetTextNode();
+                if (pTextNd->HasSwAttrSet())
                 {
                     const SfxPoolItem* pItem;
                     if( SfxItemState::SET == pTextNd->GetpSwAttrSet()->GetItemState(
@@ -391,7 +412,7 @@ bool sw_JoinText( SwPaM& rPam, bool bJoinPrev )
                 pOldTextNd->FormatToTextAttr( pTextNd );
 
                 const std::shared_ptr< sw::mark::ContentIdxStore> pContentStore(sw::mark::ContentIdxStore::Create());
-                pContentStore->Save( pDoc, aOldIdx.GetIndex(), pOldTextNd->Len() );
+                pContentStore->Save(pDoc, aOldIdx.GetIndex(), SAL_MAX_INT32);
 
                 SwIndex aAlphaIdx(pTextNd);
                 pOldTextNd->CutText( pTextNd, aAlphaIdx, SwIndex(pOldTextNd),
@@ -411,7 +432,17 @@ bool sw_JoinText( SwPaM& rPam, bool bJoinPrev )
                     rPam.GetBound( false ) = aAlphaPos;
             }
             // delete the Node, at last!
+            SwNode::Merge const eOldMergeFlag(pOldTextNd->GetRedlineMergeFlag());
+            if (eOldMergeFlag == SwNode::Merge::First
+                && !pTextNd->IsCreateFrameWhenHidingRedlines())
+            {
+                sw::MoveDeletedPrevFrames(*pOldTextNd, *pTextNd);
+            }
             pDoc->GetNodes().Delete( aOldIdx );
+            sw::CheckResetRedlineMergeFlag(*pTextNd,
+                    eOldMergeFlag == SwNode::Merge::NonFirst
+                        ? sw::Recreate::Predecessor
+                        : sw::Recreate::No);
         }
         else
         {
@@ -431,10 +462,9 @@ bool sw_JoinText( SwPaM& rPam, bool bJoinPrev )
                    first resetting all character attributes in first
                    paragraph (pTextNd).
                 */
-                std::vector<sal_uInt16> * pShorts =
+                std::vector<sal_uInt16> aShorts =
                     lcl_RangesToVector(aCharFormatSetRange);
-                pTextNd->ResetAttr(*pShorts);
-                delete pShorts;
+                pTextNd->ResetAttr(aShorts);
 
                 if( pDelNd->HasSwAttrSet() )
                 {
@@ -488,24 +518,25 @@ static void lcl_syncGrammarError( SwTextNode &rTextNode, linguistic2::Proofreadi
 }
 
 uno::Any SwDoc::Spell( SwPaM& rPaM,
-                    uno::Reference< XSpellChecker1 >  &xSpeller,
+                    uno::Reference< XSpellChecker1 > const &xSpeller,
                     sal_uInt16* pPageCnt, sal_uInt16* pPageSt,
                     bool bGrammarCheck,
+                    SwRootFrame const*const pLayout,
                     SwConversionArgs *pConvArgs  ) const
 {
     SwPosition* pSttPos = rPaM.Start(), *pEndPos = rPaM.End();
 
-    SwSpellArgs      *pSpellArgs = nullptr;
+    std::unique_ptr<SwSpellArgs> pSpellArgs;
     if (pConvArgs)
     {
         pConvArgs->SetStart(pSttPos->nNode.GetNode().GetTextNode(), pSttPos->nContent);
         pConvArgs->SetEnd(  pEndPos->nNode.GetNode().GetTextNode(), pEndPos->nContent );
     }
     else
-        pSpellArgs = new SwSpellArgs( xSpeller,
+        pSpellArgs.reset(new SwSpellArgs( xSpeller,
                             pSttPos->nNode.GetNode().GetTextNode(), pSttPos->nContent,
                             pEndPos->nNode.GetNode().GetTextNode(), pEndPos->nContent,
-                            bGrammarCheck );
+                            bGrammarCheck ));
 
     sal_uLong nCurrNd = pSttPos->nNode.GetIndex();
     sal_uLong nEndNd = pEndPos->nNode.GetIndex();
@@ -544,7 +575,7 @@ uno::Any SwDoc::Spell( SwPaM& rPaM,
                                 nStat = nPageNr - *pPageSt + 1;
                             else
                                 nStat = nPageNr + *pPageCnt - *pPageSt + 1;
-                            ::SetProgressState( nStat, const_cast<SwDocShell*>(GetDocShell()) );
+                            ::SetProgressState( nStat, GetDocShell() );
                         }
                         //Spell() changes the pSpellArgs in case an error is found
                         sal_Int32 nBeginGrammarCheck = 0;
@@ -572,7 +603,7 @@ uno::Any SwDoc::Spell( SwPaM& rPaM,
                         }
 
                         sal_Int32 nSpellErrorPosition = pNd->GetTextNode()->GetText().getLength();
-                        if( (!pConvArgs && pNd->GetTextNode()->Spell( pSpellArgs )) ||
+                        if( (!pConvArgs && pNd->GetTextNode()->Spell( pSpellArgs.get() )) ||
                             ( pConvArgs && pNd->GetTextNode()->Convert( *pConvArgs )))
                         {
                             // Cancel and remember position
@@ -590,9 +621,9 @@ uno::Any SwDoc::Spell( SwPaM& rPaM,
                             uno::Reference< linguistic2::XProofreadingIterator >  xGCIterator( GetGCIterator() );
                             if (xGCIterator.is())
                             {
-                                uno::Reference< lang::XComponent > xDoc( GetDocShell()->GetBaseModel(), uno::UNO_QUERY );
+                                uno::Reference< lang::XComponent > xDoc = GetDocShell()->GetBaseModel();
                                 // Expand the string:
-                                const ModelToViewHelper aConversionMap(*pNd->GetTextNode());
+                                const ModelToViewHelper aConversionMap(*pNd->GetTextNode(), pLayout);
                                 const OUString& aExpandText = aConversionMap.getViewText();
 
                                 // get XFlatParagraph to use...
@@ -600,7 +631,7 @@ uno::Any SwDoc::Spell( SwPaM& rPaM,
 
                                 // get error position of cursor in XFlatParagraph
                                 linguistic2::ProofreadingResult aResult;
-                                sal_Int32 nGrammarErrors;
+                                bool bGrammarErrors;
                                 do
                                 {
                                     aConversionMap.ConvertToViewPosition( nBeginGrammarCheck );
@@ -610,16 +641,16 @@ uno::Any SwDoc::Spell( SwPaM& rPaM,
                                     lcl_syncGrammarError( *pNd->GetTextNode(), aResult, aConversionMap );
 
                                     // get suggestions to use for the specific error position
-                                    nGrammarErrors = aResult.aErrors.getLength();
+                                    bGrammarErrors = aResult.aErrors.hasElements();
                                     // if grammar checking doesn't have any progress then quit
                                     if( aResult.nStartOfNextSentencePosition <= nBeginGrammarCheck )
                                         break;
                                     // prepare next iteration
                                     nBeginGrammarCheck = aResult.nStartOfNextSentencePosition;
                                 }
-                                while( nSpellErrorPosition > aResult.nBehindEndOfSentencePosition && !nGrammarErrors && aResult.nBehindEndOfSentencePosition < nEndGrammarCheck );
+                                while( nSpellErrorPosition > aResult.nBehindEndOfSentencePosition && !bGrammarErrors && aResult.nBehindEndOfSentencePosition < nEndGrammarCheck );
 
-                                if( nGrammarErrors > 0 && nSpellErrorPosition >= aResult.nBehindEndOfSentencePosition )
+                                if( bGrammarErrors && nSpellErrorPosition >= aResult.nBehindEndOfSentencePosition )
                                 {
                                     aRet <<= aResult;
                                     //put the cursor to the current error
@@ -639,8 +670,8 @@ uno::Any SwDoc::Spell( SwPaM& rPaM,
                 }
                 break;
             case SwNodeType::Section:
-                if( ( static_cast<SwSectionNode*>(pNd)->GetSection().IsProtect() ||
-                    static_cast<SwSectionNode*>(pNd)->GetSection().IsHidden() ) )
+                if( static_cast<SwSectionNode*>(pNd)->GetSection().IsProtect() ||
+                    static_cast<SwSectionNode*>(pNd)->GetSection().IsHidden() )
                     nCurrNd = pNd->EndOfSectionIndex();
                 break;
             case SwNodeType::End:
@@ -662,38 +693,41 @@ uno::Any SwDoc::Spell( SwPaM& rPaM,
         else
             aRet <<= pSpellArgs->xSpellAlt;
     }
-    delete pSpellArgs;
 
     return aRet;
 }
 
+namespace {
+
 class SwHyphArgs : public SwInterHyphInfo
 {
-    const SwNode *pStart;
-    const SwNode *pEnd;
-          SwNode *pNode;
-    sal_uInt16 *pPageCnt;
-    sal_uInt16 *pPageSt;
+    const SwNode *m_pStart;
+    const SwNode *m_pEnd;
+          SwNode *m_pNode;
+    sal_uInt16 *m_pPageCnt;
+    sal_uInt16 *m_pPageSt;
 
-    sal_uInt32 nNode;
-    sal_Int32 nPamStart;
-    sal_Int32 nPamLen;
+    sal_uInt32 m_nNode;
+    sal_Int32 m_nPamStart;
+    sal_Int32 m_nPamLen;
 
 public:
     SwHyphArgs( const SwPaM *pPam, const Point &rPoint,
                 sal_uInt16* pPageCount, sal_uInt16* pPageStart );
     void SetPam( SwPaM *pPam ) const;
-    void SetNode( SwNode *pNew ) { pNode = pNew; }
+    void SetNode( SwNode *pNew ) { m_pNode = pNew; }
     inline void SetRange( const SwNode *pNew );
-    void NextNode() { ++nNode; }
-    sal_uInt16 *GetPageCnt() { return pPageCnt; }
-    sal_uInt16 *GetPageSt() { return pPageSt; }
+    void NextNode() { ++m_nNode; }
+    sal_uInt16 *GetPageCnt() { return m_pPageCnt; }
+    sal_uInt16 *GetPageSt() { return m_pPageSt; }
 };
+
+}
 
 SwHyphArgs::SwHyphArgs( const SwPaM *pPam, const Point &rCursorPos,
                          sal_uInt16* pPageCount, sal_uInt16* pPageStart )
-     : SwInterHyphInfo( rCursorPos ), pNode(nullptr),
-     pPageCnt( pPageCount ), pPageSt( pPageStart )
+     : SwInterHyphInfo( rCursorPos ), m_pNode(nullptr),
+     m_pPageCnt( pPageCount ), m_pPageSt( pPageStart )
 {
     // The following constraints have to be met:
     // 1) there is at least one Selection
@@ -703,38 +737,38 @@ SwHyphArgs::SwHyphArgs( const SwPaM *pPam, const Point &rCursorPos,
             "SwDoc::Hyphenate: New York, New York");
 
     const SwPosition *pPoint = pPam->GetPoint();
-    nNode = pPoint->nNode.GetIndex();
+    m_nNode = pPoint->nNode.GetIndex();
 
     // Set start
-    pStart = pPoint->nNode.GetNode().GetTextNode();
-    nPamStart = pPoint->nContent.GetIndex();
+    m_pStart = pPoint->nNode.GetNode().GetTextNode();
+    m_nPamStart = pPoint->nContent.GetIndex();
 
     // Set End and Length
     const SwPosition *pMark = pPam->GetMark();
-    pEnd = pMark->nNode.GetNode().GetTextNode();
-    nPamLen = pMark->nContent.GetIndex();
+    m_pEnd = pMark->nNode.GetNode().GetTextNode();
+    m_nPamLen = pMark->nContent.GetIndex();
     if( pPoint->nNode == pMark->nNode )
-        nPamLen = nPamLen - pPoint->nContent.GetIndex();
+        m_nPamLen = m_nPamLen - pPoint->nContent.GetIndex();
 }
 
 inline void SwHyphArgs::SetRange( const SwNode *pNew )
 {
-    nStart = pStart == pNew ? nPamStart : 0;
-    nEnd   = pEnd   == pNew ? nPamStart + nPamLen : SAL_MAX_INT32;
+    m_nStart = m_pStart == pNew ? m_nPamStart : 0;
+    m_nEnd   = m_pEnd   == pNew ? m_nPamStart + m_nPamLen : SAL_MAX_INT32;
 }
 
 void SwHyphArgs::SetPam( SwPaM *pPam ) const
 {
-    if( !pNode )
+    if( !m_pNode )
         *pPam->GetPoint() = *pPam->GetMark();
     else
     {
-        pPam->GetPoint()->nNode = nNode;
-        pPam->GetPoint()->nContent.Assign( pNode->GetContentNode(), nWordStart );
-        pPam->GetMark()->nNode = nNode;
-        pPam->GetMark()->nContent.Assign( pNode->GetContentNode(),
-                                          nWordStart + nWordLen );
-        OSL_ENSURE( nNode == pNode->GetIndex(),
+        pPam->GetPoint()->nNode = m_nNode;
+        pPam->GetPoint()->nContent.Assign( m_pNode->GetContentNode(), m_nWordStart );
+        pPam->GetMark()->nNode = m_nNode;
+        pPam->GetMark()->nContent.Assign( m_pNode->GetContentNode(),
+                                          m_nWordStart + m_nWordLen );
+        OSL_ENSURE( m_nNode == m_pNode->GetIndex(),
                 "SwHyphArgs::SetPam: Pam disaster" );
     }
 }
@@ -747,6 +781,8 @@ static bool lcl_HyphenateNode( const SwNodePtr& rpNd, void* pArgs )
     SwHyphArgs *pHyphArgs = static_cast<SwHyphArgs*>(pArgs);
     if( pNode )
     {
+        // sw_redlinehide: this will be called once per node for merged nodes;
+        // the fully deleted ones won't have frames so are skipped.
         SwContentFrame* pContentFrame = pNode->getLayoutFrame( pNode->GetDoc()->getIDocumentLayoutAccess().GetCurrentLayout() );
         if( pContentFrame && !static_cast<SwTextFrame*>(pContentFrame)->IsHiddenNow() )
         {
@@ -795,17 +831,14 @@ uno::Reference< XHyphenatedWord >  SwDoc::Hyphenate(
 }
 
 // Save the current values to add them as automatic entries to AutoCorrect.
-void SwDoc::SetAutoCorrExceptWord( SwAutoCorrExceptWord* pNew )
+void SwDoc::SetAutoCorrExceptWord( std::unique_ptr<SwAutoCorrExceptWord> pNew )
 {
-    if( pNew != mpACEWord )
-        delete mpACEWord;
-    mpACEWord = pNew;
+    mpACEWord = std::move(pNew);
 }
 
 void SwDoc::DeleteAutoCorrExceptWord()
 {
-    delete mpACEWord;
-    mpACEWord = nullptr;
+    mpACEWord.reset();
 }
 
 void SwDoc::CountWords( const SwPaM& rPaM, SwDocStat& rStat )

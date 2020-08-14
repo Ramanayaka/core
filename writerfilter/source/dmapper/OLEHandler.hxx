@@ -20,13 +20,11 @@
 #define INCLUDED_WRITERFILTER_SOURCE_DMAPPER_OLEHANDLER_HXX
 
 #include "LoggedResources.hxx"
-#include <memory>
 #include <com/sun/star/awt/Size.hpp>
-#include <com/sun/star/awt/Point.hpp>
 #include <com/sun/star/drawing/XShape.hpp>
 #include <com/sun/star/text/WrapTextMode.hpp>
 
-namespace com{ namespace sun{ namespace star{
+namespace com::sun::star{
     namespace graphic{
         class XGraphic;
     }
@@ -40,21 +38,18 @@ namespace com{ namespace sun{ namespace star{
     namespace uno {
         class XComponentContext;
     }
-}}}
-namespace writerfilter {
-namespace dmapper
+}
+namespace writerfilter::dmapper
 {
 class DomainMapper;
 /** Handler for OLE objects
  */
 class OLEHandler : public LoggedProperties
 {
-    OUString     m_sObjectType;
     OUString     m_sProgId;
-    OUString     m_sShapeId;
     OUString     m_sDrawAspect;
-    OUString     m_sObjectId;
-    OUString     m_sr_id;
+    OUString     m_sVisAreaWidth;
+    OUString     m_sVisAreaHeight;
     /// The stream URL right after the import of the raw data.
     OUString     m_aURL;
 
@@ -63,7 +58,6 @@ class OLEHandler : public LoggedProperties
     css::uno::Reference<css::drawing::XShape> m_xShape;
 
     css::awt::Size m_aShapeSize;
-    css::awt::Point m_aShapePosition;
 
     css::uno::Reference<css::graphic::XGraphic> m_xReplacement;
 
@@ -78,9 +72,9 @@ public:
     explicit OLEHandler(DomainMapper& rDomainMapper);
     virtual ~OLEHandler() override;
 
-    const css::uno::Reference<css::drawing::XShape>& getShape() { return m_xShape; };
+    const css::uno::Reference<css::drawing::XShape>& getShape() const { return m_xShape; };
 
-    bool isOLEObject() { return m_xInputStream.is(); }
+    bool isOLEObject() const { return m_xInputStream.is(); }
 
     /// In case of a valid CLSID, import the native data to the previously created empty OLE object.
     void importStream(const css::uno::Reference<css::uno::XComponentContext>& xComponentContext,
@@ -90,14 +84,17 @@ public:
     /// Get the CLSID of the OLE object, in case we can find one based on m_sProgId.
     OUString getCLSID(const css::uno::Reference<css::uno::XComponentContext>& xComponentContext) const;
 
+    OUString const & GetDrawAspect() const;
+    OUString const & GetVisAreaWidth() const;
+    OUString const & GetVisAreaHeight() const;
+
     OUString copyOLEOStream(css::uno::Reference<css::text::XTextDocument> const& xTextDocument);
 
     const css::awt::Size& getSize() const { return m_aShapeSize; }
     const css::uno::Reference<css::graphic::XGraphic>& getReplacement() const { return m_xReplacement; }
 
 };
-typedef std::shared_ptr< OLEHandler >  OLEHandlerPtr;
-}}
+}
 
 #endif
 

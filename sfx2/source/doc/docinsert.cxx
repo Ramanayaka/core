@@ -22,24 +22,24 @@
 #include <sfx2/docfile.hxx>
 #include <sfx2/fcontnr.hxx>
 #include <sfx2/filedlghelper.hxx>
-#include "appopen.hxx"
-#include "openflag.hxx"
+#include <appopen.hxx>
+#include <openflag.hxx>
 #include <sfx2/passwd.hxx>
 
 #include <sfx2/sfxsids.hrc>
 #include <com/sun/star/ui/dialogs/ControlActions.hpp>
 #include <com/sun/star/ui/dialogs/ExtendedFilePickerElementIds.hpp>
-#include <com/sun/star/ui/dialogs/ListboxControlActions.hpp>
 #include <com/sun/star/ui/dialogs/TemplateDescription.hpp>
+#include <com/sun/star/ui/dialogs/XFilePicker3.hpp>
 #include <com/sun/star/ui/dialogs/XFilePickerControlAccess.hpp>
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
 #include <tools/urlobj.hxx>
-#include <vcl/msgbox.hxx>
 #include <svl/itemset.hxx>
 #include <svl/eitem.hxx>
 #include <svl/intitem.hxx>
 #include <svl/stritem.hxx>
 #include <memory>
+#include <osl/diagnose.h>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::lang;
@@ -74,14 +74,11 @@ FileDialogFlags lcl_map_mode_to_flags(const sfx2::DocumentInserter::Mode mode)
 
 namespace sfx2 {
 
-DocumentInserter::DocumentInserter(
-    const OUString& rFactory, const Mode mode) :
-
-      m_sDocFactory             ( rFactory )
+DocumentInserter::DocumentInserter(weld::Window* pParent, const OUString& rFactory, const Mode mode)
+    : m_pParent                 ( pParent )
+    , m_sDocFactory             ( rFactory )
     , m_nDlgFlags               ( lcl_map_mode_to_flags(mode) )
     , m_nError                  ( ERRCODE_NONE )
-    , m_pFileDlg                ( nullptr )
-    , m_pItemSet                ( nullptr )
 {
 }
 
@@ -97,20 +94,20 @@ void DocumentInserter::StartExecuteModal( const Link<sfx2::FileDialogHelper*,voi
     {
         m_pFileDlg.reset( new FileDialogHelper(
                 ui::dialogs::TemplateDescription::FILEOPEN_SIMPLE,
-                m_nDlgFlags, m_sDocFactory ) );
+                m_nDlgFlags, m_sDocFactory, SfxFilterFlags::NONE, SfxFilterFlags::NONE, m_pParent ) );
     }
     m_pFileDlg->StartExecuteModal( LINK( this, DocumentInserter, DialogClosedHdl ) );
 }
 
-SfxMedium* DocumentInserter::CreateMedium(char const*const pFallbackHack)
+std::unique_ptr<SfxMedium> DocumentInserter::CreateMedium(char const*const pFallbackHack)
 {
     std::unique_ptr<SfxMedium> pMedium;
-    if (!m_nError && m_pItemSet && !m_pURLList.empty())
+    if (!m_nError && m_xItemSet && !m_pURLList.empty())
     {
         DBG_ASSERT( m_pURLList.size() == 1, "DocumentInserter::CreateMedium(): invalid URL list count" );
         pMedium.reset(new SfxMedium(
                 m_pURLList[0], SFX_STREAM_READONLY,
-                SfxGetpApp()->GetFilterMatcher().GetFilter4FilterName( m_sFilter ), m_pItemSet ));
+                SfxGetpApp()->GetFilterMatcher().GetFilter4FilterName( m_sFilter ), m_xItemSet ));
         pMedium->UseInteractionHandler( true );
         std::unique_ptr<SfxFilterMatcher> pMatcher;
         if ( !m_sDocFactory.isEmpty() )
@@ -135,19 +132,19 @@ SfxMedium* DocumentInserter::CreateMedium(char const*const pFallbackHack)
             pMedium.reset();
     }
 
-    return pMedium.release();
+    return pMedium;
 }
 
-SfxMediumList* DocumentInserter::CreateMediumList()
+SfxMediumList DocumentInserter::CreateMediumList()
 {
-    SfxMediumList* pMediumList = new SfxMediumList;
-    if (!m_nError && m_pItemSet && !m_pURLList.empty())
+    SfxMediumList aMediumList;
+    if (!m_nError && m_xItemSet && !m_pURLList.empty())
     {
-        for(std::vector<OUString>::const_iterator i = m_pURLList.begin(); i != m_pURLList.end(); ++i)
+        for (auto const& url : m_pURLList)
         {
-            SfxMedium* pMedium = new SfxMedium(
-                    *i, SFX_STREAM_READONLY,
-                    SfxGetpApp()->GetFilterMatcher().GetFilter4FilterName( m_sFilter ), m_pItemSet );
+            std::unique_ptr<SfxMedium> pMedium(new SfxMedium(
+                    url, SFX_STREAM_READONLY,
+                    SfxGetpApp()->GetFilterMatcher().GetFilter4FilterName( m_sFilter ), m_xItemSet ));
 
             pMedium->UseInteractionHandler( true );
 
@@ -157,33 +154,31 @@ SfxMediumList* DocumentInserter::CreateMediumList()
             if ( nError == ERRCODE_NONE && pFilter )
                 pMedium->SetFilter( pFilter );
             else
-                DELETEZ( pMedium );
+                pMedium.reset();
 
-            if( pMedium && CheckPasswd_Impl( nullptr, pMedium ) != ERRCODE_ABORT )
-                pMediumList->push_back( pMedium );
-            else
-                delete pMedium;
+            if( pMedium && CheckPasswd_Impl( nullptr, pMedium.get() ) != ERRCODE_ABORT )
+                aMediumList.push_back( std::move(pMedium) );
         }
     }
 
-    return pMediumList;
+    return aMediumList;
 }
 
-void impl_FillURLList( sfx2::FileDialogHelper* _pFileDlg, std::vector<OUString>& _rpURLList )
+static void impl_FillURLList( sfx2::FileDialogHelper const * _pFileDlg, std::vector<OUString>& _rpURLList )
 {
     DBG_ASSERT( _pFileDlg, "DocumentInserter::fillURLList(): invalid file dialog" );
 
     Sequence < OUString > aPathSeq = _pFileDlg->GetSelectedFiles();
 
-    if ( aPathSeq.getLength() )
+    if ( aPathSeq.hasElements() )
     {
         _rpURLList.clear();
 
-        for ( sal_Int32 i = 0; i < aPathSeq.getLength(); ++i )
-        {
-            INetURLObject aPathObj( aPathSeq[i] );
-            _rpURLList.push_back(aPathObj.GetMainURL(INetURLObject::DecodeMechanism::NONE));
-        }
+        std::transform(aPathSeq.begin(), aPathSeq.end(), std::back_inserter(_rpURLList),
+            [](const OUString& rPath) -> OUString {
+                INetURLObject aPathObj( rPath );
+                return aPathObj.GetMainURL(INetURLObject::DecodeMechanism::NONE);
+            });
     }
 }
 
@@ -195,12 +190,12 @@ IMPL_LINK_NOARG(DocumentInserter, DialogClosedHdl, sfx2::FileDialogHelper*, void
     if ( ERRCODE_NONE == m_nError )
         impl_FillURLList( m_pFileDlg.get(), m_pURLList );
 
-    Reference < XFilePicker2 > xFP = m_pFileDlg->GetFilePicker();
+    Reference < XFilePicker3 > xFP = m_pFileDlg->GetFilePicker();
     Reference < XFilePickerControlAccess > xCtrlAccess( xFP, UNO_QUERY );
     if ( xCtrlAccess.is() )
     {
         // always create a new itemset
-        m_pItemSet = new SfxAllItemSet( SfxGetpApp()->GetPool() );
+        m_xItemSet = std::make_shared<SfxAllItemSet>( SfxGetpApp()->GetPool() );
 
         short nDlgType = m_pFileDlg->GetDialogType();
         bool bHasPassword = (
@@ -217,16 +212,16 @@ IMPL_LINK_NOARG(DocumentInserter, DialogClosedHdl, sfx2::FileDialogHelper*, void
                 if ( ( aValue >>= bPassWord ) && bPassWord )
                 {
                     // ask for the password
-                    ScopedVclPtrInstance< SfxPasswordDialog > aPasswordDlg(nullptr);
-                    aPasswordDlg->ShowExtras( SfxShowExtras::CONFIRM );
-                    short nRet = aPasswordDlg->Execute();
+                    SfxPasswordDialog aPasswordDlg(m_pParent);
+                    aPasswordDlg.ShowExtras( SfxShowExtras::CONFIRM );
+                    short nRet = aPasswordDlg.run();
                     if ( RET_OK == nRet )
                     {
-                        m_pItemSet->Put( SfxStringItem( SID_PASSWORD, aPasswordDlg->GetPassword() ) );
+                        m_xItemSet->Put( SfxStringItem( SID_PASSWORD, aPasswordDlg.GetPassword() ) );
                     }
                     else
                     {
-                        DELETEZ( m_pItemSet );
+                        m_xItemSet.reset();
                         return;
                     }
                 }
@@ -241,7 +236,7 @@ IMPL_LINK_NOARG(DocumentInserter, DialogClosedHdl, sfx2::FileDialogHelper*, void
                 Any aValue = xCtrlAccess->getValue( ExtendedFilePickerElementIds::CHECKBOX_SELECTION, 0 );
                 bool bSelection = false;
                 if ( aValue >>= bSelection )
-                    m_pItemSet->Put( SfxBoolItem( SID_SELECTION, bSelection ) );
+                    m_xItemSet->Put( SfxBoolItem( SID_SELECTION, bSelection ) );
             }
             catch( const IllegalArgumentException& )
             {
@@ -252,7 +247,7 @@ IMPL_LINK_NOARG(DocumentInserter, DialogClosedHdl, sfx2::FileDialogHelper*, void
 
         // set the read-only flag. When inserting a file, this flag is always set
         if ( m_nDlgFlags & FileDialogFlags::Insert )
-            m_pItemSet->Put( SfxBoolItem( SID_DOC_READONLY, true ) );
+            m_xItemSet->Put( SfxBoolItem( SID_DOC_READONLY, true ) );
         else
         {
             if ( TemplateDescription::FILEOPEN_READONLY_VERSION == nDlgType )
@@ -262,7 +257,7 @@ IMPL_LINK_NOARG(DocumentInserter, DialogClosedHdl, sfx2::FileDialogHelper*, void
                     Any aValue = xCtrlAccess->getValue( ExtendedFilePickerElementIds::CHECKBOX_READONLY, 0 );
                     bool bReadOnly = false;
                     if ( ( aValue >>= bReadOnly ) && bReadOnly )
-                        m_pItemSet->Put( SfxBoolItem( SID_DOC_READONLY, bReadOnly ) );
+                        m_xItemSet->Put( SfxBoolItem( SID_DOC_READONLY, bReadOnly ) );
                 }
                 catch( const IllegalArgumentException& )
                 {
@@ -280,7 +275,7 @@ IMPL_LINK_NOARG(DocumentInserter, DialogClosedHdl, sfx2::FileDialogHelper*, void
                 sal_Int32 nVersion = 0;
                 if ( ( aValue >>= nVersion ) && nVersion > 0 )
                     // open a special version; 0 == current version
-                    m_pItemSet->Put( SfxInt16Item( SID_VERSION, (short)nVersion ) );
+                    m_xItemSet->Put( SfxInt16Item( SID_VERSION, static_cast<short>(nVersion) ) );
             }
             catch( const IllegalArgumentException& ){}
         }

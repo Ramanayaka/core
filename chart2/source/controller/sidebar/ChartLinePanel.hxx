@@ -10,34 +10,21 @@
 #ifndef INCLUDED_CHART2_SOURCE_CONTROLLER_SIDEBAR_CHARTLINEPANEL_HXX
 #define INCLUDED_CHART2_SOURCE_CONTROLLER_SIDEBAR_CHARTLINEPANEL_HXX
 
-#include <vcl/ctrl.hxx>
-#include <sfx2/sidebar/ControllerItem.hxx>
 #include <sfx2/sidebar/SidebarModelUpdate.hxx>
-#include <svx/xgrad.hxx>
-#include <svx/itemwin.hxx>
-#include <svx/xfillit0.hxx>
-#include <svx/xflclit.hxx>
-#include <svx/xflgrit.hxx>
-#include <svx/xflhtit.hxx>
-#include <svx/xbtmpit.hxx>
-#include <svx/drawitem.hxx>
-#include <svx/sidebar/PanelLayout.hxx>
-#include <svl/intitem.hxx>
-#include <com/sun/star/ui/XUIElement.hpp>
-
 #include <svx/sidebar/LinePropertyPanelBase.hxx>
 
 #include "ChartSidebarModifyListener.hxx"
 #include "ChartSidebarSelectionListener.hxx"
 #include "ChartColorWrapper.hxx"
 
-class XFillFloatTransparenceItem;
-class XFillTransparenceItem;
-class XFillStyleItem;
-class XFillGradientItem;
-class XFillColorItem;
-class XFillHatchItem;
-class XFillBitmapItem;
+class XLineCapItem;
+class XLineDashItem;
+class XLineEndItem;
+class XLineJointItem;
+class XLineStartItem;
+class XLineStyleItem;
+class XLineTransparenceItem;
+class XLineWidthItem;
 
 namespace chart {
 
@@ -68,7 +55,6 @@ public:
     virtual void modelInvalid() override;
 
     virtual void selectionChanged(bool bCorrectType) override;
-    virtual void SelectionInvalid() override;
 
     virtual void dispose() override;
 
@@ -78,10 +64,6 @@ public:
 
 protected:
 
-    virtual void setLineStyle(const XLineStyleItem& rItem) override;
-    virtual void setLineDash(const XLineDashItem& rItem) override;
-    virtual void setLineEndStyle(const XLineEndItem* pItem) override;
-    virtual void setLineStartStyle(const XLineStartItem* pItem) override;
     virtual void setLineTransparency(const XLineTransparenceItem& rItem) override;
     virtual void setLineJoint(const XLineJointItem* pItem) override;
     virtual void setLineCap(const XLineCapItem* pItem) override;
@@ -97,6 +79,7 @@ private:
     bool mbUpdate;
     bool mbModelValid;
     ChartColorWrapper maLineColorWrapper;
+    ChartLineStyleWrapper maLineStyleWrapper;
 };
 
 } } // end of namespace svx::sidebar

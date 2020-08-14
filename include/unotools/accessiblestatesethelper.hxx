@@ -22,13 +22,8 @@
 #include <unotools/unotoolsdllapi.h>
 
 #include <com/sun/star/accessibility/XAccessibleStateSet.hpp>
-#include <cppuhelper/weak.hxx>
-#include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/lang/XTypeProvider.hpp>
-#include <com/sun/star/lang/XServiceName.hpp>
 #include <osl/mutex.hxx>
 #include <cppuhelper/implbase.hxx>
-#include <comphelper/servicehelper.hxx>
 #include <memory>
 
 class AccessibleStateSetHelperImpl;
@@ -43,7 +38,7 @@ namespace utl
         This base class provides an implementation of the
         <code>AccessibleStateSet</code> service.
 */
-class UNOTOOLS_DLLPUBLIC AccessibleStateSetHelper
+class UNOTOOLS_DLLPUBLIC AccessibleStateSetHelper final
     :   public cppu::WeakImplHelper< css::accessibility::XAccessibleStateSet >
 {
 public:
@@ -62,7 +57,7 @@ public:
     AccessibleStateSetHelper ( const sal_Int64 _nInitialStates );
 
     AccessibleStateSetHelper ( const AccessibleStateSetHelper& rHelper );
-protected:
+private:
     virtual ~AccessibleStateSetHelper() override;
 public:
 
@@ -130,16 +125,14 @@ public:
     virtual css::uno::Sequence< css::uno::Type> SAL_CALL
         getTypes() override;
 
-    /** Returns a implementation id.
+    /** Returns an implementation id.
     */
     virtual css::uno::Sequence<sal_Int8> SAL_CALL
         getImplementationId() override;
 
-protected:
+private:
     /// Mutex guarding this object.
     ::osl::Mutex maMutex;
-
-private:
     /// The implementation of this helper interface.
     std::unique_ptr<AccessibleStateSetHelperImpl>   mpHelperImpl;
 };

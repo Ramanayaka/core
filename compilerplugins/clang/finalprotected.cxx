@@ -6,6 +6,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
+#ifndef LO_CLANG_SHARED_PLUGINS
 
 #include <string>
 #include <iostream>
@@ -21,10 +22,11 @@ namespace
 {
 
 class FinalProtected:
-    public RecursiveASTVisitor<FinalProtected>, public loplugin::Plugin
+    public loplugin::FilteringPlugin<FinalProtected>
 {
 public:
-    explicit FinalProtected(InstantiationData const & data): Plugin(data) {}
+    explicit FinalProtected(loplugin::InstantiationData const & data):
+        FilteringPlugin(data) {}
 
     virtual void run() override {
         TraverseDecl(compiler.getASTContext().getTranslationUnitDecl());
@@ -49,7 +51,7 @@ bool FinalProtected::VisitCXXMethodDecl(CXXMethodDecl const * cxxMethodDecl)
     cxxMethodDecl = cxxMethodDecl->getCanonicalDecl();
     report(DiagnosticsEngine::Warning,
             "final class should not have protected members - convert them to private",
-            cxxMethodDecl->getLocStart())
+            compat::getBeginLoc(cxxMethodDecl))
         << cxxMethodDecl->getSourceRange();
     return true;
 }
@@ -68,13 +70,15 @@ bool FinalProtected::VisitFieldDecl(FieldDecl const * fieldDecl)
     fieldDecl = fieldDecl->getCanonicalDecl();
     report(DiagnosticsEngine::Warning,
             "final class should not have protected members - convert them to private",
-            fieldDecl->getLocStart())
+            compat::getBeginLoc(fieldDecl))
         << fieldDecl->getSourceRange();
     return true;
 }
 
-loplugin::Plugin::Registration< FinalProtected > X("finalprotected", true);
+loplugin::Plugin::Registration< FinalProtected > finalprotected("finalprotected");
 
-}
+} // namespace
+
+#endif // LO_CLANG_SHARED_PLUGINS
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

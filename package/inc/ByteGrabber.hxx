@@ -29,12 +29,11 @@
 
 #include <osl/mutex.hxx>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace io { class XSeekable; class XInputStream; }
-} } }
-class ByteGrabber
+}
+class ByteGrabber final
 {
-protected:
     ::osl::Mutex m_aMutex;
 
     css::uno::Reference < css::io::XInputStream > xStream;
@@ -52,18 +51,18 @@ public:
     /// @throws css::io::BufferSizeExceededException
     /// @throws css::io::IOException
     /// @throws css::uno::RuntimeException
-    sal_Int32 SAL_CALL readBytes( css::uno::Sequence< sal_Int8 >& aData, sal_Int32 nBytesToRead );
+    sal_Int32 readBytes( css::uno::Sequence< sal_Int8 >& aData, sal_Int32 nBytesToRead );
     // XSeekable
     /// @throws css::lang::IllegalArgumentException
     /// @throws css::io::IOException
     /// @throws css::uno::RuntimeException
-    void SAL_CALL seek( sal_Int64 location );
+    void seek( sal_Int64 location );
     /// @throws css::io::IOException
     /// @throws css::uno::RuntimeException
-    sal_Int64 SAL_CALL getPosition(  );
+    sal_Int64 getPosition(  );
     /// @throws css::io::IOException
     /// @throws css::uno::RuntimeException
-    sal_Int64 SAL_CALL getLength(  );
+    sal_Int64 getLength(  );
 
     sal_uInt16 ReadUInt16();
     sal_uInt32 ReadUInt32();

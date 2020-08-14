@@ -20,20 +20,21 @@
 #define INCLUDED_TOOLS_URLOBJ_HXX
 
 #include <tools/toolsdllapi.h>
-#include <com/sun/star/uno/Reference.hxx>
-#include <rtl/string.h>
 #include <rtl/ustrbuf.hxx>
 #include <rtl/textenc.h>
 #include <sal/types.h>
 #include <o3tl/typed_flags_set.hxx>
 
 #include <memory>
+#include <string_view>
 
 class SvMemoryStream;
 
-namespace com { namespace sun { namespace star { namespace util {
+namespace com::sun::star::util {
     class XStringWidth;
-} } } }
+}
+
+namespace com::sun::star::uno { template <typename > class Reference; }
 
 // Common URL prefixes for various schemes:
 #define INET_FTP_SCHEME "ftp://"
@@ -201,7 +202,7 @@ public:
             specified character set and that can be converted to UTF-32
             characters, are first decoded.  If they have to be encoded, they
             are converted to UTF-8 characters and are than translated into
-            (sequences of) escape sequences.  Other escape sequences are
+            (sequences of) escape sequences. Other escape sequences are
             copied verbatim (but using upper case hex digits).
          */
         WasEncoded,
@@ -342,7 +343,6 @@ public:
     static OUString
     GetAbsURL(OUString const & rTheBaseURIRef,
               OUString const & rTheRelURIRef,
-              bool bIgnoreFragment = false,
               EncodeMechanism eEncodeMechanism = EncodeMechanism::WasEncoded,
               DecodeMechanism eDecodeMechanism = DecodeMechanism::ToIUri,
               rtl_TextEncoding eCharset = RTL_TEXTENCODING_UTF8);
@@ -381,12 +381,12 @@ public:
 
     bool isSchemeEqualTo(INetProtocol scheme) const { return scheme == m_eScheme; }
 
-    bool isSchemeEqualTo(OUString const & scheme) const;
+    bool isSchemeEqualTo(std::u16string_view scheme) const;
 
     /** Check if the scheme is one of the WebDAV scheme
      *  we know about.
      *
-     *  @return true is one othe scheme either public scheme or private scheme.
+     *  @return true is one other scheme either public scheme or private scheme.
      */
     bool isAnyKnownWebDAVScheme() const;
 
@@ -398,7 +398,7 @@ public:
      */
     static OUString GetScheme(INetProtocol eTheScheme);
 
-    /** Return the a human-readable name for a given scheme.
+    /** Return the human-readable name for a given scheme.
 
         @param eTheScheme  One of the supported URL schemes.
 
@@ -441,7 +441,7 @@ public:
     { return decode(m_aHost, eMechanism, eCharset); }
 
     OUString GetHostPort(DecodeMechanism eMechanism = DecodeMechanism::ToIUri,
-                          rtl_TextEncoding eCharset = RTL_TEXTENCODING_UTF8);
+                          rtl_TextEncoding eCharset = RTL_TEXTENCODING_UTF8) const;
 
     sal_uInt32 GetPort() const;
 
@@ -569,17 +569,23 @@ public:
                       rtl_TextEncoding eCharset = RTL_TEXTENCODING_UTF8)
         const;
 
-    /** Set the name of a segment (preserving any parameters and any query or
+    /** Set the name of the last segment (preserving any parameters and any query or
         fragment part).
 
         @param rTheName  The new name.
 
+        @param eMechanism  See the general discussion for get-methods.
+
+        @param eCharset  See the general discussion for get-methods.
+
         @return  True if the name has successfully been modified (and the
         resulting URI is still valid).  If the path is not hierarchical, or
-        the specified segment does not exist, false is returned.  If false is
+        a last segment does not exist, false is returned.  If false is
         returned, the object is not modified.
      */
-    bool setName(OUString const & rTheName);
+    bool setName(OUString const& rTheName,
+                 EncodeMechanism eMechanism = EncodeMechanism::WasEncoded,
+                 rtl_TextEncoding eCharset = RTL_TEXTENCODING_UTF8);
 
     /** Get the base of the name of a segment.
 
@@ -749,26 +755,6 @@ public:
 
     // File URLs:
 
-    /** Create an INetURLObject from a file system path.
-
-        @param rFSysPath  A file system path.  An URL is not allowed here!
-
-        @param eStyle  The notation of rFSysPath.
-     */
-    inline INetURLObject(OUString const & rFSysPath, FSysStyle eStyle);
-
-    /** Set this INetURLObject to a file URL constructed from a file system
-        path.
-
-        @param rFSysPath  A file system path.  An URL is not allowed here!
-
-        @param eStyle  The notation of rFSysPath.
-
-        @return  True if this INetURLObject has successfully been changed.  If
-        false is returned, this INetURLObject has not been modified.
-     */
-    bool setFSysPath(OUString const & rFSysPath, FSysStyle eStyle);
-
     /** Return the file system path represented by a file URL (ignoring any
         fragment part).
 
@@ -790,7 +776,7 @@ public:
         const;
 
     // Data URLs:
-    std::unique_ptr<SvMemoryStream> getData();
+    std::unique_ptr<SvMemoryStream> getData() const;
 
     // Coding:
 
@@ -866,11 +852,11 @@ public:
     static void appendUCS4Escape(OUStringBuffer & rTheText, sal_uInt32 nUCS4);
 
     static void appendUCS4(OUStringBuffer & rTheText, sal_uInt32 nUCS4,
-                           EscapeType eEscapeType, bool bOctets, Part ePart,
+                           EscapeType eEscapeType, Part ePart,
                            rtl_TextEncoding eCharset, bool bKeepVisibleEscapes);
 
     static sal_uInt32 getUTF32(sal_Unicode const *& rBegin,
-                               sal_Unicode const * pEnd, bool bOctets,
+                               sal_Unicode const * pEnd,
                                EncodeMechanism eMechanism,
                                rtl_TextEncoding eCharset,
                                EscapeType & rEscapeType);
@@ -926,29 +912,18 @@ public:
 
     OUString GetBase() const;
 
-    void SetName(OUString const & rTheName,
-                 EncodeMechanism eMechanism = EncodeMechanism::WasEncoded,
-                 rtl_TextEncoding eCharset = RTL_TEXTENCODING_UTF8);
-
-    OUString GetName(DecodeMechanism eMechanism = DecodeMechanism::ToIUri,
-                             rtl_TextEncoding eCharset
-                                 = RTL_TEXTENCODING_UTF8) const
-    { return GetLastName(eMechanism, eCharset); }
-
     void SetExtension(OUString const & rTheExtension);
-
-    OUString GetExtension() const
-    { return GetFileExtension(); }
 
     OUString CutExtension();
 
     static bool IsCaseSensitive() { return true; }
 
+    void changeScheme(INetProtocol eTargetScheme);
 
 private:
     // General Structure:
 
-    class SubString
+    class SAL_DLLPRIVATE SubString
     {
         sal_Int32 m_nBegin;
         sal_Int32 m_nLength;
@@ -1024,12 +999,12 @@ private:
     // External URLs:
 
     static bool convertIntToExt(
-        OUString const & rTheIntURIRef, bool bOctets,
+        OUString const & rTheIntURIRef,
         OUString & rTheExtURIRef, DecodeMechanism eDecodeMechanism,
         rtl_TextEncoding eCharset);
 
     static bool convertExtToInt(
-        OUString const & rTheExtURIRef, bool bOctets,
+        OUString const & rTheExtURIRef,
         OUString & rTheIntURIRef, DecodeMechanism eDecodeMechanism,
         rtl_TextEncoding eCharset);
 
@@ -1070,7 +1045,7 @@ private:
         OUString & rCanonic);
 
     TOOLS_DLLPRIVATE static bool parseHostOrNetBiosName(
-        sal_Unicode const * pBegin, sal_Unicode const * pEnd, bool bOctets,
+        sal_Unicode const * pBegin, sal_Unicode const * pEnd,
         EncodeMechanism eMechanism, rtl_TextEncoding eCharset,
         bool bNetBiosName, OUStringBuffer* pCanonic);
 
@@ -1082,7 +1057,7 @@ private:
 
     TOOLS_DLLPRIVATE static bool parsePath(
         INetProtocol eScheme, sal_Unicode const ** pBegin,
-        sal_Unicode const * pEnd, bool bOctets, EncodeMechanism eMechanism,
+        sal_Unicode const * pEnd, EncodeMechanism eMechanism,
         rtl_TextEncoding eCharset, bool bSkippedInitialSlash,
         sal_uInt32 nSegmentDelimiter, sal_uInt32 nAltSegmentDelimiter,
         sal_uInt32 nQueryDelimiter, sal_uInt32 nFragmentDelimiter,
@@ -1101,7 +1076,7 @@ private:
 
     // Query:
 
-    bool clearQuery();
+    void clearQuery();
 
     bool setQuery(
         OUString const & rTheQuery,
@@ -1125,12 +1100,12 @@ private:
         OUStringBuffer & rTheText, sal_uInt32 nOctet);
 
     static OUString encodeText(
-        sal_Unicode const * pBegin, sal_Unicode const * pEnd, bool bOctets,
+        sal_Unicode const * pBegin, sal_Unicode const * pEnd,
         Part ePart, EncodeMechanism eMechanism, rtl_TextEncoding eCharset,
         bool bKeepVisibleEscapes);
 
     static inline OUString encodeText(
-        OUString const & rTheText, bool bOctets, Part ePart,
+        OUString const & rTheText, Part ePart,
         EncodeMechanism eMechanism, rtl_TextEncoding eCharset,
         bool bKeepVisibleEscapes);
 
@@ -1146,20 +1121,17 @@ private:
 
     TOOLS_DLLPRIVATE static bool scanIPv6reference(
         sal_Unicode const *& rBegin, sal_Unicode const * pEnd);
-
-private:
-    void changeScheme(INetProtocol eTargetScheme);
 };
 
 // static
 inline OUString INetURLObject::encodeText(OUString const & rTheText,
-                                           bool bOctets, Part ePart,
+                                           Part ePart,
                                            EncodeMechanism eMechanism,
                                            rtl_TextEncoding eCharset,
                                            bool bKeepVisibleEscapes)
 {
     return encodeText(rTheText.getStr(),
-                      rTheText.getStr() + rTheText.getLength(), bOctets, ePart,
+                      rTheText.getStr() + rTheText.getLength(), ePart,
                       eMechanism, eCharset, bKeepVisibleEscapes);
 }
 
@@ -1264,7 +1236,7 @@ inline bool INetURLObject::translateToExternal(OUString const &
                                                    eDecodeMechanism,
                                                rtl_TextEncoding eCharset)
 {
-    return convertIntToExt(rTheIntURIRef, false, rTheExtURIRef,
+    return convertIntToExt(rTheIntURIRef, rTheExtURIRef,
                            eDecodeMechanism, eCharset);
 }
 
@@ -1276,7 +1248,7 @@ inline bool INetURLObject::translateToInternal(OUString const &
                                                    eDecodeMechanism,
                                                rtl_TextEncoding eCharset)
 {
-    return convertExtToInt(rTheExtURIRef, false, rTheIntURIRef,
+    return convertExtToInt(rTheExtURIRef, rTheIntURIRef,
                            eDecodeMechanism, eCharset);
 }
 
@@ -1300,9 +1272,12 @@ inline bool INetURLObject::SetParam(OUString const & rTheQuery,
                                     EncodeMechanism eMechanism,
                                     rtl_TextEncoding eCharset)
 {
-    return rTheQuery.isEmpty() ?
-               clearQuery() :
-               setQuery(rTheQuery, eMechanism, eCharset);
+    if (rTheQuery.isEmpty())
+    {
+        clearQuery();
+        return false;
+    }
+    return setQuery(rTheQuery, eMechanism, eCharset);
 }
 
 inline bool INetURLObject::SetMark(OUString const & rTheFragment,
@@ -1314,19 +1289,12 @@ inline bool INetURLObject::SetMark(OUString const & rTheFragment,
                setFragment(rTheFragment, eMechanism, eCharset);
 }
 
-inline INetURLObject::INetURLObject(OUString const & rFSysPath,
-                                    FSysStyle eStyle):
-    m_eScheme(INetProtocol::NotValid), m_eSmartScheme(INetProtocol::Http)
-{
-    setFSysPath(rFSysPath, eStyle);
-}
-
 // static
 inline OUString INetURLObject::encode(OUString const & rText, Part ePart,
                                        EncodeMechanism eMechanism,
                                        rtl_TextEncoding eCharset)
 {
-    return encodeText(rText, false, ePart, eMechanism, eCharset, false);
+    return encodeText(rText, ePart, eMechanism, eCharset, false);
 }
 
 // static

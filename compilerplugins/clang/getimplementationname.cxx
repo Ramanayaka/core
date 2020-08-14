@@ -13,7 +13,6 @@
 // only compile this on clang 3.7 or higher, which is known to work
 // there were problems on clang 3.5 at least
 #include "config_clang.h"
-#if CLANG_VERSION >= 30700
 #include <cassert>
 #include <stdlib.h>
 #include <string>
@@ -75,12 +74,11 @@ std::string replace_all(std::string subject, const std::string& search, const st
 }
 
 class GetImplementationName:
-    public clang::RecursiveASTVisitor<GetImplementationName>,
-    public loplugin::Plugin
+    public loplugin::FilteringPlugin<GetImplementationName>
 {
 public:
-    explicit GetImplementationName(InstantiationData const & data)
-        : Plugin(data)
+    explicit GetImplementationName(loplugin::InstantiationData const & data)
+        : FilteringPlugin(data)
         , m_Outdir(initOutdir())
         , m_OutdirCreated(false)
         , m_Srcdir(initSrcdir())
@@ -211,8 +209,7 @@ bool GetImplementationName::isStringConstant(
             return false;//TODO
         }
     default:
-        assert(false); //TODO???
-        return "BAD11";
+        abort(); //TODO???
     }
 }
 
@@ -311,7 +308,6 @@ std::string GetImplementationName::initSrcdir() {
 loplugin::Plugin::Registration<GetImplementationName> X(
     "getimplementationname", false);
 }
-#endif
 #endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

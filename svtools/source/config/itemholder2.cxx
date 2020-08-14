@@ -26,14 +26,13 @@
 #include <com/sun/star/configuration/theDefaultProvider.hpp>
 
 #include <svtools/accessibilityoptions.hxx>
-#include <svtools/apearcfg.hxx>
 #include <svtools/menuoptions.hxx>
 #include <svtools/colorcfg.hxx>
-#include <svtools/fontsubstconfig.hxx>
 #include <svtools/helpopt.hxx>
 #include <svtools/printoptions.hxx>
 #include <unotools/options.hxx>
 #include <svtools/miscopt.hxx>
+#include <tools/diagnose_ex.h>
 
 namespace svtools {
 
@@ -53,13 +52,13 @@ ItemHolder2::ItemHolder2()
         throw;
     }
 #ifdef DBG_UTIL
-    catch(const css::uno::Exception& rEx)
+    catch(const css::uno::Exception&)
     {
         static bool bMessage = true;
         if(bMessage)
         {
             bMessage = false;
-            SAL_WARN( "svtools", "CreateInstance with arguments exception: " << rEx.Message );
+            TOOLS_WARN_EXCEPTION( "svtools", "CreateInstance with arguments" );
         }
     }
 #else
@@ -89,14 +88,10 @@ void SAL_CALL ItemHolder2::disposing(const css::lang::EventObject&)
 
 void ItemHolder2::impl_addItem(EItem eItem)
 {
-    ::osl::ResettableMutexGuard aLock(m_aLock);
+    osl::MutexGuard aLock(m_aLock);
 
-    TItems::const_iterator pIt;
-    for (  pIt  = m_lItems.begin();
-           pIt != m_lItems.end()  ;
-         ++pIt                    )
+    for ( auto const & rInfo : m_lItems )
     {
-        const TItemInfo& rInfo = *pIt;
         if (rInfo.eItem == eItem)
             return;
     }
@@ -105,23 +100,19 @@ void ItemHolder2::impl_addItem(EItem eItem)
     aNewItem.eItem = eItem;
     impl_newItem(aNewItem);
     if (aNewItem.pItem)
-        m_lItems.push_back(aNewItem);
+        m_lItems.emplace_back(std::move(aNewItem));
 }
 
 
 void ItemHolder2::impl_releaseAllItems()
 {
-    ::osl::ResettableMutexGuard aLock(m_aLock);
-
-    TItems::iterator pIt;
-    for (  pIt  = m_lItems.begin();
-           pIt != m_lItems.end()  ;
-         ++pIt                    )
+    std::vector<TItemInfo> items;
     {
-        TItemInfo& rInfo = *pIt;
-        impl_deleteItem(rInfo);
+        osl::MutexGuard aLock(m_aLock);
+        items.swap(m_lItems);
     }
-    m_lItems.clear();
+
+    // items will be freed when the block exits
 }
 
 
@@ -130,46 +121,36 @@ void ItemHolder2::impl_newItem(TItemInfo& rItem)
     switch(rItem.eItem)
     {
         case EItem::AccessibilityOptions :
-            rItem.pItem = new SvtAccessibilityOptions();
+            rItem.pItem.reset( new SvtAccessibilityOptions() );
             break;
 
         case EItem::ColorConfig :
-            rItem.pItem = new ::svtools::ColorConfig();
+            rItem.pItem.reset( new ::svtools::ColorConfig() );
             break;
 
         case EItem::HelpOptions :
-            rItem.pItem = new SvtHelpOptions();
+            rItem.pItem.reset( new SvtHelpOptions() );
             break;
 
         case EItem::MenuOptions :
-            rItem.pItem = new SvtMenuOptions();
+            rItem.pItem.reset( new SvtMenuOptions() );
             break;
 
         case EItem::PrintOptions :
-            rItem.pItem = new SvtPrinterOptions();
+            rItem.pItem.reset( new SvtPrinterOptions() );
             break;
 
         case EItem::PrintFileOptions :
-            rItem.pItem = new SvtPrintFileOptions();
+            rItem.pItem.reset( new SvtPrintFileOptions() );
             break;
 
         case EItem::MiscOptions :
-            rItem.pItem = new SvtMiscOptions();
+            rItem.pItem.reset( new SvtMiscOptions() );
             break;
 
         default:
             OSL_ASSERT(false);
             break;
-    }
-}
-
-
-void ItemHolder2::impl_deleteItem(TItemInfo& rItem)
-{
-    if (rItem.pItem)
-    {
-        delete rItem.pItem;
-        rItem.pItem = nullptr;
     }
 }
 

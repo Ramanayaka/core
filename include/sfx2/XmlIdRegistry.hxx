@@ -23,13 +23,14 @@
 #include <sal/config.h>
 
 #include <sfx2/dllapi.h>
+#include <rtl/ustring.hxx>
 
-#include <com/sun/star/beans/StringPair.hpp>
+namespace com::sun::star::beans { struct StringPair; }
+namespace com::sun::star::uno { template <typename > class Reference; }
 
-
-namespace com { namespace sun { namespace star { namespace rdf {
+namespace com::sun::star::rdf {
     class XMetadatable;
-} } } }
+}
 
 namespace sfx2 {
 

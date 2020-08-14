@@ -19,30 +19,22 @@
 
 
 #include <string.h>
-#include <osl/diagnose.hxx>
 #include <osl/thread.h>
 #include <osl/file.hxx>
 #include <cppuhelper/weak.hxx>
 #include <cppuhelper/queryinterface.hxx>
 #include <comphelper/processfactory.hxx>
 #include <rtl/uri.hxx>
-#include <rtl/ustrbuf.hxx>
 #include <rtl/character.hxx>
-#include <libxslt/xslt.h>
 #include <libxslt/transform.h>
 #include <libxslt/xsltutils.h>
+#include <libxslt/security.h>
 #include "db.hxx"
 #include <com/sun/star/io/XActiveDataSink.hpp>
 #include <com/sun/star/io/XInputStream.hpp>
 #include <com/sun/star/io/XSeekable.hpp>
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
-#include <com/sun/star/ucb/OpenCommandArgument2.hpp>
-#include <com/sun/star/ucb/OpenMode.hpp>
-#include <com/sun/star/ucb/XCommandProcessor.hpp>
-#include <com/sun/star/ucb/XCommandEnvironment.hpp>
-#include <com/sun/star/ucb/XContentIdentifier.hpp>
-#include <com/sun/star/ucb/XContentProvider.hpp>
-#include <com/sun/star/ucb/XContentIdentifierFactory.hpp>
+#include <com/sun/star/ucb/IllegalIdentifierException.hpp>
 #include <com/sun/star/container/XHierarchicalNameAccess.hpp>
 
 #include "urlparameter.hxx"
@@ -152,11 +144,8 @@ OUString URLParameter::get_title()
 }
 
 
-OUString const & URLParameter::get_language()
+OUString const & URLParameter::get_language() const
 {
-    if( m_aLanguage.isEmpty() )
-        return m_aDefaultLanguage;
-
     return m_aLanguage;
 }
 
@@ -198,7 +187,7 @@ OUString URLParameter::get_the_tag()
 }
 
 
-OUString URLParameter::get_path()
+OUString const & URLParameter::get_path()
 {
     if(m_bUseDB) {
         if( ! m_bHelpDataFileRead )
@@ -251,7 +240,7 @@ void URLParameter::readHelpDataFile()
     DataBaseIterator aDbIt( *m_pDatabases, aModule, aLanguage, false );
     bool bSuccess = false;
 
-    const sal_Char* pData = nullptr;
+    const char* pData = nullptr;
 
     helpdatafileproxy::HDFData aHDFData;
     OUString aExtensionPath;
@@ -271,25 +260,26 @@ void URLParameter::readHelpDataFile()
         }
     }
 
-    if( bSuccess )
+    if( !bSuccess )
+        return;
+
+    DbtToStringConverter converter( pData );
+    m_aTitle = converter.getTitle();
+    m_pDatabases->replaceName( m_aTitle );
+    m_aPath  = converter.getFile();
+    m_aJar   = converter.getDatabase();
+    if( !aExtensionPath.isEmpty() )
     {
-        DbtToStringConverter converter( pData );
-        m_aTitle = converter.getTitle();
-        m_pDatabases->replaceName( m_aTitle );
-        m_aPath  = converter.getFile();
-        m_aJar   = converter.getDatabase();
-        if( !aExtensionPath.isEmpty() )
-        {
-            m_aJar = "?" + aExtensionPath + "?" + m_aJar;
-            m_aExtensionRegistryPath = aExtensionRegistryPath;
-        }
-        m_aTag   = converter.getHash();
+        m_aJar = "?" + aExtensionPath + "?" + m_aJar;
+        m_aExtensionRegistryPath = aExtensionRegistryPath;
     }
+    m_aTag   = converter.getHash();
 }
 
 
 // Class encapsulating the transformation of the XInputStream to XHTML
 
+namespace {
 
 class InputStreamTransformer
     : public OWeakObject,
@@ -334,6 +324,7 @@ private:
     OStringBuffer buffer;
 };
 
+}
 
 void URLParameter::open( const Reference< XOutputStream >& xDataSink )
 {
@@ -341,7 +332,7 @@ void URLParameter::open( const Reference< XOutputStream >& xDataSink )
         return;
 
     // a standard document or else an active help text, plug in the new input stream
-    InputStreamTransformer* p = new InputStreamTransformer( this,m_pDatabases,isRoot() );
+    std::unique_ptr<InputStreamTransformer> p(new InputStreamTransformer( this,m_pDatabases,isRoot() ));
     try
     {
         xDataSink->writeBytes( Sequence< sal_Int8 >( reinterpret_cast<const sal_Int8*>(p->getData().getStr()), p->getData().getLength() ) );
@@ -349,7 +340,7 @@ void URLParameter::open( const Reference< XOutputStream >& xDataSink )
     catch( const Exception& )
     {
     }
-    delete p;
+    p.reset();
     xDataSink->closeOutput();
 }
 
@@ -389,12 +380,10 @@ bool URLParameter::scheme()
             m_aExpr.copy(sal::static_int_cast<sal_uInt32>(nLen) - 6);
         if( aLastStr == "DbPAR=" )
         {
-            OUString aNewExpr = m_aExpr.copy( 0, 20 );
-            OUString aSharedStr("shared");
-            aNewExpr += aSharedStr;
-            aNewExpr += m_aExpr.copy( 20 );
-            aNewExpr += aSharedStr;
-            m_aExpr = aNewExpr;
+            m_aExpr = m_aExpr.copy( 0, 20 ) +
+                "shared" +
+                m_aExpr.copy( 20 ) +
+                "shared";
         }
     }
 
@@ -414,7 +403,7 @@ bool URLParameter::module()
 {
     sal_Int32 idx = 0,length = m_aExpr.getLength();
 
-    while( idx < length && rtl::isAsciiAlphanumeric( (m_aExpr.getStr())[idx] ) )
+    while( idx < length && rtl::isAsciiAlphanumeric( m_aExpr[idx] ) )
         ++idx;
 
     if( idx != 0 )
@@ -434,10 +423,10 @@ bool URLParameter::name( bool modulePresent )
 
     sal_Int32 length = m_aExpr.getLength();
 
-    if( length != 0 && (m_aExpr.getStr())[0] == '/' )
+    if( length != 0 && m_aExpr[0] == '/' )
     {
         sal_Int32 idx = 1;
-        while( idx < length && (m_aExpr.getStr())[idx] != '?' )
+        while( idx < length && m_aExpr[idx] != '?' )
             ++idx;
 
         if( idx != 1 && ! modulePresent )
@@ -459,7 +448,7 @@ bool URLParameter::query()
 
     if( m_aExpr.isEmpty() )
         return true;
-    else if( (m_aExpr.getStr())[0] == '?' )
+    else if( m_aExpr[0] == '?' )
         query_ = m_aExpr.copy( 1 ).trim();
     else
         return false;
@@ -488,7 +477,7 @@ bool URLParameter::query()
         if( parameter == "Language" )
             m_aLanguage = value;
         else if( parameter == "Device" )
-            m_aDevice = value;
+            ;
         else if( parameter == "Program" )
             m_aProgram = value;
         else if( parameter == "Eid" )
@@ -518,13 +507,15 @@ bool URLParameter::query()
         else if( parameter == "Active" )
             m_aActive = value;
         else if( parameter == "Version" )
-            ; // ignored (but accepted) in the build-in help, useful only for the online help
+            ; // ignored (but accepted) in the built-in help, useful only for the online help
         else
             ret = false;
     }
 
     return ret;
 }
+
+namespace {
 
 struct UserData {
 
@@ -538,6 +529,8 @@ struct UserData {
     Databases*                          m_pDatabases;
     URLParameter*                       m_pInitial;
 };
+
+}
 
 static UserData *ugblData = nullptr;
 
@@ -567,7 +560,7 @@ helpMatch(const char * URI) {
 static void *
 fileOpen(const char *URI) {
     osl::File *pRet = new osl::File(OUString(URI, strlen(URI), RTL_TEXTENCODING_UTF8));
-    pRet->open(osl_File_OpenFlag_Read);
+    (void)pRet->open(osl_File_OpenFlag_Read);
     return pRet;
 }
 
@@ -576,7 +569,7 @@ zipOpen(SAL_UNUSED_PARAMETER const char *) {
     OUString language,jar,path;
 
     if( !ugblData->m_pInitial->get_eid().isEmpty() )
-        return static_cast<void*>(new Reference< XHierarchicalNameAccess >);
+        return new Reference<XHierarchicalNameAccess>;
     else
     {
         jar = ugblData->m_pInitial->get_jar();
@@ -725,35 +718,35 @@ InputStreamTransformer::InputStreamTransformer( URLParameter* urlParam,
 
         parString[last++] = "Program";
         OString aPureProgramm( urlParam->getByName( "Program" ) );
-        parString[last++] = OString('\'') + aPureProgramm + OString('\'');
+        parString[last++] = "'" + aPureProgramm + "'";
         parString[last++] = "Database";
-        parString[last++] = OString('\'') + urlParam->getByName( "DatabasePar" ) + OString('\'');
+        parString[last++] = "'" + urlParam->getByName( "DatabasePar" ) + "'";
         parString[last++] = "Id";
-        parString[last++] = OString('\'') + urlParam->getByName( "Id" ) + OString('\'');
+        parString[last++] = "'" + urlParam->getByName( "Id" ) + "'";
         parString[last++] = "Path";
         OString aPath( urlParam->getByName( "Path" ) );
-        parString[last++] = OString('\'') + aPath + OString('\'');
+        parString[last++] = "'" + aPath + "'";
 
         OString aPureLanguage = urlParam->getByName( "Language" );
         parString[last++] = "Language";
-        parString[last++] = OString('\'') + aPureLanguage + OString('\'');
+        parString[last++] = "'" + aPureLanguage + "'";
         parString[last++] = "System";
-        parString[last++] = OString('\'') + urlParam->getByName( "System" ) + OString('\'');
+        parString[last++] = "'" + urlParam->getByName( "System" ) + "'";
         parString[last++] = "productname";
-        parString[last++] = OString('\'') + OString(
+        parString[last++] = "'" + OString(
             pDatabases->getProductName().getStr(),
             pDatabases->getProductName().getLength(),
-            RTL_TEXTENCODING_UTF8 ) + OString('\'');
+            RTL_TEXTENCODING_UTF8 ) + "'";
         parString[last++] = "productversion";
-        parString[last++] = OString('\'') +
+        parString[last++] = "'" +
             OString(  pDatabases->getProductVersion().getStr(),
                           pDatabases->getProductVersion().getLength(),
-                          RTL_TEXTENCODING_UTF8 ) + OString('\'');
+                          RTL_TEXTENCODING_UTF8 ) + "'";
 
         parString[last++] = "imgtheme";
-        parString[last++] = OString('\'') + pDatabases->getImageTheme() + OString('\'');
+        parString[last++] = "'" + pDatabases->getImageTheme() + "'";
         parString[last++] = "hp";
-        parString[last++] = OString('\'') + urlParam->getByName( "HelpPrefix" ) + OString('\'');
+        parString[last++] = "'" + urlParam->getByName( "HelpPrefix" ) + "'";
 
         if( !parString[last-1].isEmpty() )
         {
@@ -814,7 +807,7 @@ InputStreamTransformer::InputStreamTransformer( URLParameter* urlParam,
             OString aExpandedExtensionPath = OUStringToOString( aOUExpandedExtensionPath, osl_getThreadTextEncoding() );
 
             parString[last++] = "ExtensionPath";
-            parString[last++] = OString('\'') + aExpandedExtensionPath + OString('\'');
+            parString[last++] = "'" + aExpandedExtensionPath + "'";
 
             // ExtensionId
             OString aPureExtensionId;
@@ -823,7 +816,7 @@ InputStreamTransformer::InputStreamTransformer( URLParameter* urlParam,
                 aPureExtensionId = aPath.copy( 0, iSlash );
 
             parString[last++] = "ExtensionId";
-            parString[last++] = OString('\'') + aPureExtensionId + OString('\'');
+            parString[last++] = "'" + aPureExtensionId + "'";
         }
 
         for( int i = 0; i < last; ++i )
@@ -832,11 +825,11 @@ InputStreamTransformer::InputStreamTransformer( URLParameter* urlParam,
 
         OUString xslURL = pDatabases->getInstallPathAsURL();
 
-        OString xslURLascii(
-            xslURL.getStr(),
-            xslURL.getLength(),
-            RTL_TEXTENCODING_UTF8);
-        xslURLascii += "main_transform.xsl";
+        OString xslURLascii = OString(
+                xslURL.getStr(),
+                xslURL.getLength(),
+                RTL_TEXTENCODING_UTF8) +
+            "main_transform.xsl";
 
         ugblData = &userData;
 
@@ -850,14 +843,29 @@ InputStreamTransformer::InputStreamTransformer( URLParameter* urlParam,
 
         xmlDocPtr doc = xmlParseFile("vnd.sun.star.zip:/");
 
-        xmlDocPtr res = xsltApplyStylesheet(cur, doc, parameter);
-        if (res)
+        xmlDocPtr res = nullptr;
+        xsltTransformContextPtr transformContext = xsltNewTransformContext(cur, doc);
+        if (transformContext)
         {
-            xmlChar *doc_txt_ptr=nullptr;
-            int doc_txt_len;
-            xsltSaveResultToString(&doc_txt_ptr, &doc_txt_len, res, cur);
-            addToBuffer(reinterpret_cast<char*>(doc_txt_ptr), doc_txt_len);
-            xmlFree(doc_txt_ptr);
+            xsltSecurityPrefsPtr securityPrefs = xsltNewSecurityPrefs();
+            if (securityPrefs)
+            {
+                xsltSetSecurityPrefs(securityPrefs, XSLT_SECPREF_READ_FILE, xsltSecurityAllow);
+                if (xsltSetCtxtSecurityPrefs(securityPrefs, transformContext) == 0)
+                {
+                    res = xsltApplyStylesheetUser(cur, doc, parameter, nullptr, nullptr, transformContext);
+                    if (res)
+                    {
+                        xmlChar *doc_txt_ptr=nullptr;
+                        int doc_txt_len;
+                        xsltSaveResultToString(&doc_txt_ptr, &doc_txt_len, res, cur);
+                        addToBuffer(reinterpret_cast<char*>(doc_txt_ptr), doc_txt_len);
+                        xmlFree(doc_txt_ptr);
+                    }
+                }
+                xsltFreeSecurityPrefs(securityPrefs);
+            }
+            xsltFreeTransformContext(transformContext);
         }
         xmlPopInputCallbacks(); //filePatch
         xmlPopInputCallbacks(); //helpPatch
@@ -872,8 +880,8 @@ InputStreamTransformer::InputStreamTransformer( URLParameter* urlParam,
 Any SAL_CALL InputStreamTransformer::queryInterface( const Type& rType )
 {
     Any aRet = ::cppu::queryInterface( rType,
-                                       (static_cast< XInputStream* >(this)),
-                                       (static_cast< XSeekable* >(this)) );
+                                       static_cast< XInputStream* >(this),
+                                       static_cast< XSeekable* >(this) );
 
     return aRet.hasValue() ? aRet : OWeakObject::queryInterface( rType );
 }
@@ -907,7 +915,7 @@ sal_Int32 SAL_CALL InputStreamTransformer::readBytes( Sequence< sal_Int8 >& aDat
     for( int k = 0; k < curr; ++k )
         aData[k] = buffer[pos++];
 
-    return curr > 0 ? curr : 0;
+    return std::max(curr, 0);
 }
 
 
@@ -927,7 +935,7 @@ void SAL_CALL InputStreamTransformer::skipBytes( sal_Int32 nBytesToSkip )
 sal_Int32 SAL_CALL InputStreamTransformer::available()
 {
     osl::MutexGuard aGuard( m_aMutex );
-    return buffer.getLength() - pos > 0 ? buffer.getLength() - pos : 0 ;
+    return std::min<sal_Int64>(SAL_MAX_INT32, buffer.getLength() - pos);
 }
 
 
@@ -941,8 +949,8 @@ void SAL_CALL InputStreamTransformer::seek( sal_Int64 location )
     osl::MutexGuard aGuard( m_aMutex );
     if( location < 0 )
         throw IllegalArgumentException();
-    else
-        pos = sal::static_int_cast<sal_Int32>( location );
+
+    pos = sal::static_int_cast<sal_Int32>( location );
 
     if( pos > buffer.getLength() )
         pos = buffer.getLength();

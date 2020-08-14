@@ -2,34 +2,12 @@
 
 #include <sal/config.h>
 #include <test/bootstrapfixture.hxx>
-#include <rtl/strbuf.hxx>
-#include <osl/file.hxx>
-
-#include "scdll.hxx"
-#include <opencl/platforminfo.hxx>
-#include <sfx2/app.hxx>
-#include <sfx2/docfilt.hxx>
-#include <sfx2/docfile.hxx>
-#include <sfx2/sfxmodelfactory.hxx>
-#include <svl/stritem.hxx>
 
 #include "helper/qahelper.hxx"
 
-#include "calcconfig.hxx"
-#include "interpre.hxx"
-
-#include "docsh.hxx"
-#include "postit.hxx"
-#include "patattr.hxx"
-#include "scitems.hxx"
-#include "document.hxx"
-#include "cellform.hxx"
-#include "drwlayer.hxx"
-#include "userdat.hxx"
-#include "formulacell.hxx"
-#include "formulagroup.hxx"
-
-#include <svx/svdpage.hxx>
+#include <docsh.hxx>
+#include <document.hxx>
+#include <formulagroup.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
@@ -141,7 +119,6 @@ public:
     void testMathFormulaArcCos();
     void testMathFormulaSqrt();
     void testMathFormulaArcCosHyp();
-    void testFinancialXirrFormula();
     void testFinacialNPVFormula();
     void testStatisticalFormulaNormsdist();
     void testStatisticalFormulaNorminv();
@@ -370,7 +347,6 @@ public:
     CPPUNIT_TEST(testMathFormulaArcCos);
     CPPUNIT_TEST(testMathFormulaSqrt);
     CPPUNIT_TEST(testMathFormulaArcCosHyp);
-    CPPUNIT_TEST(testFinancialXirrFormula);
     CPPUNIT_TEST(testFinacialNPVFormula);
     CPPUNIT_TEST(testStatisticalFormulaNormsdist);
     CPPUNIT_TEST(testStatisticalFormulaNorminv);
@@ -762,10 +738,10 @@ void ScOpenCLTest::testSystematic()
             double fExcel = rDoc.GetValue(ScAddress(j, nBVertBegin + (i - nAVertBegin), 0));
 
             const OString sFailedMessage =
-                OString(static_cast<sal_Char>('A'+j)) +
+                OStringChar(static_cast<char>('A'+j)) +
                 OString::number(i+1) +
                 "!=" +
-                OString(static_cast<sal_Char>('A'+j)) +
+                OStringChar(static_cast<char>('A'+j)) +
                 OString::number(nBVertBegin+(i-nAVertBegin)+1);
             CPPUNIT_ASSERT_DOUBLES_EQUAL_MESSAGE(sFailedMessage.getStr(), fExcel, fLibre, 1e-10);
         }
@@ -1913,7 +1889,7 @@ void ScOpenCLTest::testFinacialXNPVFormula()
         CPPUNIT_ASSERT_DOUBLES_EQUAL(fExcel, fLibre, fabs(0.0001*fExcel));
     }
 
-     for (SCROW i = 16; i <= 26; ++i)
+    for (SCROW i = 16; i <= 26; ++i)
     {
         double fLibre = rDoc.GetValue(ScAddress(3, i, 0));
         double fExcel = rDocRes.GetValue(ScAddress(3, i, 0));
@@ -2742,29 +2718,6 @@ void ScOpenCLTest:: testFinancialIPMTFormula()
         double fExcel = rDocRes.GetValue(ScAddress(6, i, 0));
         CPPUNIT_ASSERT_DOUBLES_EQUAL(fExcel, fLibre, fabs(0.0001*fExcel));
     }
-}
-
-void ScOpenCLTest:: testFinancialXirrFormula()
-{
-    if(!initTestEnv("opencl/financial/XIRR.", FORMAT_ODS, false))
-        return;
-    ScDocument& rDoc = xDocSh->GetDocument();
-    rDoc.CalcAll();
-
-    for (SCROW i = 1; i <= 10; ++i)
-    {
-        double fFormula  = rDoc.GetValue(ScAddress(2, i, 0));
-        double fExpected = rDoc.GetValue(ScAddress(3, i, 0));
-        CPPUNIT_ASSERT(rtl::math::approxEqual(fExpected, fFormula));
-    }
-    for (SCROW i = 18; i <= 27; ++i)
-    {
-        double fFormula = rDoc.GetValue(ScAddress(2, i, 0));
-        double fExpected = rDoc.GetValue(ScAddress(3, i, 0));
-        CPPUNIT_ASSERT(rtl::math::approxEqual(fExpected, fFormula));
-    }
-
-
 }
 
 void ScOpenCLTest::testStatisticalFormulaChiSqDist()
@@ -3884,19 +3837,19 @@ void ScOpenCLTest::testMathFormulaSumProduct()
         double fLibre = rDoc.GetValue(ScAddress(2,i,0));
         double fExcel = rDocRes.GetValue(ScAddress(2,i,0));
         if ( i == 1 )
-        CPPUNIT_ASSERT_DOUBLES_EQUAL(82,  fLibre, fabs(0.0001*fExcel));
+            CPPUNIT_ASSERT_DOUBLES_EQUAL(82,  fLibre, fabs(0.0001*fExcel));
         else if ( i == 2 )
-        CPPUNIT_ASSERT_DOUBLES_EQUAL(113, fLibre, fabs(0.0001*fExcel));
+            CPPUNIT_ASSERT_DOUBLES_EQUAL(113, fLibre, fabs(0.0001*fExcel));
         else if ( i == 4 )
-        CPPUNIT_ASSERT_DOUBLES_EQUAL(175, fLibre, fabs(0.0001*fExcel));
+            CPPUNIT_ASSERT_DOUBLES_EQUAL(175, fLibre, fabs(0.0001*fExcel));
         else if ( i == 5 )
-        CPPUNIT_ASSERT_DOUBLES_EQUAL(206, fLibre, fabs(0.0001*fExcel));
+            CPPUNIT_ASSERT_DOUBLES_EQUAL(206, fLibre, fabs(0.0001*fExcel));
         else if ( i == 6 )
-        CPPUNIT_ASSERT_DOUBLES_EQUAL(237, fLibre, fabs(0.0001*fExcel));
+            CPPUNIT_ASSERT_DOUBLES_EQUAL(237, fLibre, fabs(0.0001*fExcel));
         else if ( i == 7 )
-        CPPUNIT_ASSERT_DOUBLES_EQUAL(268, fLibre, fabs(0.0001*fExcel));
+            CPPUNIT_ASSERT_DOUBLES_EQUAL(268, fLibre, fabs(0.0001*fExcel));
         else
-        CPPUNIT_ASSERT_DOUBLES_EQUAL(fExcel, fLibre, fabs(0.0001*fExcel));
+            CPPUNIT_ASSERT_DOUBLES_EQUAL(fExcel, fLibre, fabs(0.0001*fExcel));
     }
 }
 
@@ -4727,7 +4680,7 @@ void ScOpenCLTest::testStatisticalFormulaStDevPA1()
 }
 
 ScOpenCLTest::ScOpenCLTest()
-      : ScBootstrapFixture( "/sc/qa/unit/data" )
+      : ScBootstrapFixture( "sc/qa/unit/data" )
 {
 }
 

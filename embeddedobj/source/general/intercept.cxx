@@ -18,12 +18,11 @@
  */
 
 #include <com/sun/star/embed/EmbedStates.hpp>
-#include <cppuhelper/weak.hxx>
 #include <cppuhelper/interfacecontainer.hxx>
 
-#include "intercept.hxx"
-#include "docholder.hxx"
-#include "commonembobj.hxx"
+#include <intercept.hxx>
+#include <docholder.hxx>
+#include <commonembobj.hxx>
 
 using namespace ::com::sun::star;
 
@@ -48,8 +47,7 @@ void Interceptor::DisconnectDocHolder()
 }
 
 Interceptor::Interceptor( DocumentHolder* pDocHolder )
-    : m_pDocHolder( pDocHolder ),
-      m_pStatCL(nullptr)
+    : m_pDocHolder( pDocHolder )
 {
     m_aInterceptedURL[0] = ".uno:Save";
     m_aInterceptedURL[1] = ".uno:SaveAll";
@@ -71,48 +69,48 @@ Interceptor::dispatch(
     beans::PropertyValue >& Arguments )
 {
     osl::MutexGuard aGuard(m_aMutex);
-    if( m_pDocHolder )
+    if( !m_pDocHolder )
+        return;
+
+    if(URL.Complete == m_aInterceptedURL[0])
+        m_pDocHolder->GetEmbedObject()->SaveObject_Impl();
+    else if(URL.Complete == m_aInterceptedURL[2] ||
+            URL.Complete == m_aInterceptedURL[3] ||
+            URL.Complete == m_aInterceptedURL[4])
     {
-        if(URL.Complete == m_aInterceptedURL[0])
-            m_pDocHolder->GetEmbedObject()->SaveObject_Impl();
-        else if(URL.Complete == m_aInterceptedURL[2] ||
-                URL.Complete == m_aInterceptedURL[3] ||
-                URL.Complete == m_aInterceptedURL[4])
-        {
-            try {
-                m_pDocHolder->GetEmbedObject()->changeState( embed::EmbedStates::RUNNING );
-            }
-            catch( const uno::Exception& )
-            {
-            }
+        try {
+            m_pDocHolder->GetEmbedObject()->changeState( embed::EmbedStates::RUNNING );
         }
-        else if ( URL.Complete == m_aInterceptedURL[5] )
+        catch( const uno::Exception& )
         {
-            uno::Sequence< beans::PropertyValue > aNewArgs = Arguments;
-            sal_Int32 nInd = 0;
+        }
+    }
+    else if ( URL.Complete == m_aInterceptedURL[5] )
+    {
+        uno::Sequence< beans::PropertyValue > aNewArgs = Arguments;
+        sal_Int32 nInd = 0;
 
-            while( nInd < aNewArgs.getLength() )
+        while( nInd < aNewArgs.getLength() )
+        {
+            if ( aNewArgs[nInd].Name == "SaveTo" )
             {
-                if ( aNewArgs[nInd].Name == "SaveTo" )
-                {
-                    aNewArgs[nInd].Value <<= true;
-                    break;
-                }
-                nInd++;
-            }
-
-            if ( nInd == aNewArgs.getLength() )
-            {
-                aNewArgs.realloc( nInd + 1 );
-                aNewArgs[nInd].Name = "SaveTo";
                 aNewArgs[nInd].Value <<= true;
+                break;
             }
-
-            uno::Reference< frame::XDispatch > xDispatch = m_xSlaveDispatchProvider->queryDispatch(
-                URL, "_self", 0 );
-            if ( xDispatch.is() )
-                xDispatch->dispatch( URL, aNewArgs );
+            nInd++;
         }
+
+        if ( nInd == aNewArgs.getLength() )
+        {
+            aNewArgs.realloc( nInd + 1 );
+            aNewArgs[nInd].Name = "SaveTo";
+            aNewArgs[nInd].Value <<= true;
+        }
+
+        uno::Reference< frame::XDispatch > xDispatch = m_xSlaveDispatchProvider->queryDispatch(
+            URL, "_self", 0 );
+        if ( xDispatch.is() )
+            xDispatch->dispatch( URL, aNewArgs );
     }
 }
 
@@ -132,7 +130,7 @@ Interceptor::addStatusListener(
         aStateEvent.FeatureDescriptor = "Update";
         aStateEvent.IsEnabled = true;
         aStateEvent.Requery = false;
-        aStateEvent.State <<= ( "($1) " + m_pDocHolder->GetTitle() );
+        aStateEvent.State <<= "($1) " + m_pDocHolder->GetTitle();
         Control->statusChanged(aStateEvent);
 
         {
@@ -155,7 +153,7 @@ Interceptor::addStatusListener(
         aStateEvent.FeatureDescriptor = "Close and Return";
         aStateEvent.IsEnabled = true;
         aStateEvent.Requery = false;
-        aStateEvent.State <<= ( "($2) " + m_pDocHolder->GetTitle() );
+        aStateEvent.State <<= "($2)" + m_pDocHolder->GetContainerName();
         Control->statusChanged(aStateEvent);
 
 
@@ -169,25 +167,26 @@ Interceptor::addStatusListener(
         return;
     }
 
-    if(URL.Complete == m_aInterceptedURL[5])
-    {   // SaveAs
-        frame::FeatureStateEvent aStateEvent;
-        aStateEvent.FeatureURL.Complete = m_aInterceptedURL[5];
-        aStateEvent.FeatureDescriptor = "SaveCopyTo";
-        aStateEvent.IsEnabled = true;
-        aStateEvent.Requery = false;
-        aStateEvent.State <<= (OUString( "($3)"));
-        Control->statusChanged(aStateEvent);
-
-        {
-            osl::MutexGuard aGuard(m_aMutex);
-            if(!m_pStatCL)
-                m_pStatCL.reset(new StatusChangeListenerContainer(m_aMutex));
-        }
-
-        m_pStatCL->addInterface(URL.Complete,Control);
+    if(URL.Complete != m_aInterceptedURL[5])
         return;
+
+// SaveAs
+    frame::FeatureStateEvent aStateEvent;
+    aStateEvent.FeatureURL.Complete = m_aInterceptedURL[5];
+    aStateEvent.FeatureDescriptor = "SaveCopyTo";
+    aStateEvent.IsEnabled = true;
+    aStateEvent.Requery = false;
+    aStateEvent.State <<= OUString("($3)");
+    Control->statusChanged(aStateEvent);
+
+    {
+        osl::MutexGuard aGuard(m_aMutex);
+        if(!m_pStatCL)
+            m_pStatCL.reset(new StatusChangeListenerContainer(m_aMutex));
     }
+
+    m_pStatCL->addInterface(URL.Complete,Control);
+    return;
 
 }
 

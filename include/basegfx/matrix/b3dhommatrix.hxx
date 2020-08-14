@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_BASEGFX_MATRIX_B3DHOMMATRIX_HXX
-#define INCLUDED_BASEGFX_MATRIX_B3DHOMMATRIX_HXX
+#pragma once
 
 #include <sal/types.h>
 #include <basegfx/point/b3dpoint.hxx>
@@ -57,19 +56,22 @@ namespace basegfx
         void identity();
 
         /// Invert the matrix (if possible)
-        bool invert();
+        void invert();
 
         /// Calc the matrix determinant
         double determinant() const;
 
         /// Rotation
         void rotate(double fAngleX,double fAngleY,double fAngleZ);
+        void rotate(const B3DTuple& rRotation);
 
         /// Translation
         void translate(double fX, double fY, double fZ);
+        void translate(const B3DTuple& rTranslation);
 
         /// Scaling
         void scale(double fX, double fY, double fZ);
+        void scale(const B3DTuple& rScale);
 
         // Shearing-Matrices
         void shearXY(double fSx, double fSy);
@@ -111,7 +113,7 @@ namespace basegfx
         B3DHomMatrix& operator=(B3DHomMatrix&& rMat);
 
         // decomposition
-        bool decompose(B3DTuple& rScale, B3DTuple& rTranslate, B3DTuple& rRotate, B3DTuple& rShear) const;
+        void decompose(B3DTuple& rScale, B3DTuple& rTranslate, B3DTuple& rRotate, B3DTuple& rShear) const;
     };
 
     inline B3DHomMatrix operator*(const B3DHomMatrix& rMatA, const B3DHomMatrix& rMatB)
@@ -121,7 +123,5 @@ namespace basegfx
         return aMul;
     }
 } // end of namespace basegfx
-
-#endif // INCLUDED_BASEGFX_MATRIX_B3DHOMMATRIX_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

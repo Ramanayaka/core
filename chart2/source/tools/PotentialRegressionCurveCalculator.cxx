@@ -17,9 +17,8 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "PotentialRegressionCurveCalculator.hxx"
-#include "macros.hxx"
-#include "RegressionCalculationHelper.hxx"
+#include <PotentialRegressionCurveCalculator.hxx>
+#include <RegressionCalculationHelper.hxx>
 #include <SpecialCharacters.hxx>
 
 #include <rtl/math.hxx>
@@ -59,15 +58,15 @@ void SAL_CALL PotentialRegressionCurveCalculator::recalculateRegression(
         aValues = RegressionCalculationHelper::cleanup(
                     aXValues, aYValues,
                     RegressionCalculationHelper::isValidAndXPositiveAndYNegative());
-         nMax = aValues.first.size();
-         if( nMax <= 1 )
-         {
+        nMax = aValues.first.size();
+        if( nMax <= 1 )
+        {
             ::rtl::math::setNan( & m_fSlope );
             ::rtl::math::setNan( & m_fIntercept );
-            ::rtl::math::setNan( & m_fCorrelationCoeffitient );
+            ::rtl::math::setNan( & m_fCorrelationCoefficient );
             return;
-         }
-         m_fSign = -1.0;
+        }
+        m_fSign = -1.0;
     }
 
     double fAverageX = 0.0, fAverageY = 0.0;
@@ -95,7 +94,7 @@ void SAL_CALL PotentialRegressionCurveCalculator::recalculateRegression(
 
     m_fSlope = fQxy / fQx;
     m_fIntercept = fAverageY - m_fSlope * fAverageX;
-    m_fCorrelationCoeffitient = fQxy / sqrt( fQx * fQy );
+    m_fCorrelationCoefficient = fQxy / sqrt( fQx * fQy );
 
     m_fIntercept = m_fSign * exp( m_fIntercept );
 }
@@ -105,8 +104,8 @@ double SAL_CALL PotentialRegressionCurveCalculator::getCurveValue( double x )
     double fResult;
     ::rtl::math::setNan( & fResult );
 
-    if( ! ( ::rtl::math::isNan( m_fSlope ) ||
-            ::rtl::math::isNan( m_fIntercept )))
+    if( ! ( std::isnan( m_fSlope ) ||
+            std::isnan( m_fIntercept )))
     {
         fResult = m_fIntercept * pow( x, m_fSlope );
     }
@@ -127,9 +126,9 @@ uno::Sequence< geometry::RealPoint2D > SAL_CALL PotentialRegressionCurveCalculat
         // optimize result
         uno::Sequence< geometry::RealPoint2D > aResult( 2 );
         aResult[0].X = min;
-        aResult[0].Y = this->getCurveValue( min );
+        aResult[0].Y = getCurveValue( min );
         aResult[1].X = max;
-        aResult[1].Y = this->getCurveValue( max );
+        aResult[1].Y = getCurveValue( max );
 
         return aResult;
     }
@@ -171,18 +170,18 @@ OUString PotentialRegressionCurveCalculator::ImplGetRepresentation(
         // if nValueLength not calculated then nullptr
         sal_Int32* pValueLength = nValueLength ? &nValueLength : nullptr;
         if ( m_fIntercept < 0.0 )    // add intercept value
-             aTmpBuf.append( OUStringLiteral1(aMinusSign)+" " );
+             aTmpBuf.append( OUStringChar(aMinusSign) ).append( " " );
         if( bHasIntercept )
         {
             OUString aValueString = getFormattedString( xNumFormatter, nNumberFormatKey, fabs(m_fIntercept), pValueLength );
             if ( aValueString != "1" )  // aValueString may be rounded to 1 if nValueLength is small
             {
-                aTmpBuf.append( aValueString + " " );
+                aTmpBuf.append( aValueString ).append( " " );
             }
         }
         if( m_fSlope != 0.0 )  // add slope value
         {
-            aTmpBuf.append( mXName + "^" );
+            aTmpBuf.append( mXName ).append( "^" );
             aTmpBuf.append( getFormattedString( xNumFormatter, nNumberFormatKey, m_fSlope, pValueLength ));
         }
         addStringToEquation( aBuf, nLineLength, aTmpBuf, pFormulaMaxWidth );

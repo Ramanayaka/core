@@ -24,8 +24,8 @@
 
 class SdrHorzShearOneItem: public SdrAngleItem {
 public:
-    SdrHorzShearOneItem(long nAngle=0): SdrAngleItem(SDRATTR_HORZSHEARONE,nAngle) {}
-    SfxPoolItem* Clone(SfxItemPool*) const override
+    SdrHorzShearOneItem(): SdrAngleItem(SDRATTR_HORZSHEARONE,0) {}
+    SdrHorzShearOneItem* Clone(SfxItemPool*) const override
     {
         return new SdrHorzShearOneItem(*this);
     }
@@ -33,8 +33,8 @@ public:
 
 class SdrVertShearOneItem: public SdrAngleItem {
 public:
-    SdrVertShearOneItem(long nAngle=0): SdrAngleItem(SDRATTR_VERTSHEARONE,nAngle) {}
-    SfxPoolItem* Clone(SfxItemPool*) const override
+    SdrVertShearOneItem(): SdrAngleItem(SDRATTR_VERTSHEARONE,0) {}
+    SdrVertShearOneItem* Clone(SfxItemPool*) const override
     {
         return new SdrVertShearOneItem(*this);
     }

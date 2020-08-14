@@ -19,11 +19,11 @@
 
 #include <viewopt.hxx>
 #include <SwPortionHandler.hxx>
-#include <inftxt.hxx>
-#include <porexp.hxx>
+#include "inftxt.hxx"
+#include "porexp.hxx"
 
-sal_Int32 SwExpandPortion::GetCursorOfst( const sal_uInt16 nOfst ) const
-{ return SwLinePortion::GetCursorOfst( nOfst ); }
+TextFrameIndex SwExpandPortion::GetModelPositionForViewPoint(const sal_uInt16 nOfst) const
+{ return SwLinePortion::GetModelPositionForViewPoint( nOfst ); }
 
 bool SwExpandPortion::GetExpText( const SwTextSizeInfo&, OUString &rText ) const
 {
@@ -47,7 +47,7 @@ SwPosSize SwExpandPortion::GetTextSize( const SwTextSizeInfo &rInf ) const
 bool SwExpandPortion::Format( SwTextFormatInfo &rInf )
 {
     SwTextSlot aDiffText( &rInf, this, true, false );
-    const sal_Int32 nFullLen = rInf.GetLen();
+    TextFrameIndex const nFullLen = rInf.GetLen();
 
     // As odd as it may seem: the query for GetLen() must return
     // false due to the ExpandPortions _after_ the aDiffText (see SoftHyphs)
@@ -74,8 +74,8 @@ void SwExpandPortion::Paint( const SwTextPaintInfo &rInf ) const
     rInf.DrawBorder( *this );
 
     // Do we have to repaint a post it portion?
-    if( rInf.OnWin() && pPortion && !pPortion->Width() )
-        pPortion->PrePaint( rInf, this );
+    if( rInf.OnWin() && mpNextPortion && !mpNextPortion->Width() )
+        mpNextPortion->PrePaint( rInf, this );
 
     // The contents of field portions is not considered during the
     // calculation of the directions. Therefore we let vcl handle
@@ -102,32 +102,36 @@ SwLinePortion *SwBlankPortion::Compress() { return this; }
  * Causes problems with Fly
  */
 sal_uInt16 SwBlankPortion::MayUnderflow( const SwTextFormatInfo &rInf,
-    sal_Int32 nIdx, bool bUnderflow )
+    TextFrameIndex const nIdx, bool bUnderflow)
 {
     if( rInf.StopUnderflow() )
         return 0;
     const SwLinePortion *pPos = rInf.GetRoot();
-    if( pPos->GetPortion() )
-        pPos = pPos->GetPortion();
+    if( pPos->GetNextPortion() )
+        pPos = pPos->GetNextPortion();
     while( pPos && pPos->IsBlankPortion() )
-        pPos = pPos->GetPortion();
+        pPos = pPos->GetNextPortion();
     if( !pPos || !rInf.GetIdx() || ( !pPos->GetLen() && pPos == rInf.GetRoot() ) )
         return 0; // There are just BlankPortions left
 
     // If a Blank is preceding us, we do not need to trigger underflow
     // If a Blank is succeeding us, we do not need to pass on the underflow
-    if (bUnderflow && nIdx + 1 < rInf.GetText().getLength() && CH_BLANK == rInf.GetText()[nIdx + 1])
+    if (bUnderflow
+        && nIdx + TextFrameIndex(1) < TextFrameIndex(rInf.GetText().getLength())
+        && CH_BLANK == rInf.GetText()[sal_Int32(nIdx) + 1])
+    {
         return 0;
+    }
     if( nIdx && !const_cast<SwTextFormatInfo&>(rInf).GetFly() )
     {
         while( pPos && !pPos->IsFlyPortion() )
-            pPos = pPos->GetPortion();
+            pPos = pPos->GetNextPortion();
         if( !pPos )
         {
         // We check to see if there are useful line breaks, blanks or fields etc. left
         // In case there still are some, no underflow
         // If there are Flys, we still allow the underflow
-            sal_Int32 nBlank = nIdx;
+            TextFrameIndex nBlank = nIdx;
             while( --nBlank > rInf.GetLineStart() )
             {
                 const sal_Unicode cCh = rInf.GetChar( nBlank );
@@ -140,8 +144,10 @@ sal_uInt16 SwBlankPortion::MayUnderflow( const SwTextFormatInfo &rInf,
                 return 0;
         }
     }
-    sal_Unicode cCh;
-    if( nIdx < 2 || CH_BLANK == (cCh = rInf.GetChar( nIdx - 1 )) )
+    if (nIdx < TextFrameIndex(2))
+        return 1;
+    sal_Unicode const cCh(rInf.GetChar(nIdx - TextFrameIndex(1)));
+    if (CH_BLANK == cCh)
         return 1;
     if( CH_BREAK == cCh )
         return 0;
@@ -154,20 +160,20 @@ sal_uInt16 SwBlankPortion::MayUnderflow( const SwTextFormatInfo &rInf,
 void SwBlankPortion::FormatEOL( SwTextFormatInfo &rInf )
 {
     sal_uInt16 nMay = MayUnderflow( rInf, rInf.GetIdx() - nLineLength, true );
-    if( nMay )
+    if( !nMay )
+        return;
+
+    if( nMay > 1 )
     {
-        if( nMay > 1 )
-        {
-            if( rInf.GetLast() == this )
-               rInf.SetLast( FindPrevPortion( rInf.GetRoot() ) );
-            rInf.X( rInf.X() - PrtWidth() );
-            rInf.SetIdx( rInf.GetIdx() - GetLen() );
-        }
-        Truncate();
-        rInf.SetUnderflow( this );
-        if( rInf.GetLast()->IsKernPortion() )
-            rInf.SetUnderflow( rInf.GetLast() );
+        if( rInf.GetLast() == this )
+           rInf.SetLast( FindPrevPortion( rInf.GetRoot() ) );
+        rInf.X( rInf.X() - PrtWidth() );
+        rInf.SetIdx( rInf.GetIdx() - GetLen() );
     }
+    Truncate();
+    rInf.SetUnderflow( this );
+    if( rInf.GetLast()->IsKernPortion() )
+        rInf.SetUnderflow( rInf.GetLast() );
 }
 
 /**
@@ -188,27 +194,27 @@ bool SwBlankPortion::Format( SwTextFormatInfo &rInf )
 
 void SwBlankPortion::Paint( const SwTextPaintInfo &rInf ) const
 {
-    if( !bMulti ) // No gray background for multiportion brackets
-        rInf.DrawViewOpt( *this, POR_BLANK );
+    if( !m_bMulti ) // No gray background for multiportion brackets
+        rInf.DrawViewOpt( *this, PortionType::Blank );
     SwExpandPortion::Paint( rInf );
 }
 
 bool SwBlankPortion::GetExpText( const SwTextSizeInfo&, OUString &rText ) const
 {
-    rText = OUString(cChar);
+    rText = OUString(m_cChar);
     return true;
 }
 
 void SwBlankPortion::HandlePortion( SwPortionHandler& rPH ) const
 {
-    rPH.Special( GetLen(), OUString( cChar ), GetWhichPor() );
+    rPH.Special( GetLen(), OUString( m_cChar ), GetWhichPor() );
 }
 
 SwPostItsPortion::SwPostItsPortion( bool bScrpt )
     : bScript( bScrpt )
 {
-    nLineLength = 1;
-    SetWhichPor( POR_POSTITS );
+    nLineLength = TextFrameIndex(1);
+    SetWhichPor( PortionType::PostIts );
 }
 
 void SwPostItsPortion::Paint( const SwTextPaintInfo &rInf ) const

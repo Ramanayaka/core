@@ -18,11 +18,7 @@
  */
 
 
-#include <vcl/wrkwin.hxx>
-#include <vcl/dialog.hxx>
-#include <vcl/msgbox.hxx>
-#include <vcl/svapp.hxx>
-#include <eehtml.hxx>
+#include "eehtml.hxx"
 #include <editeng/adjustitem.hxx>
 #include <editeng/flditem.hxx>
 #include <tools/urlobj.hxx>
@@ -34,7 +30,7 @@
 #include <svtools/htmlkywd.hxx>
 #include <tools/tenccvt.hxx>
 
-#include "editeng/editeng.hxx"
+#include <editeng/editeng.hxx>
 
 #define STYLE_PRE               101
 
@@ -42,7 +38,6 @@ EditHTMLParser::EditHTMLParser( SvStream& rIn, const OUString& rBaseURL, SvKeyVa
     : HTMLParser( rIn, true ),
     aBaseURL( rBaseURL ),
     mpEditEngine(nullptr),
-    pCurAnchor(nullptr),
     bInPara(false),
     bWasInPara(false),
     bFieldsInserted(false),
@@ -291,7 +286,7 @@ void EditHTMLParser::NextToken( HtmlTokenId nToken )
     case HtmlTokenId::TABLEHEADER_ON:
     case HtmlTokenId::TABLEDATA_ON:
         nInCell++;
-        SAL_FALLTHROUGH;
+        [[fallthrough]];
     case HtmlTokenId::BLOCKQUOTE_ON:
     case HtmlTokenId::BLOCKQUOTE_OFF:
     case HtmlTokenId::BLOCKQUOTE30_ON:
@@ -315,7 +310,7 @@ void EditHTMLParser::NextToken( HtmlTokenId nToken )
     {
         if ( nInCell )
             nInCell--;
-        SAL_FALLTHROUGH;
+        [[fallthrough]];
     }
     case HtmlTokenId::LISTHEADER_OFF:
     case HtmlTokenId::LI_OFF:
@@ -485,7 +480,7 @@ void EditHTMLParser::NextToken( HtmlTokenId nToken )
             else if ( !isOffToken(nToken) )
             {
                 DBG_ASSERT( !isOffToken( nToken ), "No Start-Token ?!" );
-                SkipGroup( static_cast<HtmlTokenId>((int)nToken + 1) );
+                SkipGroup( static_cast<HtmlTokenId>(static_cast<int>(nToken) + 1) );
             }
         }
     }
@@ -495,7 +490,6 @@ void EditHTMLParser::NextToken( HtmlTokenId nToken )
     {
         HtmlImportInfo aImportInfo(HtmlImportState::NextToken, this, mpEditEngine->CreateESelection(aCurSel));
         aImportInfo.nToken = nToken;
-        aImportInfo.nTokenValue = (short)nTokenValue;
         if ( nToken == HtmlTokenId::TEXTTOKEN )
             aImportInfo.aText = aToken;
         else if (nToken == HtmlTokenId::STYLE_OFF)
@@ -603,7 +597,7 @@ void EditHTMLParser::ImpSetStyleSheet( sal_uInt16 nHLevel )
         aItems.Put( aWeightItemCTL );
     }
 
-    // Font hight and margins, when LogicToLogic is possible:
+    // Font height and margins, when LogicToLogic is possible:
     MapUnit eUnit = mpEditEngine->GetRefMapMode().GetMapUnit();
     if ( ( eUnit != MapUnit::MapPixel ) && ( eUnit != MapUnit::MapSysFont ) &&
          ( eUnit != MapUnit::MapAppFont ) && ( eUnit != MapUnit::MapRelative ) )
@@ -630,11 +624,11 @@ void EditHTMLParser::ImpSetStyleSheet( sal_uInt16 nHLevel )
         aItems.Put( aHeightItemCTL );
 
         // Paragraph margins, when Heading:
-        if ( !nHLevel || ((nHLevel >= 1) && (nHLevel <= 6)) )
+        if (nHLevel <= 6)
         {
             SvxULSpaceItem aULSpaceItem( EE_PARA_ULSPACE );
-            aULSpaceItem.SetUpper( (sal_uInt16)OutputDevice::LogicToLogic( 42, MapUnit::Map10thMM, eUnit ) );
-            aULSpaceItem.SetLower( (sal_uInt16)OutputDevice::LogicToLogic( 35, MapUnit::Map10thMM, eUnit ) );
+            aULSpaceItem.SetUpper( static_cast<sal_uInt16>(OutputDevice::LogicToLogic( 42, MapUnit::Map10thMM, eUnit )) );
+            aULSpaceItem.SetLower( static_cast<sal_uInt16>(OutputDevice::LogicToLogic( 35, MapUnit::Map10thMM, eUnit )) );
             aItems.Put( aULSpaceItem );
         }
     }
@@ -675,8 +669,11 @@ void EditHTMLParser::SkipGroup( HtmlTokenId nEndToken )
     // for example: <td><form></td>   lacks a closing </form>
     sal_uInt8 nCellLevel = nInCell;
     HtmlTokenId nToken;
-    while( nCellLevel <= nInCell && ( (nToken = GetNextToken() ) != nEndToken ) && nToken != HtmlTokenId::NONE )
+    while( nCellLevel <= nInCell )
     {
+        nToken = GetNextToken();
+        if (nToken == nEndToken || nToken == HtmlTokenId::NONE)
+            break;
         switch ( nToken )
         {
             case HtmlTokenId::TABLEHEADER_ON:
@@ -748,48 +745,48 @@ bool EditHTMLParser::HasTextInCurrentPara()
 void EditHTMLParser::AnchorStart()
 {
     // ignore anchor in anchor
-    if ( !pCurAnchor )
+    if ( pCurAnchor )
+        return;
+
+    const HTMLOptions& aOptions = GetOptions();
+    OUString aRef;
+
+    for (const auto & aOption : aOptions)
     {
-        const HTMLOptions& aOptions = GetOptions();
-        OUString aRef;
-
-        for (const auto & aOption : aOptions)
-        {
-            if( aOption.GetToken() == HtmlOptionId::HREF)
-                aRef = aOption.GetString();
-        }
-
-        if ( !aRef.isEmpty() )
-        {
-            OUString aURL = aRef;
-            if ( !aURL.isEmpty() && ( aURL[ 0 ] != '#' ) )
-            {
-                INetURLObject aTargetURL;
-                INetURLObject aRootURL( aBaseURL );
-                aRootURL.GetNewAbsURL( aRef, &aTargetURL );
-                aURL = aTargetURL.GetMainURL( INetURLObject::DecodeMechanism::ToIUri );
-            }
-            pCurAnchor.reset( new AnchorInfo );
-            pCurAnchor->aHRef = aURL;
-        }
+        if( aOption.GetToken() == HtmlOptionId::HREF)
+            aRef = aOption.GetString();
     }
+
+    if ( aRef.isEmpty() )
+        return;
+
+    OUString aURL = aRef;
+    if ( !aURL.isEmpty() && ( aURL[ 0 ] != '#' ) )
+    {
+        INetURLObject aTargetURL;
+        INetURLObject aRootURL( aBaseURL );
+        aRootURL.GetNewAbsURL( aRef, &aTargetURL );
+        aURL = aTargetURL.GetMainURL( INetURLObject::DecodeMechanism::ToIUri );
+    }
+    pCurAnchor.reset( new AnchorInfo );
+    pCurAnchor->aHRef = aURL;
 }
 
 void EditHTMLParser::AnchorEnd()
 {
-    if ( pCurAnchor )
-    {
-        // Insert as URL-Field...
-        SvxFieldItem aFld( SvxURLField( pCurAnchor->aHRef, pCurAnchor->aText, SVXURLFORMAT_REPR ), EE_FEATURE_FIELD  );
-        aCurSel = mpEditEngine->InsertField(aCurSel, aFld);
-        bFieldsInserted = true;
-        pCurAnchor.reset();
+    if ( !pCurAnchor )
+        return;
 
-        if (mpEditEngine->IsHtmlImportHandlerSet())
-        {
-            HtmlImportInfo aImportInfo(HtmlImportState::InsertField, this, mpEditEngine->CreateESelection(aCurSel));
-            mpEditEngine->CallHtmlImportHandler(aImportInfo);
-        }
+    // Insert as URL-Field...
+    SvxFieldItem aFld( SvxURLField( pCurAnchor->aHRef, pCurAnchor->aText, SvxURLFormat::Repr ), EE_FEATURE_FIELD  );
+    aCurSel = mpEditEngine->InsertField(aCurSel, aFld);
+    bFieldsInserted = true;
+    pCurAnchor.reset();
+
+    if (mpEditEngine->IsHtmlImportHandlerSet())
+    {
+        HtmlImportInfo aImportInfo(HtmlImportState::InsertField, this, mpEditEngine->CreateESelection(aCurSel));
+        mpEditEngine->CallHtmlImportHandler(aImportInfo);
     }
 }
 
@@ -802,7 +799,7 @@ void EditHTMLParser::HeadingStart( HtmlTokenId nToken )
         ImpInsertParaBreak();
 
     sal_uInt16 nId = sal::static_int_cast< sal_uInt16 >(
-        1 + ( ( (int)nToken - (int)HtmlTokenId::HEAD1_ON ) / 2 ) );
+        1 + ( ( static_cast<int>(nToken) - int(HtmlTokenId::HEAD1_ON) ) / 2 ) );
     DBG_ASSERT( (nId >= 1) && (nId <= 9), "HeadingStart: ID can not be correct!" );
     ImpSetStyleSheet( nId );
 }

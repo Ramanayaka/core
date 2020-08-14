@@ -20,7 +20,7 @@
 #ifndef INCLUDED_FORMS_SOURCE_COMPONENT_HIDDEN_HXX
 #define INCLUDED_FORMS_SOURCE_COMPONENT_HIDDEN_HXX
 
-#include "FormComponent.hxx"
+#include <FormComponent.hxx>
 
 
 namespace frm
@@ -42,7 +42,7 @@ public:
 
     // XServiceInfo
     OUString SAL_CALL getImplementationName() override
-    { return OUString("com.sun.star.form.OHiddenModel"); }
+    { return "com.sun.star.form.OHiddenModel"; }
 
     virtual css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override;
 
@@ -65,10 +65,8 @@ protected:
     virtual css::uno::Reference< css::util::XCloneable > SAL_CALL createClone(  ) override;
 };
 
-#endif // INCLUDED_FORMS_SOURCE_COMPONENT_HIDDEN_HXX
-
-
 }
 
+#endif // INCLUDED_FORMS_SOURCE_COMPONENT_HIDDEN_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

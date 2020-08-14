@@ -11,20 +11,21 @@
 
 #include <unotools/mediadescriptor.hxx>
 #include <unotools/ucbstreamhelper.hxx>
+#include <sot/storage.hxx>
+#include <cppuhelper/supportsservice.hxx>
 
 #include <document.hxx>
-#include <mathtype.hxx>
+#include "mathtype.hxx"
 #include <unomodel.hxx>
+#include <tools/diagnose_ex.h>
 
 using namespace ::com::sun::star;
 
+namespace
+{
 /// Invokes the MathType importer via UNO.
-class MathTypeFilter : public cppu::WeakImplHelper
-    <
-    document::XFilter,
-    document::XImporter,
-    lang::XServiceInfo
-    >
+class MathTypeFilter
+    : public cppu::WeakImplHelper<document::XFilter, document::XImporter, lang::XServiceInfo>
 {
     uno::Reference<lang::XComponent> m_xDstDoc;
 
@@ -40,9 +41,10 @@ public:
 
     // XServiceInfo
     OUString SAL_CALL getImplementationName() override;
-    sal_Bool SAL_CALL supportsService(const OUString& ServiceName) override;
+    sal_Bool SAL_CALL supportsService(const OUString& rServiceName) override;
     uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override;
 };
+}
 
 MathTypeFilter::MathTypeFilter() = default;
 
@@ -67,12 +69,12 @@ sal_Bool MathTypeFilter::filter(const uno::Sequence<beans::PropertyValue>& rDesc
                     if (auto pModel = dynamic_cast<SmModel*>(m_xDstDoc.get()))
                     {
                         auto pDocShell = static_cast<SmDocShell*>(pModel->GetObjectShell());
-                        OUString aText = pDocShell->GetText();
+                        OUStringBuffer aText(pDocShell->GetText());
                         MathType aEquation(aText);
                         bSuccess = aEquation.Parse(aStorage.get());
                         if (bSuccess)
                         {
-                            pDocShell->SetText(aText);
+                            pDocShell->SetText(aText.makeStringAndClear());
                             pDocShell->Parse();
                         }
                     }
@@ -80,26 +82,21 @@ sal_Bool MathTypeFilter::filter(const uno::Sequence<beans::PropertyValue>& rDesc
             }
         }
     }
-    catch (const uno::Exception& rException)
+    catch (const uno::Exception&)
     {
-        SAL_WARN("starmath", "Exception caught: " << rException.Message);
+        DBG_UNHANDLED_EXCEPTION("starmath");
     }
     return bSuccess;
 }
 
-void MathTypeFilter::cancel()
-{
-}
+void MathTypeFilter::cancel() {}
 
-void MathTypeFilter::setTargetDocument(const uno::Reference< lang::XComponent >& xDoc)
+void MathTypeFilter::setTargetDocument(const uno::Reference<lang::XComponent>& xDoc)
 {
     m_xDstDoc = xDoc;
 }
 
-OUString MathTypeFilter::getImplementationName()
-{
-    return OUString("com.sun.star.comp.Math.MathTypeFilter");
-}
+OUString MathTypeFilter::getImplementationName() { return "com.sun.star.comp.Math.MathTypeFilter"; }
 
 sal_Bool MathTypeFilter::supportsService(const OUString& rServiceName)
 {
@@ -108,14 +105,13 @@ sal_Bool MathTypeFilter::supportsService(const OUString& rServiceName)
 
 uno::Sequence<OUString> MathTypeFilter::getSupportedServiceNames()
 {
-    uno::Sequence<OUString> aRet =
-    {
-        OUString("com.sun.star.document.ImportFilter")
-    };
+    uno::Sequence<OUString> aRet = { OUString("com.sun.star.document.ImportFilter") };
     return aRet;
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT uno::XInterface* SAL_CALL com_sun_star_comp_Math_MathTypeFilter_get_implementation(uno::XComponentContext*, uno::Sequence<uno::Any> const&)
+extern "C" SAL_DLLPUBLIC_EXPORT uno::XInterface*
+com_sun_star_comp_Math_MathTypeFilter_get_implementation(uno::XComponentContext* /*pCtx*/,
+                                                         uno::Sequence<uno::Any> const& /*rSeq*/)
 {
     return cppu::acquire(new MathTypeFilter);
 }

@@ -24,9 +24,6 @@
 #include <com/sun/star/embed/ElementModes.hpp>
 #include <com/sun/star/frame/ModuleManager.hpp>
 #include <com/sun/star/io/XOutputStream.hpp>
-#include <com/sun/star/io/XInputStream.hpp>
-#include <com/sun/star/io/XSeekable.hpp>
-#include <com/sun/star/embed/XPackageStructureCreator.hpp>
 #include <com/sun/star/ui/ModuleUIConfigurationManager.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/ui/XModuleUIConfigurationManagerSupplier.hpp>
@@ -37,7 +34,6 @@
 #include <cppuhelper/basemutex.hxx>
 #include <cppuhelper/compbase.hxx>
 #include <cppuhelper/supportsservice.hxx>
-#include <vcl/svapp.hxx>
 
 #include <unordered_map>
 
@@ -67,7 +63,7 @@ public:
 
     virtual OUString SAL_CALL getImplementationName() override
     {
-        return OUString("com.sun.star.comp.framework.ModuleUIConfigurationManagerSupplier");
+        return "com.sun.star.comp.framework.ModuleUIConfigurationManagerSupplier";
     }
 
     virtual sal_Bool SAL_CALL supportsService(OUString const & ServiceName) override
@@ -86,7 +82,7 @@ public:
 private:
     virtual void SAL_CALL disposing() final override;
 
-    typedef std::unordered_map< OUString, css::uno::Reference< css::ui::XModuleUIConfigurationManager2 >, OUStringHash > ModuleToModuleCfgMgr;
+    typedef std::unordered_map< OUString, css::uno::Reference< css::ui::XModuleUIConfigurationManager2 > > ModuleToModuleCfgMgr;
 
 //TODO_AS            void impl_initStorages();
 
@@ -105,9 +101,8 @@ ModuleUIConfigurationManagerSupplier::ModuleUIConfigurationManagerSupplier( cons
         // Retrieve known modules and insert them into our unordered_map to speed-up access time.
         Reference< XNameAccess > xNameAccess( m_xModuleMgr, UNO_QUERY_THROW );
         const Sequence< OUString >     aNameSeq   = xNameAccess->getElementNames();
-        const OUString*                pNameSeq   = aNameSeq.getConstArray();
-        for ( sal_Int32 n = 0; n < aNameSeq.getLength(); n++ )
-            m_aModuleToModuleUICfgMgrMap.insert( ModuleToModuleCfgMgr::value_type(  pNameSeq[n], Reference< XModuleUIConfigurationManager2 >() ));
+        for ( const OUString& rName : aNameSeq )
+            m_aModuleToModuleUICfgMgrMap.emplace( rName, Reference< XModuleUIConfigurationManager2 >() );
     }
     catch(...)
     {
@@ -124,13 +119,11 @@ void SAL_CALL ModuleUIConfigurationManagerSupplier::disposing()
     osl::MutexGuard g(rBHelper.rMutex);
 
     // dispose all our module user interface configuration managers
-    ModuleToModuleCfgMgr::iterator pIter = m_aModuleToModuleUICfgMgrMap.begin();
-    while ( pIter != m_aModuleToModuleUICfgMgrMap.end() )
+    for (auto const& elem : m_aModuleToModuleUICfgMgrMap)
     {
-        Reference< XComponent > xComponent( pIter->second, UNO_QUERY );
+        Reference< XComponent > xComponent( elem.second, UNO_QUERY );
         if ( xComponent.is() )
             xComponent->dispose();
-        ++pIter;
     }
     m_aModuleToModuleUICfgMgrMap.clear();
     m_xModuleMgr.clear();
@@ -154,13 +147,12 @@ Reference< XUIConfigurationManager > SAL_CALL ModuleUIConfigurationManagerSuppli
         try
         {
             Sequence< PropertyValue > lProps;
-            Reference< XNameAccess > xCont(m_xModuleMgr, UNO_QUERY);
-            xCont->getByName(sModuleIdentifier) >>= lProps;
-            for (sal_Int32 i=0; i<lProps.getLength(); ++i)
+            m_xModuleMgr->getByName(sModuleIdentifier) >>= lProps;
+            for (PropertyValue const & rProp : std::as_const(lProps))
             {
-                if ( lProps[i].Name == "ooSetupFactoryShortName" )
+                if ( rProp.Name == "ooSetupFactoryShortName" )
                 {
-                    lProps[i].Value >>= sShort;
+                    rProp.Value >>= sShort;
                     break;
                 }
             }
@@ -197,7 +189,7 @@ struct Singleton:
 
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_framework_ModuleUIConfigurationManagerSupplier_get_implementation(
     css::uno::XComponentContext *context,
     css::uno::Sequence<css::uno::Any> const &)

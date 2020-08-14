@@ -26,7 +26,7 @@
 
 //  SvxEditEngineForwarder - SvxTextForwarder for EditEngine
 
-class EDITENG_DLLPUBLIC SvxEditEngineForwarder : public SvxTextForwarder
+class EDITENG_DLLPUBLIC SvxEditEngineForwarder final : public SvxTextForwarder
 {
 private:
     EditEngine&         rEditEngine;
@@ -54,8 +54,8 @@ public:
 
     virtual SfxItemPool* GetPool() const override;
 
-    virtual OUString     CalcFieldValue( const SvxFieldItem& rField, sal_Int32 nPara, sal_Int32 nPos, Color*& rpTxtColor, Color*& rpFldColor ) override;
-    virtual void         FieldClicked( const SvxFieldItem& rField, sal_Int32 nPara, sal_Int32 nPos ) override;
+    virtual OUString     CalcFieldValue( const SvxFieldItem& rField, sal_Int32 nPara, sal_Int32 nPos, std::optional<Color>& rpTxtColor, std::optional<Color>& rpFldColor ) override;
+    virtual void         FieldClicked( const SvxFieldItem& rField ) override;
     virtual bool         IsValid() const override;
 
     virtual LanguageType    GetLanguage( sal_Int32, sal_Int32 ) const override;

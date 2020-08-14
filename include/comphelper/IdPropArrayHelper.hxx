@@ -23,14 +23,10 @@
 
 #include <map>
 
-#include <cppuhelper/component.hxx>
 #include <osl/mutex.hxx>
-#include <cppuhelper/interfacecontainer.hxx>
 #include <osl/diagnose.h>
 #include <rtl/instance.hxx>
 #include <cppuhelper/propshlp.hxx>
-
-namespace cppu { class IPropertyArrayHelper; }
 
 namespace comphelper
 {
@@ -57,8 +53,8 @@ namespace comphelper
             if (!--s_nRefCount)
             {
                 // delete the element
-                for (OIdPropertyArrayMap::iterator i = s_pMap->begin(); i != s_pMap->end(); ++i)
-                    delete (*i).second;
+                for (auto const& elem : *s_pMap)
+                    delete elem.second;
                 delete s_pMap;
                 s_pMap = nullptr;
             }
@@ -74,7 +70,7 @@ namespace comphelper
             This method needs to be implemented in derived classes.
             <BR>
             The method gets called with Mutex acquired.
-            @return                         an pointer to the newly created array helper. Must not be NULL.
+            @return                         a pointer to the newly created array helper. Must not be NULL.
         */
         virtual ::cppu::IPropertyArrayHelper* createArrayHelper(sal_Int32 nId) const = 0;
     };
@@ -104,9 +100,10 @@ namespace comphelper
         OSL_ENSURE(s_nRefCount, "OIdPropertyArrayUsageHelper::getArrayHelper : suspicious call : have a refcount of 0 !");
         ::osl::MutexGuard aGuard(OIdPropertyArrayUsageHelperMutex<TYPE>::get());
         // do we have the array already?
-        if (! (*s_pMap)[nId] )
+        auto& rEntry = (*s_pMap)[nId];
+        if (!rEntry)
         {
-            (*s_pMap)[nId] = createArrayHelper(nId);
+            rEntry = createArrayHelper(nId);
             OSL_ENSURE((*s_pMap)[nId], "OIdPropertyArrayUsageHelper::getArrayHelper : createArrayHelper returned nonsense !");
         }
         return (*s_pMap)[nId];

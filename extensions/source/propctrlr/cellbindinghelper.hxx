@@ -27,7 +27,6 @@
 #include <com/sun/star/table/CellRangeAddress.hpp>
 #include <com/sun/star/form/binding/XValueBinding.hpp>
 #include <com/sun/star/form/binding/XListEntrySource.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/sheet/XSpreadsheet.hpp>
 
 
@@ -36,9 +35,8 @@ namespace pcr
 
     /** encapsulates functionality related to binding a form control to a spreadsheet cell
     */
-    class CellBindingHelper
+    class CellBindingHelper final
     {
-    protected:
         css::uno::Reference< css::beans::XPropertySet >
                     m_xControlModel;    // the model we work for
         css::uno::Reference< css::sheet::XSpreadsheetDocument >
@@ -54,7 +52,6 @@ namespace pcr
             const css::uno::Reference< css::frame::XModel >& _rxContextDocument
         );
 
-    public:
         /** determines whether the given model is a spreadsheet document model
 
             <p>If this method returns <FALSE/>, you cannot instantiate a CellBindingHelper with
@@ -196,7 +193,7 @@ namespace pcr
                             css::uno::Reference< css::sheet::XSpreadsheet >& _out_rxSheet
                         ) const;
 
-    protected:
+    private:
         /** creates an address object from a string representation of a cell address
         */
         bool            convertStringAddress(
@@ -216,7 +213,7 @@ namespace pcr
         */
         bool            isSpreadsheetDocumentWhichSupplies( const OUString& _rService ) const;
 
-        /** checkes whether a given component supports a given servive
+        /** checks whether a given component supports a given service
         */
         static bool     doesComponentSupport(
                             const css::uno::Reference< css::uno::XInterface >& _rxComponent,

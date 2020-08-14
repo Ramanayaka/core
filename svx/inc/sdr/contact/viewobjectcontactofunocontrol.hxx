@@ -24,20 +24,19 @@
 
 #include <com/sun/star/uno/Reference.hxx>
 #include <rtl/ref.hxx>
-#include <svx/svxdllapi.h>
 
 class OutputDevice;
 namespace vcl { class Window; }
 class SdrUnoObj;
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace awt {
         class XControl;
         class XControlContainer;
     }
-} } }
+}
 
 
-namespace sdr { namespace contact {
+namespace sdr::contact {
 
 
     class ViewContactOfUnoControl;
@@ -104,7 +103,7 @@ namespace sdr { namespace contact {
         ViewObjectContactOfUnoControl& operator=( const ViewObjectContactOfUnoControl& ) = delete;
     };
 
-    class UnoControlPrintOrPreviewContact : public ViewObjectContactOfUnoControl
+    class UnoControlPrintOrPreviewContact final : public ViewObjectContactOfUnoControl
     {
     public:
         UnoControlPrintOrPreviewContact( ObjectContactOfPageView& _rObjectContact, ViewContactOfUnoControl& _rViewContact );
@@ -118,7 +117,7 @@ namespace sdr { namespace contact {
     };
 
 
-} } // namespace sdr::contact
+} // namespace sdr::contact
 
 
 #endif // INCLUDED_SVX_INC_SDR_CONTACT_VIEWOBJECTCONTACTOFUNOCONTROL_HXX

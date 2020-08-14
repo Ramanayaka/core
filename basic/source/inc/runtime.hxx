@@ -20,9 +20,10 @@
 #ifndef INCLUDED_BASIC_SOURCE_INC_RUNTIME_HXX
 #define INCLUDED_BASIC_SOURCE_INC_RUNTIME_HXX
 
+#include <basic/sberrors.hxx>
+#include <basic/sbmeth.hxx>
+#include <basic/sbstar.hxx>
 #include <basic/sbx.hxx>
-
-#include "sb.hxx"
 
 #include <rtl/ustring.hxx>
 #include <com/sun/star/uno/Sequence.hxx>
@@ -35,6 +36,7 @@
 #include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/container/XEnumeration.hpp>
 #include <unotools/localedatawrapper.hxx>
+#include <o3tl/deleter.hxx>
 #include <o3tl/typed_flags_set.hxx>
 
 class SbiInstance;                  // active StarBASIC process
@@ -53,7 +55,8 @@ enum class ForType {
     To,
     EachArray,
     EachCollection,
-    EachXEnumeration
+    EachXEnumeration,
+    Error,
 };
 
 struct SbiForStack {                // for/next stack:
@@ -65,29 +68,22 @@ struct SbiForStack {                // for/next stack:
     // For each support
     ForType             eForType;
     sal_Int32           nCurCollectionIndex;
-    sal_Int32*          pArrayCurIndices;
-    sal_Int32*          pArrayLowerBounds;
-    sal_Int32*          pArrayUpperBounds;
+    std::unique_ptr<sal_Int32[]>
+                        pArrayCurIndices;
+    std::unique_ptr<sal_Int32[]>
+                        pArrayLowerBounds;
+    std::unique_ptr<sal_Int32[]>
+                        pArrayUpperBounds;
     css::uno::Reference< css::container::XEnumeration > xEnumeration;
 
     SbiForStack()
         : pNext(nullptr)
         , eForType(ForType::To)
         , nCurCollectionIndex(0)
-        , pArrayCurIndices(nullptr)
-        , pArrayLowerBounds(nullptr)
-        , pArrayUpperBounds(nullptr)
     {}
-
-    ~SbiForStack()
-    {
-        delete[] pArrayCurIndices;
-        delete[] pArrayLowerBounds;
-        delete[] pArrayUpperBounds;
-    }
 };
 
-#define MAXRECURSION 500
+#define MAXRECURSION 500 //to prevent dead-recursions
 
 enum class SbAttributes {
     NONE          = 0x0000,
@@ -134,12 +130,12 @@ class SbiInstance
     SbiRTLData      aRTLData;
 
     // file system
-    std::unique_ptr<SbiIoSystem>     pIosys;
+    std::unique_ptr<SbiIoSystem, o3tl::default_delete<SbiIoSystem>> pIosys;
     // DDE
     std::unique_ptr<SbiDdeControl>    pDdeCtrl;
     // DLL-Calls (DECLARE)
     std::unique_ptr<SbiDllMgr>        pDllMgr;
-    std::unique_ptr<SvNumberFormatter> pNumberFormatter;
+    std::shared_ptr<SvNumberFormatter> pNumberFormatter;
     StarBASIC*      pBasic;
     LanguageType    meFormatterLangType;
     DateOrder       meFormatterDateOrder;
@@ -173,13 +169,13 @@ public:
     void Abort();                               // with current error code
 
     void    Stop();
-    ErrCode GetErr()                { return nErr; }
-    const OUString& GetErrorMsg()           { return aErrorMsg; }
-    sal_Int32 GetErl()             { return nErl; }
+    ErrCode const & GetErr() const       { return nErr; }
+    const OUString& GetErrorMsg() const  { return aErrorMsg; }
+    sal_Int32 GetErl() const             { return nErl; }
     void    EnableReschedule( bool bEnable ) { bReschedule = bEnable; }
-    bool    IsReschedule() { return bReschedule; }
+    bool    IsReschedule() const { return bReschedule; }
     void    EnableCompatibility( bool bEnable ) { bCompatibility = bEnable; }
-    bool    IsCompatibility() { return bCompatibility; }
+    bool    IsCompatibility() const { return bCompatibility; }
 
     ComponentVector_t& getComponentVector()  { return ComponentVector; }
 
@@ -190,17 +186,17 @@ public:
     SbiDdeControl* GetDdeControl() { return pDdeCtrl.get(); }
     StarBASIC* GetBasic() { return pBasic; }
     SbiDllMgr* GetDllMgr();
-    SbiRTLData* GetRTLData() const { return const_cast<SbiRTLData*>(&aRTLData); }
+    SbiRTLData& GetRTLData() const { return const_cast<SbiRTLData&>(aRTLData); }
 
-    SvNumberFormatter* GetNumberFormatter();
+    std::shared_ptr<SvNumberFormatter> const & GetNumberFormatter();
     sal_uInt32 GetStdDateIdx() const { return nStdDateIdx; }
     sal_uInt32 GetStdTimeIdx() const { return nStdTimeIdx; }
     sal_uInt32 GetStdDateTimeIdx() const { return nStdDateTimeIdx; }
 
     // offer NumberFormatter also static
-    static SvNumberFormatter* PrepareNumberFormatter( sal_uInt32 &rnStdDateIdx,
+    static std::shared_ptr<SvNumberFormatter> PrepareNumberFormatter( sal_uInt32 &rnStdDateIdx,
         sal_uInt32 &rnStdTimeIdx, sal_uInt32 &rnStdDateTimeIdx,
-        LanguageType* peFormatterLangType=nullptr, DateOrder* peFormatterDateOrder=nullptr );
+        LanguageType const * peFormatterLangType=nullptr, DateOrder const * peFormatterDateOrder=nullptr );
 };
 
 // There's one instance of this class for every executed sub-program.
@@ -236,8 +232,8 @@ class SbiRuntime
     const sal_uInt8*   pStmnt;           // beginning of the last statement
     const sal_uInt8*   pError;           // address of the current error handler
     const sal_uInt8*   pRestart;         // restart-address
-    const sal_uInt8*   pErrCode;         // restart-adresse RESUME NEXT
-    const sal_uInt8*   pErrStmnt;        // Restart-Adresse RESUME 0
+    const sal_uInt8*   pErrCode;         // restart-address RESUME NEXT
+    const sal_uInt8*   pErrStmnt;        // restart-address RESUME 0
     OUString           aLibName;         // Lib-name for declare-call
     SbxArrayRef        refParams;        // current procedure parameters
     SbxArrayRef        refLocals;        // local variable
@@ -292,9 +288,9 @@ class SbiRuntime
     void DllCall( const OUString&, const OUString&, SbxArray*, SbxDataType, bool );
 
     // #56204 swap out DIM-functionality into help method (step0.cxx)
-    void DimImpl( SbxVariableRef refVar );
+    void DimImpl(const SbxVariableRef& refVar);
 
-    static bool implIsClass( SbxObject* pObj, const OUString& aClass );
+    static bool implIsClass( SbxObject const * pObj, const OUString& aClass );
 
     void StepSETCLASS_impl( sal_uInt32 nOp1, bool bHandleDflt );
 
@@ -349,9 +345,14 @@ class SbiRuntime
 public:
     void          SetVBAEnabled( bool bEnabled );
     bool          IsImageFlag( SbiImageFlags n ) const;
-    sal_uInt16      GetBase();
+    sal_uInt16      GetBase() const;
     sal_Int32  nLine,nCol1,nCol2;
     SbiRuntime* pNext;               // Stack-Chain
+
+    // tdf#79426, tdf#125180 - adds the information about a missing parameter
+    static void SetIsMissing( SbxVariable* );
+    // tdf#79426, tdf#125180 - checks if a variable contains the information about a missing parameter
+    static bool IsMissing( SbxVariable*, sal_uInt16 );
 
     SbiRuntime( SbModule*, SbMethod*, sal_uInt32 );
    ~SbiRuntime();
@@ -365,12 +366,12 @@ public:
     void block()     { bBlocked = true; }
     void unblock()   { bBlocked = false; }
     SbModule* GetModule()  { return pMod;    }
-    BasicDebugFlags GetDebugFlags() { return nFlags;  }
+    BasicDebugFlags GetDebugFlags() const { return nFlags;  }
     void SetDebugFlags( BasicDebugFlags nFl ) { nFlags = nFl;  }
     SbMethod* GetCaller() { return pMeth;}
     SbxVariable* GetExternalCaller(){ return mpExtCaller; }
 
-    SbiForStack* FindForStackItemForCollection( class BasicCollection* pCollection );
+    SbiForStack* FindForStackItemForCollection( class BasicCollection const * pCollection );
 
     SbxBase* FindElementExtern( const OUString& rName );
     static bool isVBAEnabled();
@@ -379,11 +380,11 @@ public:
 
 inline void checkArithmeticOverflow( double d )
 {
-    if( !::rtl::math::isFinite( d ) )
+    if( !std::isfinite( d ) )
         StarBASIC::Error( ERRCODE_BASIC_MATH_OVERFLOW );
 }
 
-inline void checkArithmeticOverflow( SbxVariable* pVar )
+inline void checkArithmeticOverflow( SbxVariable const * pVar )
 {
     if( pVar->GetType() == SbxDOUBLE )
     {

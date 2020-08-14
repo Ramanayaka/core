@@ -19,6 +19,9 @@
 #ifndef INCLUDED_SW_INC_FMTCOLFUNC_HXX
 #define INCLUDED_SW_INC_FMTCOLFUNC_HXX
 
+#include "numrule.hxx"
+#include "fmtcol.hxx"
+
 class SwFormat;
 class SwNumRuleItem;
 
@@ -33,16 +36,12 @@ namespace TextFormatCollFunc
         The assignment of a paragraph style to a list level of the outline style
         has to be deleted, if the numbering rule, which is set at the paragraph
         style isn't the outline style.
-
-        @author OD
     */
     void CheckTextFormatCollForDeletionOfAssignmentToOutlineStyle(
                                     SwFormat* pFormat,
                                     const SwNumRuleItem* pNewNumRuleItem = nullptr );
 
     /** determines the list style, which directly set at the given paragraph style
-
-        @author OD
 
         @param rTextFormatColl
         input parameter - paragraph style for which the list style should be retrieved
@@ -58,8 +57,6 @@ namespace TextFormatCollFunc
 
         @param rTextFormatColl
         input parameter - paragraph style which is added to its directly set list style
-
-        @author OD
     */
     void AddToNumRule( SwTextFormatColl& rTextFormatColl );
 
@@ -69,8 +66,6 @@ namespace TextFormatCollFunc
 
         @param rTextFormatColl
         input parameter - paragraph style which is removed from its directly set list style
-
-        @author OD
     */
     void RemoveFromNumRule( SwTextFormatColl& rTextFormatColl );
 }

@@ -21,6 +21,7 @@
 #include <rtl/ustrbuf.hxx>
 
 #include <typelib/typedescription.hxx>
+#include <com/sun/star/script/CannotConvertException.hpp>
 
 
 using com::sun::star::uno::RuntimeException;
@@ -46,15 +47,11 @@ void raisePyExceptionWithAny( const css::uno::Any &anyExc )
             css::uno::Exception e;
             anyExc >>= e;
 
-            OUStringBuffer buf;
-            buf.append( "Couldn't convert uno exception to a python exception (" );
-            buf.append(anyExc.getValueType().getTypeName());
-            buf.append( ": " );
-            buf.append(e.Message );
-            buf.append( ")" );
+            OUString buf = "Couldn't convert uno exception to a python exception (" +
+                anyExc.getValueType().getTypeName() + ": " + e.Message + ")";
             PyErr_SetString(
                 PyExc_SystemError,
-                OUStringToOString(buf.makeStringAndClear(),RTL_TEXTENCODING_ASCII_US).getStr() );
+                OUStringToOString(buf,RTL_TEXTENCODING_ASCII_US).getStr() );
         }
     }
     catch(const css::lang::IllegalArgumentException & e)
@@ -91,7 +88,7 @@ static PyRef createClass( const OUString & name, const Runtime &runtime )
     if( !isStruct  && !isExc && ! isInterface )
     {
         throw RuntimeException( "pyuno.getClass: " + name + "is a " +
-                    OUString::createFromAscii( typeClassToString( (css::uno::TypeClass) desc.get()->eTypeClass) ) +
+                    OUString::createFromAscii( typeClassToString( static_cast<css::uno::TypeClass>(desc.get()->eTypeClass)) ) +
                     ", expected EXCEPTION, STRUCT or INTERFACE" );
     }
 
@@ -162,6 +159,7 @@ static PyRef createClass( const OUString & name, const Runtime &runtime )
         PyRef getter = getObjectFromUnoModule( runtime,"_uno_struct__getattr__" );
         PyRef repr = getObjectFromUnoModule( runtime,"_uno_struct__repr__" );
         PyRef eq = getObjectFromUnoModule( runtime,"_uno_struct__eq__" );
+        PyRef ne = getObjectFromUnoModule( runtime,"_uno_struct__ne__" );
 
         PyObject_SetAttrString(
             ret.get(), "__pyunostruct__",
@@ -181,6 +179,8 @@ static PyRef createClass( const OUString & name, const Runtime &runtime )
             ret.get(), "__str__", repr.get() );
         PyObject_SetAttrString(
             ret.get(), "__eq__", eq.get() );
+        PyObject_SetAttrString(
+            ret.get(), "__ne__", ne.get() );
     }
     return ret;
 }

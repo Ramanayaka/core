@@ -19,15 +19,14 @@
 
 #ifdef UNX
 #include <pwd.h>
-#include <sys/types.h>
 #endif
 
 #include <svtools/inettbc.hxx>
+#include <tools/diagnose_ex.h>
 #include <com/sun/star/uno/Any.hxx>
 #include <com/sun/star/uno/Reference.hxx>
 #include <com/sun/star/beans/Property.hpp>
 #include <com/sun/star/beans/PropertyValue.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/sdbc/XResultSet.hpp>
 #include <com/sun/star/sdbc/XRow.hpp>
 #include <com/sun/star/task/XInteractionHandler.hpp>
@@ -42,22 +41,18 @@
 #include <comphelper/string.hxx>
 #include <rtl/instance.hxx>
 #include <salhelper/thread.hxx>
+#include <tools/debug.hxx>
 #include <osl/file.hxx>
 #include <osl/mutex.hxx>
-#include <vcl/builderfactory.hxx>
+#include <vcl/event.hxx>
 #include <vcl/svapp.hxx>
-#include <vcl/toolbox.hxx>
 #include <unotools/historyoptions.hxx>
-#include <svl/eitem.hxx>
-#include <svl/stritem.hxx>
-#include <svl/itemset.hxx>
-#include <svl/urihelper.hxx>
 #include <unotools/pathoptions.hxx>
 #include <ucbhelper/commandenvironment.hxx>
 #include <ucbhelper/content.hxx>
 #include <unotools/ucbhelper.hxx>
 #include <svtools/asynclink.hxx>
-#include <svl/urlfilter.hxx>
+#include <svtools/urlfilter.hxx>
 
 #include <vector>
 #include <algorithm>
@@ -95,9 +90,8 @@ class SvtMatchContext_Impl: public salhelper::Thread
     std::vector<OUString>           aCompletions;
     std::vector<OUString>           aURLs;
     svtools::AsynchronLink          aLink;
-    OUString                        aBaseURL;
     OUString                        aText;
-    VclPtr<SvtURLBox>               pBox;
+    SvtURLBox*                      pBox;
     bool                            bOnlyDirectories;
     bool                            bNoSelection;
 
@@ -120,17 +114,16 @@ public:
     void                            Stop();
 };
 
+
 namespace
 {
     struct theSvtMatchContextMutex
         : public rtl::Static< ::osl::Mutex, theSvtMatchContextMutex > {};
 }
 
-SvtMatchContext_Impl::SvtMatchContext_Impl(
-    SvtURLBox* pBoxP, const OUString& rText )
-    : Thread( "SvtMatchContext_Impl" )
+SvtMatchContext_Impl::SvtMatchContext_Impl(SvtURLBox* pBoxP, const OUString& rText)
+    : Thread( "MatchContext_Impl" )
     , aLink( LINK( this, SvtMatchContext_Impl, Select_Impl ) )
-    , aBaseURL( pBoxP->aBaseURL )
     , aText( rText )
     , pBox( pBoxP )
     , bOnlyDirectories( pBoxP->bOnlyDirectories )
@@ -158,20 +151,16 @@ void SvtMatchContext_Impl::FillPicklist(std::vector<OUString>& rPickList)
     {
         Sequence< PropertyValue > seqPropertySet = seqPicklist[ nItem ];
 
-        OUString sTitle;
-        INetURLObject aURL;
-
-        sal_uInt32 nPropertyCount = seqPropertySet.getLength();
-
-        for( sal_uInt32 nProperty=0; nProperty < nPropertyCount; nProperty++ )
+        auto pProperty = std::find_if(seqPropertySet.begin(), seqPropertySet.end(),
+            [](const PropertyValue& rProperty) { return rProperty.Name == HISTORY_PROPERTYNAME_TITLE; });
+        if (pProperty != seqPropertySet.end())
         {
-            if( seqPropertySet[nProperty].Name == HISTORY_PROPERTYNAME_TITLE )
-            {
-                seqPropertySet[nProperty].Value >>= sTitle;
-                aURL.SetURL( sTitle );
-                rPickList.insert(rPickList.begin() + nItem, aURL.GetMainURL(INetURLObject::DecodeMechanism::WithCharset));
-                break;
-            }
+            OUString sTitle;
+            INetURLObject aURL;
+
+            pProperty->Value >>= sTitle;
+            aURL.SetURL( sTitle );
+            rPickList.insert(rPickList.begin() + nItem, aURL.GetMainURL(INetURLObject::DecodeMechanism::WithCharset));
         }
     }
 }
@@ -218,22 +207,14 @@ IMPL_LINK_NOARG( SvtMatchContext_Impl, Select_Impl, void*, void )
         }
     }
 
-    pBox->bAutoCompleteMode = true;
-
-    // did we filter completions which otherwise would have been valid?
-    // (to be filled below)
-    bool bValidCompletionsFiltered = false;
-
     // insert all completed strings into the listbox
-    pBox->Clear();
+    pBox->clear();
 
-    for(std::vector<OUString>::iterator i = aCompletions.begin(); i != aCompletions.end(); ++i)
+    for (auto const& completion : aCompletions)
     {
-        OUString sCompletion(*i);
-
-        // convert the file into an URL
+        // convert the file into a URL
         OUString sURL;
-        osl::FileBase::getFileURLFromSystemPath( sCompletion, sURL );
+        osl::FileBase::getFileURLFromSystemPath(completion, sURL);
             // note: if this doesn't work, we're not interested in: we're checking the
             // untouched sCompletion then
 
@@ -245,21 +226,14 @@ IMPL_LINK_NOARG( SvtMatchContext_Impl, Select_Impl, void*, void )
                                  pBox->pImpl->m_aFilters.end(),
                                  FilterMatch( sUpperURL ) ) )
             {   // this URL is not allowed
-                bValidCompletionsFiltered = true;
                 continue;
             }
         }
 
-        pBox->InsertEntry( sCompletion );
+        pBox->append_text(completion);
     }
 
-    if( !bNoSelection && !aCompletions.empty() && !bValidCompletionsFiltered )
-    {
-        // select the first one
-        OUString aTmp( pBox->GetEntry(0) );
-        pBox->SetText( aTmp );
-        pBox->SetSelection( Selection( aText.getLength(), aTmp.getLength() ) );
-    }
+    pBox->EnableAutocomplete(!bNoSelection);
 
     // transfer string lists to listbox and forget them
     pBox->pImpl->aURLs = aURLs;
@@ -267,14 +241,10 @@ IMPL_LINK_NOARG( SvtMatchContext_Impl, Select_Impl, void*, void )
     aURLs.clear();
     aCompletions.clear();
 
-    // force listbox to resize ( it may be open )
-    pBox->Resize();
-
     // the box has this control as a member so we have to set that member
     // to zero before deleting ourself.
     pBox->pCtx.clear();
 }
-
 
 void SvtMatchContext_Impl::Insert( const OUString& rCompletion,
                                    const OUString& rURL,
@@ -317,8 +287,7 @@ void SvtMatchContext_Impl::ReadFolder( const OUString& rURL,
     {
         // a home that refers to /
 
-        OUString aNewText( aText );
-        aNewText += "/";
+        OUString aNewText = aText + "/";
         Insert( aNewText, rURL, true );
 
         return;
@@ -359,12 +328,10 @@ void SvtMatchContext_Impl::ReadFolder( const OUString& rURL,
 
         try
         {
-            uno::Reference< XDynamicResultSet > xDynResultSet;
             ResultSetInclude eInclude = INCLUDE_FOLDERS_AND_DOCUMENTS;
             if ( bOnlyDirectories )
                 eInclude = INCLUDE_FOLDERS_ONLY;
-
-            xDynResultSet = aCnt.createDynamicCursor( aProps, eInclude );
+            uno::Reference< XDynamicResultSet > xDynResultSet = aCnt.createDynamicCursor( aProps, eInclude );
 
             uno::Reference < XAnyCompareFactory > xCompare;
             uno::Reference < XSortedDynamicResultSetFactory > xSRSFac =
@@ -377,8 +344,7 @@ void SvtMatchContext_Impl::ReadFolder( const OUString& rURL,
             pInfo[ 1 ].ColumnIndex = 1;
             pInfo[ 1 ].Ascending   = true;
 
-            uno::Reference< XDynamicResultSet > xDynamicResultSet;
-            xDynamicResultSet =
+            uno::Reference< XDynamicResultSet > xDynamicResultSet =
                 xSRSFac->createSortedDynamicResultSet( xDynResultSet, aSortInfo, xCompare );
 
             if ( xDynamicResultSet.is() )
@@ -407,7 +373,7 @@ void SvtMatchContext_Impl::ReadFolder( const OUString& rURL,
                     if (
                         !nMatchLen ||
                         (bExectMatch && aMatchName == aTitle) ||
-                        (!bExectMatch && aMatchName.compareTo(aTitle, nMatchLen) == 0)
+                        (!bExectMatch && aTitle.startsWith(aMatchName))
                        )
                     {
                         // all names fit if matchstring is empty
@@ -415,7 +381,7 @@ void SvtMatchContext_Impl::ReadFolder( const OUString& rURL,
                         sal_Unicode aDelimiter = '/';
                         if ( bSmart )
                             // when parsing is done "smart", the delimiter must be "guessed"
-                            aObj.getFSysPath( (FSysStyle)(FSysStyle::Detect & ~FSysStyle::Vos), &aDelimiter );
+                            aObj.getFSysPath( static_cast<FSysStyle>(FSysStyle::Detect & ~FSysStyle::Vos), &aDelimiter );
 
                         if ( bIsFolder )
                             aObj.setFinalSlash();
@@ -442,7 +408,7 @@ void SvtMatchContext_Impl::ReadFolder( const OUString& rURL,
 
                         // folders should get a final slash automatically
                         if ( bIsFolder )
-                            aInput += OUStringLiteral1(aDelimiter);
+                            aInput += OUStringChar(aDelimiter);
 
                         Insert( aInput, aObj.GetMainURL( INetURLObject::DecodeMechanism::NONE ), true );
                     }
@@ -456,86 +422,6 @@ void SvtMatchContext_Impl::ReadFolder( const OUString& rURL,
     catch( css::uno::Exception& )
     {
     }
-}
-
-OUString SvtURLBox::ParseSmart( const OUString& _aText, const OUString& _aBaseURL )
-{
-    OUString aMatch;
-    OUString aText = _aText;
-    OUString aBaseURL = _aBaseURL;
-
-    // parse ~ for Unix systems
-    // does nothing for Windows
-    if( !SvtURLBox_Impl::TildeParsing( aText, aBaseURL ) )
-        return OUString();
-
-    if( !aBaseURL.isEmpty() )
-    {
-        INetProtocol eBaseProt = INetURLObject::CompareProtocolScheme( aBaseURL );
-
-        // if a base URL is set the string may be parsed relative
-        if( aText.startsWith( "/" ) )
-        {
-            // text starting with slashes means absolute file URLs
-            OUString aTemp = INetURLObject::GetScheme( eBaseProt );
-
-            // file URL must be correctly encoded!
-            OUString aTextURL = INetURLObject::encode( aText, INetURLObject::PART_FPATH,
-                                                     INetURLObject::EncodeMechanism::All );
-            aTemp += aTextURL;
-
-            INetURLObject aTmp( aTemp );
-            if ( !aTmp.HasError() && aTmp.GetProtocol() != INetProtocol::NotValid )
-                aMatch = aTmp.GetMainURL( INetURLObject::DecodeMechanism::NONE );
-        }
-        else
-        {
-            OUString aSmart( aText );
-            INetURLObject aObj( aBaseURL );
-
-            // HRO: I suppose this hack should only be done for Windows !!!???
-#ifdef _WIN32
-            // HRO: INetURLObject::smatRel2Abs does not recognize '\\' as a relative path
-            //      but in case of "\\\\" INetURLObject is right - this is an absolute path !
-
-            if( aText.startsWith("\\") && (aText.getLength() < 2 || aText[ 1 ] != '\\') )
-            {
-                // cut to first segment
-                OUString aTmp = INetURLObject::GetScheme( eBaseProt );
-                aTmp += "/";
-                aTmp += aObj.getName( 0, true, INetURLObject::DecodeMechanism::WithCharset );
-                aObj.SetURL( aTmp );
-
-                aSmart = aSmart.copy(1);
-            }
-#endif
-            // base URL must be a directory !
-            aObj.setFinalSlash();
-
-            // take base URL and append current input
-            bool bWasAbsolute = false;
-#ifdef UNX
-            // encode file URL correctly
-            aSmart = INetURLObject::encode( aSmart, INetURLObject::PART_FPATH, INetURLObject::EncodeMechanism::All );
-#endif
-            INetURLObject aTmp( aObj.smartRel2Abs( aSmart, bWasAbsolute ) );
-
-            if ( aText.endsWith(".") )
-                // INetURLObject appends a final slash for the directories "." and "..", this is a bug!
-                // Remove it as a workaround
-                aTmp.removeFinalSlash();
-            if ( !aTmp.HasError() && aTmp.GetProtocol() != INetProtocol::NotValid )
-                aMatch = aTmp.GetMainURL( INetURLObject::DecodeMechanism::NONE );
-        }
-    }
-    else
-    {
-        OUString aTmpMatch;
-        osl::FileBase::getFileURLFromSystemPath( aText, aTmpMatch );
-        aMatch = aTmpMatch;
-    }
-
-    return aMatch;
 }
 
 void SvtMatchContext_Impl::doExecute()
@@ -563,8 +449,8 @@ void SvtMatchContext_Impl::doExecute()
 
     OUString aMatch;
     INetProtocol eProt = INetURLObject::CompareProtocolScheme( aText );
-    INetProtocol eBaseProt = INetURLObject::CompareProtocolScheme( aBaseURL );
-    if ( aBaseURL.isEmpty() )
+    INetProtocol eBaseProt = INetURLObject::CompareProtocolScheme( pBox->aBaseURL );
+    if ( pBox->aBaseURL.isEmpty() )
         eBaseProt = INetURLObject::CompareProtocolScheme( SvtPathOptions().GetWorkPath() );
     INetProtocol eSmartProt = pBox->GetSmartProtocol();
 
@@ -577,7 +463,7 @@ void SvtMatchContext_Impl::doExecute()
         if( schedule() )
         {
             if ( eProt == INetProtocol::NotValid )
-                aMatch = SvtURLBox::ParseSmart( aText, aBaseURL );
+                aMatch = SvtURLBox::ParseSmart( aText, pBox->aBaseURL );
             else
                 aMatch = aText;
             if ( !aMatch.isEmpty() )
@@ -633,11 +519,8 @@ void SvtMatchContext_Impl::doExecute()
                                 if (proc2.is()) {
                                     try {
                                         proc2->releaseCommandIdentifier(id);
-                                    } catch (css::uno::RuntimeException & e) {
-                                        SAL_WARN(
-                                            "svtools.control",
-                                            "ignoring UNO RuntimeException "
-                                            << e.Message);
+                                    } catch (css::uno::RuntimeException &) {
+                                        TOOLS_WARN_EXCEPTION("svtools.control", "ignoring");
                                     }
                                 }
                                 throw;
@@ -660,16 +543,13 @@ void SvtMatchContext_Impl::doExecute()
                             css::uno::Reference< css::sdbc::XRow > row(
                                 res, css::uno::UNO_QUERY_THROW);
                             folder = row->getBoolean(1) && !row->wasNull();
-                        } catch (css::uno::Exception & e) {
-                            SAL_WARN(
-                                "svtools.control",
-                                "ignoring UNO Exception " << typeid(*&e).name()
-                                << ": " << e.Message);
+                        } catch (css::uno::Exception &) {
+                            TOOLS_WARN_EXCEPTION("svtools.control", "ignoring");
                             return;
                         }
                     }
-                    if ( folder )
-                            Insert( aText, aMatch );
+                    if (folder)
+                        Insert( aText, aMatch );
                     else
                         // otherwise the parent folder will be taken
                         aURLObject.removeSegment();
@@ -693,9 +573,12 @@ void SvtMatchContext_Impl::doExecute()
     aObj.SetSmartProtocol( eSmartProt == INetProtocol::NotValid ? INetProtocol::Http : eSmartProt );
     for( ;; )
     {
-        for(std::vector<OUString>::iterator i = aPickList.begin(); schedule() && i != aPickList.end(); ++i)
+        for(const auto& rPick : aPickList)
         {
-            aCurObj.SetURL(*i);
+            if (!schedule())
+                break;
+
+            aCurObj.SetURL(rPick);
             aCurObj.SetSmartURL( aCurObj.GetURLNoPass());
             aCurMainURL = aCurObj.GetMainURL( INetURLObject::DecodeMechanism::NONE );
 
@@ -787,449 +670,6 @@ void SvtMatchContext_Impl::doExecute()
         else
             break;
     }
-}
-
-void SvtURLBox::TryAutoComplete()
-{
-    if( Application::AnyInput( VclInputFlags::KEYBOARD ) ) return;
-
-    OUString aCurText = GetText();
-    Selection aSelection( GetSelection() );
-    if( aSelection.Max() != aCurText.getLength() )
-        return;
-    sal_uInt16 nLen = (sal_uInt16)aSelection.Min();
-    aCurText = aCurText.copy( 0, nLen );
-    if( !aCurText.isEmpty() && bIsAutoCompleteEnabled )
-    {
-        if ( pCtx.is() )
-        {
-            pCtx->Stop();
-            pCtx->join();
-            pCtx.clear();
-        }
-        pCtx = new SvtMatchContext_Impl( this, aCurText );
-        pCtx->launch();
-    }
-}
-
-
-SvtURLBox::SvtURLBox( vcl::Window* pParent, INetProtocol eSmart, bool bSetDefaultHelpID )
-    :   ComboBox( pParent , WB_DROPDOWN | WB_AUTOSIZE | WB_AUTOHSCROLL ),
-        eSmartProtocol( eSmart ),
-        bAutoCompleteMode( false ),
-        bOnlyDirectories( false ),
-        bHistoryDisabled( false ),
-        bNoSelection( false ),
-        bIsAutoCompleteEnabled( true )
-{
-    Init(bSetDefaultHelpID);
-
-    if ( GetDesktopRectPixel().GetWidth() > 800 )
-        SetSizePixel( Size( 300, 240 ) );
-    else
-        SetSizePixel( Size( 225, 240 ) );
-}
-
-
-SvtURLBox::SvtURLBox( vcl::Window* pParent, WinBits _nStyle, INetProtocol eSmart,
-    bool bSetDefaultHelpID )
-    :   ComboBox( pParent, _nStyle ),
-        eSmartProtocol( eSmart ),
-        bAutoCompleteMode( false ),
-        bOnlyDirectories( false ),
-        bHistoryDisabled( false ),
-        bNoSelection( false ),
-        bIsAutoCompleteEnabled( true )
-{
-    Init(bSetDefaultHelpID);
-}
-
-VCL_BUILDER_DECL_FACTORY(SvtURLBox)
-{
-    (void)rMap;
-    WinBits nWinBits = WB_LEFT|WB_VCENTER|WB_3DLOOK|WB_TABSTOP|
-                       WB_DROPDOWN|WB_AUTOSIZE|WB_AUTOHSCROLL;
-    VclPtrInstance<SvtURLBox> pListBox(pParent, nWinBits, INetProtocol::NotValid, false);
-    pListBox->EnableAutoSize(true);
-    rRet = pListBox;
-}
-
-
-void SvtURLBox::Init(bool bSetDefaultHelpID)
-{
-    pImpl.reset( new SvtURLBox_Impl );
-
-    if (bSetDefaultHelpID && GetHelpId().isEmpty())
-        SetHelpId( ".uno:OpenURL" );
-    EnableAutocomplete( false );
-
-    SetText( OUString() );
-
-    GetSubEdit()->SetAutocompleteHdl(LINK(this, SvtURLBox, AutoCompleteHdl_Impl));
-    UpdatePicklistForSmartProtocol_Impl();
-
-    EnableAutoSize(GetStyle() & WB_AUTOSIZE);
-}
-
-SvtURLBox::~SvtURLBox()
-{
-    disposeOnce();
-}
-
-void SvtURLBox::dispose()
-{
-    if( pCtx.is() )
-    {
-        pCtx->Stop();
-        pCtx->join();
-    }
-
-    pImpl.reset();
-    ComboBox::dispose();
-}
-
-void SvtURLBox::UpdatePickList( )
-{
-    if( pCtx.is() )
-    {
-        pCtx->Stop();
-        pCtx->join();
-        pCtx.clear();
-    }
-
-    OUString sText = GetText();
-    if ( !sText.isEmpty() && bIsAutoCompleteEnabled )
-    {
-        pCtx = new SvtMatchContext_Impl( this, sText );
-        pCtx->launch();
-    }
-}
-
-void SvtURLBox::SetSmartProtocol( INetProtocol eProt )
-{
-    if ( eSmartProtocol != eProt )
-    {
-        eSmartProtocol = eProt;
-        UpdatePicklistForSmartProtocol_Impl();
-    }
-}
-
-void SvtURLBox::UpdatePicklistForSmartProtocol_Impl()
-{
-    Clear();
-    if ( !bHistoryDisabled )
-    {
-        // read history pick list
-        Sequence< Sequence< PropertyValue > > seqPicklist = SvtHistoryOptions().GetList( ePICKLIST );
-        sal_uInt32 nCount = seqPicklist.getLength();
-        INetURLObject aCurObj;
-
-        for( sal_uInt32 nItem=0; nItem < nCount; nItem++ )
-        {
-            Sequence< PropertyValue > seqPropertySet = seqPicklist[ nItem ];
-
-            OUString sURL;
-
-            sal_uInt32 nPropertyCount = seqPropertySet.getLength();
-
-            for( sal_uInt32 nProperty=0; nProperty < nPropertyCount; nProperty++ )
-            {
-                if( seqPropertySet[nProperty].Name == HISTORY_PROPERTYNAME_URL )
-                {
-                    seqPropertySet[nProperty].Value >>= sURL;
-                    aCurObj.SetURL( sURL );
-
-                    if ( !sURL.isEmpty() && ( eSmartProtocol != INetProtocol::NotValid ) )
-                    {
-                        if( aCurObj.GetProtocol() != eSmartProtocol )
-                            break;
-                    }
-
-                    OUString aURL( aCurObj.GetMainURL( INetURLObject::DecodeMechanism::WithCharset ) );
-
-                    if ( !aURL.isEmpty() )
-                    {
-                        bool bFound = aURL.endsWith("/");
-                        if ( !bFound )
-                        {
-                            OUString aUpperURL( aURL );
-                            aUpperURL = aUpperURL.toAsciiUpperCase();
-
-                            bFound = ::std::any_of(pImpl->m_aFilters.begin(),
-                                                   pImpl->m_aFilters.end(),
-                                                   FilterMatch( aUpperURL ) );
-                        }
-                        if ( bFound )
-                        {
-                            OUString aFile;
-                            if (osl::FileBase::getSystemPathFromFileURL(aURL, aFile) == osl::FileBase::E_None)
-                                InsertEntry(aFile);
-                            else
-                                InsertEntry(aURL);
-                        }
-                    }
-                    break;
-                }
-            }
-        }
-    }
-}
-
-
-bool SvtURLBox::ProcessKey( const vcl::KeyCode& rKey )
-{
-    // every key input stops the current matching thread
-    if( pCtx.is() )
-    {
-        pCtx->Stop();
-        pCtx->join();
-        pCtx.clear();
-    }
-
-    vcl::KeyCode aCode( rKey.GetCode() );
-    if ( aCode == KEY_RETURN && !GetText().isEmpty() )
-    {
-        // wait for completion of matching thread
-        ::osl::MutexGuard aGuard( theSvtMatchContextMutex::get() );
-
-        if ( bAutoCompleteMode )
-        {
-            // reset picklist
-            bAutoCompleteMode = false;
-            Selection aSelection( GetSelection() );
-            SetSelection( Selection( aSelection.Min(), aSelection.Min() ) );
-            if ( bOnlyDirectories )
-                Clear();
-            else
-                UpdatePicklistForSmartProtocol_Impl();
-            Resize();
-        }
-
-        bool bHandled = false;
-        if ( GetOpenHdl().IsSet() )
-        {
-            bHandled = true;
-            GetOpenHdl().Call(this);
-        }
-        else if ( GetSelectHdl().IsSet() )
-        {
-            bHandled = true;
-            GetSelectHdl().Call(*this);
-        }
-
-        ClearModifyFlag();
-        return bHandled;
-    }
-    else if ( aCode == KEY_RETURN && GetText().isEmpty() && GetOpenHdl().IsSet() )
-    {
-        // for file dialog
-        bAutoCompleteMode = false;
-        GetOpenHdl().Call(this);
-        return true;
-    }
-    else if( aCode == KEY_ESCAPE )
-    {
-        Selection aSelection( GetSelection() );
-        if ( bAutoCompleteMode || aSelection.Min() != aSelection.Max() )
-        {
-            SetSelection( Selection( aSelection.Min(), aSelection.Min() ) );
-            if ( bOnlyDirectories )
-                Clear();
-            else
-                UpdatePicklistForSmartProtocol_Impl();
-            Resize();
-        }
-        else
-        {
-           return false;
-        }
-
-        bAutoCompleteMode = false;
-        return true;
-    }
-    else
-    {
-        return false;
-    }
-}
-
-
-bool SvtURLBox::PreNotify( NotifyEvent& rNEvt )
-{
-    if( rNEvt.GetWindow() == GetSubEdit() && rNEvt.GetType() == MouseNotifyEvent::KEYINPUT )
-    {
-
-        const KeyEvent& rEvent = *rNEvt.GetKeyEvent();
-        const vcl::KeyCode& rKey = rEvent.GetKeyCode();
-        vcl::KeyCode aCode( rKey.GetCode() );
-        if( ProcessKey( rKey ) )
-        {
-            return true;
-        }
-        else if( ( aCode == KEY_UP || aCode == KEY_DOWN ) && !rKey.IsMod2() )
-        {
-            Selection aSelection( GetSelection() );
-            sal_uInt16 nLen = (sal_uInt16)aSelection.Min();
-            GetSubEdit()->KeyInput( rEvent );
-            SetSelection( Selection( nLen, GetText().getLength() ) );
-            return true;
-        }
-
-        if ( MatchesPlaceHolder( GetText() ) )
-        {
-            // set the selection so a key stroke will overwrite
-            // the placeholder rather than edit it
-            SetSelection( Selection( 0, GetText().getLength() ) );
-        }
-    }
-
-    return ComboBox::PreNotify( rNEvt );
-}
-
-IMPL_LINK_NOARG(SvtURLBox, AutoCompleteHdl_Impl, Edit&, void)
-{
-    TryAutoComplete();
-}
-
-bool SvtURLBox::EventNotify( NotifyEvent &rEvt )
-{
-    if ( MouseNotifyEvent::GETFOCUS == rEvt.GetType() )
-    {
-#ifndef UNX
-        // pb: don't select automatically on unix #93251#
-        SetSelection( Selection( 0, GetText().getLength() ) );
-#endif
-    }
-    else if ( MouseNotifyEvent::LOSEFOCUS == rEvt.GetType() )
-    {
-        if( GetText().isEmpty() )
-            ClearModifyFlag();
-        if ( pCtx.is() )
-        {
-            pCtx->Stop();
-            pCtx->join();
-            pCtx.clear();
-        }
-    }
-
-    return ComboBox::EventNotify( rEvt );
-}
-
-
-void SvtURLBox::Select()
-{
-    ComboBox::Select();
-    ClearModifyFlag();
-}
-
-
-void SvtURLBox::SetOnlyDirectories( bool bDir )
-{
-    bOnlyDirectories = bDir;
-    if ( bOnlyDirectories )
-        Clear();
-}
-
-
-void SvtURLBox::SetNoURLSelection( bool bSet )
-{
-    bNoSelection = bSet;
-}
-
-
-OUString SvtURLBox::GetURL()
-{
-    // wait for end of autocompletion
-    ::osl::MutexGuard aGuard( theSvtMatchContextMutex::get() );
-
-    OUString aText( GetText() );
-    if ( MatchesPlaceHolder( aText ) )
-        return aPlaceHolder;
-
-    // try to get the right case preserving URL from the list of URLs
-    for(std::vector<OUString>::iterator i = pImpl->aCompletions.begin(), j = pImpl->aURLs.begin(); i != pImpl->aCompletions.end() && j != pImpl->aURLs.end(); ++i, ++j)
-    {
-        if((*i).equals(aText))
-            return *j;
-    }
-
-#ifdef _WIN32
-    // erase trailing spaces on Windows since thay are invalid on this OS and
-    // most of the time they are inserted by accident via copy / paste
-    aText = comphelper::string::stripEnd(aText, ' ');
-    if ( aText.isEmpty() )
-        return aText;
-    // #i9739#
-#endif
-
-    INetURLObject aObj( aText );
-    if( aText.indexOf( '*' ) != -1 || aText.indexOf( '?' ) != -1 )
-    {
-        // no autocompletion for wildcards
-        INetURLObject aTempObj;
-        if ( eSmartProtocol != INetProtocol::NotValid )
-            aTempObj.SetSmartProtocol( eSmartProtocol );
-        if ( aTempObj.SetSmartURL( aText ) )
-            return aTempObj.GetMainURL( INetURLObject::DecodeMechanism::NONE );
-        else
-            return aText;
-    }
-
-    if ( aObj.GetProtocol() == INetProtocol::NotValid )
-    {
-        OUString aName = ParseSmart( aText, aBaseURL );
-        aObj.SetURL(aName);
-        OUString aURL( aObj.GetMainURL( INetURLObject::DecodeMechanism::NONE ) );
-        if ( aURL.isEmpty() )
-            // aText itself is invalid, and even together with aBaseURL, it could not
-            // made valid -> no chance
-            return aText;
-
-        bool bSlash = aObj.hasFinalSlash();
-        {
-            const OUString aPropName("CasePreservingURL");
-
-            OUString aFileURL;
-
-            Any aAny = UCBContentHelper::GetProperty(aURL, aPropName);
-            bool success = (aAny >>= aFileURL);
-            OUString aTitle;
-            if(success)
-                aTitle = INetURLObject(aFileURL).getName(
-                             INetURLObject::LAST_SEGMENT,
-                             true,
-                             INetURLObject::DecodeMechanism::WithCharset );
-            else
-                success =
-                    UCBContentHelper::GetTitle(aURL,&aTitle);
-
-            if( success && aTitle != "/" && aTitle != "." )
-            {
-                    aObj.SetName( aTitle );
-                    if ( bSlash )
-                        aObj.setFinalSlash();
-            }
-        }
-    }
-
-    return aObj.GetMainURL( INetURLObject::DecodeMechanism::NONE );
-}
-
-void SvtURLBox::DisableHistory()
-{
-    bHistoryDisabled = true;
-    UpdatePicklistForSmartProtocol_Impl();
-}
-
-void SvtURLBox::SetBaseURL( const OUString& rURL )
-{
-    ::osl::MutexGuard aGuard( theSvtMatchContextMutex::get() );
-
-    // Reset match lists
-    pImpl->aCompletions.clear();
-    pImpl->aURLs.clear();
-
-    aBaseURL = rURL;
 }
 
 /** Parse leading ~ for Unix systems,
@@ -1328,10 +768,375 @@ bool SvtURLBox_Impl::TildeParsing(
     return true;
 }
 
+//--
+
+OUString SvtURLBox::ParseSmart( const OUString& _aText, const OUString& _aBaseURL )
+{
+    OUString aMatch;
+    OUString aText = _aText;
+    OUString aBaseURL = _aBaseURL;
+
+    // parse ~ for Unix systems
+    // does nothing for Windows
+    if( !SvtURLBox_Impl::TildeParsing( aText, aBaseURL ) )
+        return OUString();
+
+    if( !aBaseURL.isEmpty() )
+    {
+        INetProtocol eBaseProt = INetURLObject::CompareProtocolScheme( aBaseURL );
+
+        // if a base URL is set the string may be parsed relative
+        if( aText.startsWith( "/" ) )
+        {
+            // text starting with slashes means absolute file URLs
+            OUString aTemp = INetURLObject::GetScheme( eBaseProt );
+
+            // file URL must be correctly encoded!
+            OUString aTextURL = INetURLObject::encode( aText, INetURLObject::PART_FPATH,
+                                                     INetURLObject::EncodeMechanism::All );
+            aTemp += aTextURL;
+
+            INetURLObject aTmp( aTemp );
+            if ( !aTmp.HasError() && aTmp.GetProtocol() != INetProtocol::NotValid )
+                aMatch = aTmp.GetMainURL( INetURLObject::DecodeMechanism::NONE );
+        }
+        else
+        {
+            OUString aSmart( aText );
+            INetURLObject aObj( aBaseURL );
+
+            // HRO: I suppose this hack should only be done for Windows !!!???
+#ifdef _WIN32
+            // HRO: INetURLObject::smatRel2Abs does not recognize '\\' as a relative path
+            //      but in case of "\\\\" INetURLObject is right - this is an absolute path !
+
+            if( aText.startsWith("\\") && (aText.getLength() < 2 || aText[ 1 ] != '\\') )
+            {
+                // cut to first segment
+                OUString aTmp = INetURLObject::GetScheme( eBaseProt ) + "/";
+                aTmp += aObj.getName( 0, true, INetURLObject::DecodeMechanism::WithCharset );
+                aObj.SetURL( aTmp );
+
+                aSmart = aSmart.copy(1);
+            }
+#endif
+            // base URL must be a directory !
+            aObj.setFinalSlash();
+
+            // take base URL and append current input
+            bool bWasAbsolute = false;
+#ifdef UNX
+            // encode file URL correctly
+            aSmart = INetURLObject::encode( aSmart, INetURLObject::PART_FPATH, INetURLObject::EncodeMechanism::All );
+#endif
+            INetURLObject aTmp( aObj.smartRel2Abs( aSmart, bWasAbsolute ) );
+
+            if ( aText.endsWith(".") )
+                // INetURLObject appends a final slash for the directories "." and "..", this is a bug!
+                // Remove it as a workaround
+                aTmp.removeFinalSlash();
+            if ( !aTmp.HasError() && aTmp.GetProtocol() != INetProtocol::NotValid )
+                aMatch = aTmp.GetMainURL( INetURLObject::DecodeMechanism::NONE );
+        }
+    }
+    else
+    {
+        OUString aTmpMatch;
+        osl::FileBase::getFileURLFromSystemPath( aText, aTmpMatch );
+        aMatch = aTmpMatch;
+    }
+
+    return aMatch;
+}
+
+IMPL_LINK_NOARG(SvtURLBox, TryAutoComplete, Timer *, void)
+{
+    OUString aCurText = m_xWidget->get_active_text();
+    int nStartPos, nEndPos;
+    m_xWidget->get_entry_selection_bounds(nStartPos, nEndPos);
+    if (std::max(nStartPos, nEndPos) != aCurText.getLength())
+        return;
+
+    auto nLen = std::min(nStartPos, nEndPos);
+    aCurText = aCurText.copy( 0, nLen );
+    if (!aCurText.isEmpty())
+    {
+        if (pCtx.is())
+        {
+            pCtx->Stop();
+            pCtx->join();
+            pCtx.clear();
+        }
+        pCtx = new SvtMatchContext_Impl(this, aCurText);
+        pCtx->launch();
+    }
+    else
+        m_xWidget->clear();
+}
+
+SvtURLBox::SvtURLBox(std::unique_ptr<weld::ComboBox> pWidget)
+    : eSmartProtocol(INetProtocol::NotValid)
+    , bOnlyDirectories( false )
+    , bHistoryDisabled( false )
+    , bNoSelection( false )
+    , m_xWidget(std::move(pWidget))
+{
+    //don't grow to fix mega-long urls
+    Size aSize(m_xWidget->get_preferred_size());
+    m_xWidget->set_size_request(aSize.Width(), -1);
+
+    Init();
+
+    m_xWidget->connect_focus_in(LINK(this, SvtURLBox, FocusInHdl));
+    m_xWidget->connect_focus_out(LINK(this, SvtURLBox, FocusOutHdl));
+    m_xWidget->connect_changed(LINK(this, SvtURLBox, ChangedHdl));
+
+    aChangedIdle.SetInvokeHandler(LINK(this, SvtURLBox, TryAutoComplete));
+    aChangedIdle.SetDebugName("svtools::URLBox aChangedIdle");
+}
+
+void SvtURLBox::Init()
+{
+    pImpl.reset( new SvtURLBox_Impl );
+
+    m_xWidget->set_entry_completion(false);
+
+    UpdatePicklistForSmartProtocol_Impl();
+}
+
+SvtURLBox::~SvtURLBox()
+{
+    if (pCtx.is())
+    {
+        pCtx->Stop();
+        pCtx->join();
+    }
+}
+
+void SvtURLBox::SetSmartProtocol(INetProtocol eProt)
+{
+    if ( eSmartProtocol != eProt )
+    {
+        eSmartProtocol = eProt;
+        UpdatePicklistForSmartProtocol_Impl();
+    }
+}
+
+void SvtURLBox::UpdatePicklistForSmartProtocol_Impl()
+{
+    m_xWidget->clear();
+    if ( bHistoryDisabled )
+        return;
+
+    if (bHistoryDisabled)
+        return;
+
+    // read history pick list
+    const Sequence< Sequence< PropertyValue > > seqPicklist = SvtHistoryOptions().GetList( ePICKLIST );
+    INetURLObject aCurObj;
+
+    for( const Sequence< PropertyValue >& rPropertySet : seqPicklist )
+    {
+        auto pProperty = std::find_if(rPropertySet.begin(), rPropertySet.end(),
+            [](const PropertyValue& rProperty) { return rProperty.Name == HISTORY_PROPERTYNAME_URL; });
+        if (pProperty != rPropertySet.end())
+        {
+            OUString sURL;
+
+            pProperty->Value >>= sURL;
+            aCurObj.SetURL( sURL );
+
+            if ( !sURL.isEmpty() && ( eSmartProtocol != INetProtocol::NotValid ) )
+            {
+                if( aCurObj.GetProtocol() != eSmartProtocol )
+                    continue;
+            }
+
+            OUString aURL( aCurObj.GetMainURL( INetURLObject::DecodeMechanism::WithCharset ) );
+
+            if ( !aURL.isEmpty() )
+            {
+                bool bFound = aURL.endsWith("/");
+                if ( !bFound )
+                {
+                    OUString aUpperURL = aURL.toAsciiUpperCase();
+
+                    bFound = ::std::any_of(pImpl->m_aFilters.begin(),
+                                           pImpl->m_aFilters.end(),
+                                           FilterMatch( aUpperURL ) );
+                }
+                if ( bFound )
+                {
+                    OUString aFile;
+                    if (osl::FileBase::getSystemPathFromFileURL(aURL, aFile) == osl::FileBase::E_None)
+                        m_xWidget->append_text(aFile);
+                    else
+                        m_xWidget->append_text(aURL);
+                }
+            }
+        }
+    }
+}
+
+IMPL_LINK_NOARG(SvtURLBox, ChangedHdl, weld::ComboBox&, void)
+{
+    aChangeHdl.Call(*m_xWidget);
+    aChangedIdle.Start(); //launch this to happen on idle after cursor position will have been set
+}
+
+IMPL_LINK_NOARG(SvtURLBox, FocusInHdl, weld::Widget&, void)
+{
+#ifndef UNX
+    // pb: don't select automatically on unix #93251#
+    m_xWidget->select_entry_region(0, -1);
+#endif
+    aFocusInHdl.Call(*m_xWidget);
+}
+
+IMPL_LINK_NOARG(SvtURLBox, FocusOutHdl, weld::Widget&, void)
+{
+    if (pCtx.is())
+    {
+        pCtx->Stop();
+        pCtx->join();
+        pCtx.clear();
+    }
+    aFocusOutHdl.Call(*m_xWidget);
+}
+
+void SvtURLBox::SetOnlyDirectories( bool bDir )
+{
+    bOnlyDirectories = bDir;
+    if ( bOnlyDirectories )
+        m_xWidget->clear();
+}
+
+void SvtURLBox::SetNoURLSelection( bool bSet )
+{
+    bNoSelection = bSet;
+}
+
+OUString SvtURLBox::GetURL()
+{
+    // wait for end of autocompletion
+    ::osl::MutexGuard aGuard( theSvtMatchContextMutex::get() );
+
+    OUString aText(m_xWidget->get_active_text());
+    if (MatchesPlaceHolder(aText))
+        return aPlaceHolder;
+
+    // try to get the right case preserving URL from the list of URLs
+    for(std::vector<OUString>::iterator i = pImpl->aCompletions.begin(), j = pImpl->aURLs.begin(); i != pImpl->aCompletions.end() && j != pImpl->aURLs.end(); ++i, ++j)
+    {
+        if((*i) == aText)
+            return *j;
+    }
+
+#ifdef _WIN32
+    // erase trailing spaces on Windows since they are invalid on this OS and
+    // most of the time they are inserted by accident via copy / paste
+    aText = comphelper::string::stripEnd(aText, ' ');
+    if ( aText.isEmpty() )
+        return aText;
+    // #i9739#
+#endif
+
+    INetURLObject aObj( aText );
+    if( aText.indexOf( '*' ) != -1 || aText.indexOf( '?' ) != -1 )
+    {
+        // no autocompletion for wildcards
+        INetURLObject aTempObj;
+        if ( eSmartProtocol != INetProtocol::NotValid )
+            aTempObj.SetSmartProtocol( eSmartProtocol );
+        if ( aTempObj.SetSmartURL( aText ) )
+            return aTempObj.GetMainURL( INetURLObject::DecodeMechanism::NONE );
+        else
+            return aText;
+    }
+
+    if ( aObj.GetProtocol() == INetProtocol::NotValid )
+    {
+        OUString aName = ParseSmart( aText, aBaseURL );
+        aObj.SetURL(aName);
+        OUString aURL( aObj.GetMainURL( INetURLObject::DecodeMechanism::NONE ) );
+        if ( aURL.isEmpty() )
+            // aText itself is invalid, and even together with aBaseURL, it could not
+            // made valid -> no chance
+            return aText;
+
+        bool bSlash = aObj.hasFinalSlash();
+        {
+            OUString aFileURL;
+
+            Any aAny = UCBContentHelper::GetProperty(aURL, "CasePreservingURL");
+            bool success = (aAny >>= aFileURL);
+            OUString aTitle;
+            if(success)
+                aTitle = INetURLObject(aFileURL).getName(
+                             INetURLObject::LAST_SEGMENT,
+                             true,
+                             INetURLObject::DecodeMechanism::WithCharset );
+            else
+                success =
+                    UCBContentHelper::GetTitle(aURL,&aTitle);
+
+            if( success && aTitle != "/" && aTitle != "." )
+            {
+                    aObj.setName( aTitle );
+                    if ( bSlash )
+                        aObj.setFinalSlash();
+            }
+        }
+    }
+
+    return aObj.GetMainURL( INetURLObject::DecodeMechanism::NONE );
+}
+
+void SvtURLBox::SetBaseURL( const OUString& rURL )
+{
+    ::osl::MutexGuard aGuard( theSvtMatchContextMutex::get() );
+
+    // Reset match lists
+    pImpl->aCompletions.clear();
+    pImpl->aURLs.clear();
+
+    aBaseURL = rURL;
+}
+
+void SvtURLBox::DisableHistory()
+{
+    bHistoryDisabled = true;
+    UpdatePicklistForSmartProtocol_Impl();
+}
+
 void SvtURLBox::SetFilter(const OUString& _sFilter)
 {
     pImpl->m_aFilters.clear();
     FilterMatch::createWildCardFilterList(_sFilter,pImpl->m_aFilters);
+}
+
+void FilterMatch::createWildCardFilterList(const OUString& _rFilterList,::std::vector< WildCard >& _rFilters)
+{
+    if( _rFilterList.getLength() )
+    {
+        // filter is given
+        sal_Int32 nIndex = 0;
+        OUString sToken;
+        do
+        {
+            sToken = _rFilterList.getToken( 0, ';', nIndex );
+            if ( !sToken.isEmpty() )
+            {
+                _rFilters.emplace_back( sToken.toAsciiUpperCase() );
+            }
+        }
+        while ( nIndex >= 0 );
+    }
+    else
+    {
+        // no filter is given -> match all
+        _rFilters.emplace_back("*" );
+    }
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

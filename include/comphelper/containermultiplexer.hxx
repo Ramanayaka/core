@@ -20,11 +20,13 @@
 #ifndef INCLUDED_COMPHELPER_CONTAINERMULTIPLEXER_HXX
 #define INCLUDED_COMPHELPER_CONTAINERMULTIPLEXER_HXX
 
-#include <com/sun/star/container/XContainer.hpp>
+#include <com/sun/star/container/XContainerListener.hpp>
 #include <cppuhelper/implbase.hxx>
-#include <osl/mutex.hxx>
 #include <comphelper/comphelperdllapi.h>
 #include <rtl/ref.hxx>
+
+namespace osl { class Mutex; }
+namespace com::sun::star::container { class XContainer; }
 
 
 namespace comphelper
@@ -64,8 +66,10 @@ namespace comphelper
         void setAdapter(OContainerListenerAdapter* _pAdapter);
     };
 
-    class COMPHELPER_DLLPUBLIC OContainerListenerAdapter
-        : public cppu::WeakImplHelper<css::container::XContainerListener>
+    // workaround for incremental linking bugs in MSVC2015
+    class SAL_DLLPUBLIC_TEMPLATE OContainerListenerAdapter_Base : public cppu::WeakImplHelper< css::container::XContainerListener > {};
+
+    class COMPHELPER_DLLPUBLIC OContainerListenerAdapter : public OContainerListenerAdapter_Base
     {
         friend class OContainerListener;
 

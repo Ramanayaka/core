@@ -17,22 +17,16 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "hsqldb/HTables.hxx"
-#include "hsqldb/HViews.hxx"
-#include "hsqldb/HTable.hxx"
+#include <hsqldb/HTables.hxx>
+#include <hsqldb/HViews.hxx>
+#include <hsqldb/HTable.hxx>
 #include <com/sun/star/sdbc/XRow.hpp>
 #include <com/sun/star/sdbc/XResultSet.hpp>
-#include <com/sun/star/sdbc/ColumnValue.hpp>
 #include <com/sun/star/sdbcx/Privilege.hpp>
-#include <com/sun/star/sdbc/KeyRule.hpp>
-#include <com/sun/star/sdbcx/KeyType.hpp>
-#include "hsqldb/HCatalog.hxx"
-#include <comphelper/extract.hxx>
+#include <hsqldb/HCatalog.hxx>
 #include <connectivity/dbtools.hxx>
-#include <connectivity/dbexception.hxx>
-#include <cppuhelper/interfacecontainer.h>
 #include <comphelper/types.hxx>
-#include "TConnection.hxx"
+#include <TConnection.hxx>
 
 using namespace ::comphelper;
 using namespace connectivity;
@@ -54,14 +48,14 @@ sdbcx::ObjectType OTables::createObject(const OUString& _rName)
     Sequence< OUString > sTableTypes(3);
     sTableTypes[0] = "VIEW";
     sTableTypes[1] = "TABLE";
-    sTableTypes[2] = "%";    // just to be sure to include anything else ....
+    sTableTypes[2] = "%";    // just to be sure to include anything else...
 
     Any aCatalog;
     if ( !sCatalog.isEmpty() )
         aCatalog <<= sCatalog;
     Reference< XResultSet > xResult = m_xMetaData->getTables(aCatalog,sSchema,sTable,sTableTypes);
 
-    sdbcx::ObjectType xRet = nullptr;
+    sdbcx::ObjectType xRet;
     if ( xResult.is() )
     {
         Reference< XRow > xRow(xResult,UNO_QUERY);
@@ -95,7 +89,7 @@ void OTables::impl_refresh(  )
 
 void OTables::disposing()
 {
-m_xMetaData.clear();
+    m_xMetaData.clear();
     OCollection::disposing();
 }
 
@@ -116,39 +110,39 @@ void OTables::dropObject(sal_Int32 _nPos,const OUString& _sElementName)
 {
     Reference< XInterface > xObject( getObject( _nPos ) );
     bool bIsNew = connectivity::sdbcx::ODescriptor::isNew( xObject );
-    if (!bIsNew)
+    if (bIsNew)
+        return;
+
+    Reference< XConnection > xConnection = static_cast<OHCatalog&>(m_rParent).getConnection();
+
+
+    OUString sCatalog,sSchema,sTable;
+    ::dbtools::qualifiedNameComponents(m_xMetaData,_sElementName,sCatalog,sSchema,sTable,::dbtools::EComposeRule::InDataManipulation);
+
+    OUString aSql(  "DROP " );
+
+    Reference<XPropertySet> xProp(xObject,UNO_QUERY);
+    bool bIsView;
+    if((bIsView = (xProp.is() && ::comphelper::getString(xProp->getPropertyValue(OMetaConnection::getPropMap().getNameByIndex(PROPERTY_ID_TYPE))) == "VIEW"))) // here we have a view
+        aSql += "VIEW ";
+    else
+        aSql += "TABLE ";
+
+    OUString sComposedName(
+        ::dbtools::composeTableName( m_xMetaData, sCatalog, sSchema, sTable, true, ::dbtools::EComposeRule::InDataManipulation ) );
+    aSql += sComposedName;
+    Reference< XStatement > xStmt = xConnection->createStatement(  );
+    if ( xStmt.is() )
     {
-        Reference< XConnection > xConnection = static_cast<OHCatalog&>(m_rParent).getConnection();
-
-
-        OUString sCatalog,sSchema,sTable;
-        ::dbtools::qualifiedNameComponents(m_xMetaData,_sElementName,sCatalog,sSchema,sTable,::dbtools::EComposeRule::InDataManipulation);
-
-        OUString aSql(  "DROP " );
-
-        Reference<XPropertySet> xProp(xObject,UNO_QUERY);
-        bool bIsView;
-        if((bIsView = (xProp.is() && ::comphelper::getString(xProp->getPropertyValue(OMetaConnection::getPropMap().getNameByIndex(PROPERTY_ID_TYPE))) == "VIEW"))) // here we have a view
-            aSql += "VIEW ";
-        else
-            aSql += "TABLE ";
-
-        OUString sComposedName(
-            ::dbtools::composeTableName( m_xMetaData, sCatalog, sSchema, sTable, true, ::dbtools::EComposeRule::InDataManipulation ) );
-        aSql += sComposedName;
-        Reference< XStatement > xStmt = xConnection->createStatement(  );
-        if ( xStmt.is() )
-        {
-            xStmt->execute(aSql);
-            ::comphelper::disposeComponent(xStmt);
-        }
-        // if no exception was thrown we must delete it from the views
-        if ( bIsView )
-        {
-            HViews* pViews = static_cast<HViews*>(static_cast<OHCatalog&>(m_rParent).getPrivateViews());
-            if ( pViews && pViews->hasByName(_sElementName) )
-                pViews->dropByNameImpl(_sElementName);
-        }
+        xStmt->execute(aSql);
+        ::comphelper::disposeComponent(xStmt);
+    }
+    // if no exception was thrown we must delete it from the views
+    if ( bIsView )
+    {
+        HViews* pViews = static_cast<HViews*>(static_cast<OHCatalog&>(m_rParent).getPrivateViews());
+        if ( pViews && pViews->hasByName(_sElementName) )
+            pViews->dropByNameImpl(_sElementName);
     }
 }
 
@@ -179,7 +173,7 @@ void OTables::appendNew(const OUString& _rsNewTable)
 OUString OTables::getNameForObject(const sdbcx::ObjectType& _xObject)
 {
     OSL_ENSURE(_xObject.is(),"OTables::getNameForObject: Object is NULL!");
-    return ::dbtools::composeTableName( m_xMetaData, _xObject, ::dbtools::EComposeRule::InDataManipulation, false, false, false );
+    return ::dbtools::composeTableName( m_xMetaData, _xObject, ::dbtools::EComposeRule::InDataManipulation, false );
 }
 
 

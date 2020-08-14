@@ -10,16 +10,14 @@
 #ifndef INCLUDED_OPENCL_INC_OPENCL_DEVICE_HXX
 #define INCLUDED_OPENCL_INC_OPENCL_DEVICE_HXX
 
-#include "opencl_device_selection.h"
+#include <rtl/ustring.hxx>
 
-namespace opencl {
+namespace openclwrapper { struct GPUEnv; }
+struct ds_device;
 
 ds_device const & getDeviceSelection(OUString const & pFileName, bool bForceSelection);
 
-struct GPUEnv;
-void releaseOpenCLEnv( GPUEnv *gpuInfo );
-
-}
+void releaseOpenCLEnv( openclwrapper::GPUEnv *gpuInfo );
 
 #endif
 

@@ -20,26 +20,23 @@
 
 #include "tablehandles.hxx"
 
-#include <vcl/svapp.hxx>
 #include <vcl/outdev.hxx>
 #include <vcl/canvastools.hxx>
-#include <vcl/hatch.hxx>
+#include <vcl/ptrstyle.hxx>
 #include <basegfx/polygon/b2dpolygon.hxx>
-#include <basegfx/polygon/b2dpolypolygontools.hxx>
-#include <basegfx/range/b2drectangle.hxx>
-#include <basegfx/polygon/b2dpolygontools.hxx>
 #include <svx/sdr/overlay/overlayobject.hxx>
 #include <svx/sdr/overlay/overlaymanager.hxx>
 #include <svx/sdrpagewindow.hxx>
 #include <svx/sdrpaintwindow.hxx>
 #include <svx/svdmrkv.hxx>
 #include <svx/svdpagv.hxx>
-#include <drawinglayer/primitive2d/polypolygonprimitive2d.hxx>
+#include <drawinglayer/primitive2d/PolyPolygonHairlinePrimitive2D.hxx>
 #include <sdr/overlay/overlayrectangle.hxx>
 #include <drawinglayer/primitive2d/hiddengeometryprimitive2d.hxx>
 
-namespace sdr { namespace table {
+namespace sdr::table {
 
+namespace {
 
 class OverlayTableEdge : public sdr::overlay::OverlayObject
 {
@@ -54,6 +51,7 @@ public:
     OverlayTableEdge( const basegfx::B2DPolyPolygon& rPolyPolygon, bool bVisible );
 };
 
+}
 
 TableEdgeHdl::TableEdgeHdl( const Point& rPnt, bool bHorizontal, sal_Int32 nMin, sal_Int32 nMax, sal_Int32 nEdges )
 : SdrHdl( rPnt, SdrHdlKind::User )
@@ -78,7 +76,7 @@ void TableEdgeHdl::SetEdge( sal_Int32 nEdge, sal_Int32 nStart, sal_Int32 nEnd, T
     }
 }
 
-Pointer TableEdgeHdl::GetPointer() const
+PointerStyle TableEdgeHdl::GetPointer() const
 {
     if( mbHorizontal )
         return PointerStyle::VSplit;
@@ -113,20 +111,17 @@ void TableEdgeHdl::getPolyPolygon(basegfx::B2DPolyPolygon& rVisible, basegfx::B2
 
     if( pDrag )
     {
-        int n = mbHorizontal ? 1 : 0;
-        aOffset[n] = aOffset[n] + GetValidDragOffset( *pDrag );
+        basegfx::Axis2D eDragAxis = mbHorizontal ? basegfx::Axis2D::Y : basegfx::Axis2D::X;
+        aOffset.set(eDragAxis, aOffset.get(eDragAxis) + GetValidDragOffset( *pDrag ));
     }
 
     basegfx::B2DPoint aStart(aOffset), aEnd(aOffset);
-    int nPos = mbHorizontal ? 0 : 1;
-    TableEdgeVector::const_iterator aIter( maEdges.begin() );
+    basegfx::Axis2D eAxis = mbHorizontal ? basegfx::Axis2D::X : basegfx::Axis2D::Y;
 
-    while( aIter != maEdges.end() )
+    for( const TableEdge& aEdge : maEdges )
     {
-        TableEdge aEdge(*aIter++);
-
-        aStart[nPos] = aOffset[nPos] + aEdge.mnStart;
-        aEnd[nPos] = aOffset[nPos] + aEdge.mnEnd;
+        aStart.set(eAxis, aOffset.get(eAxis) + aEdge.mnStart);
+        aEnd.set(eAxis, aOffset.get(eAxis) + aEdge.mnEnd);
 
         basegfx::B2DPolygon aPolygon;
         aPolygon.append( aStart );
@@ -147,49 +142,57 @@ void TableEdgeHdl::CreateB2dIAObject()
 {
     GetRidOfIAObject();
 
-    if(pHdlList && pHdlList->GetView() && !pHdlList->GetView()->areMarkHandlesHidden())
+    if(!(pHdlList && pHdlList->GetView() && !pHdlList->GetView()->areMarkHandlesHidden()))
+        return;
+
+    SdrMarkView* pView = pHdlList->GetView();
+    SdrPageView* pPageView = pView->GetSdrPageView();
+
+    if(!pPageView)
+        return;
+
+    basegfx::B2DPolyPolygon aVisible;
+    basegfx::B2DPolyPolygon aInvisible;
+
+    // get visible and invisible parts
+    getPolyPolygon(aVisible, aInvisible, nullptr);
+
+    if(!(aVisible.count() || aInvisible.count()))
+        return;
+
+    for(sal_uInt32 nWindow = 0; nWindow < pPageView->PageWindowCount(); nWindow++)
     {
-        SdrMarkView* pView = pHdlList->GetView();
-        SdrPageView* pPageView = pView->GetSdrPageView();
+        const SdrPageWindow& rPageWindow = *pPageView->GetPageWindow(nWindow);
 
-        if(pPageView)
+        if(rPageWindow.GetPaintWindow().OutputToWindow())
         {
-            basegfx::B2DPolyPolygon aVisible;
-            basegfx::B2DPolyPolygon aInvisible;
-
-            // get visible and invisible parts
-            getPolyPolygon(aVisible, aInvisible, nullptr);
-
-            if(aVisible.count() || aInvisible.count())
+            const rtl::Reference< sdr::overlay::OverlayManager >& xManager = rPageWindow.GetOverlayManager();
+            if (xManager.is())
             {
-                for(sal_uInt32 nWindow = 0; nWindow < pPageView->PageWindowCount(); nWindow++)
+                if(aVisible.count())
                 {
-                    const SdrPageWindow& rPageWindow = *pPageView->GetPageWindow(nWindow);
+                    // create overlay object for visible parts
+                    std::unique_ptr<sdr::overlay::OverlayObject> pOverlayObject(new OverlayTableEdge(aVisible, true));
 
-                    if(rPageWindow.GetPaintWindow().OutputToWindow())
-                    {
-                        rtl::Reference< sdr::overlay::OverlayManager > xManager = rPageWindow.GetOverlayManager();
-                        if (xManager.is())
-                        {
-                            if(aVisible.count())
-                            {
-                                // create overlay object for visible parts
-                                sdr::overlay::OverlayObject* pOverlayObject = new OverlayTableEdge(aVisible, true);
-                                xManager->add(*pOverlayObject);
-                                maOverlayGroup.append(pOverlayObject);
-                            }
+                    // OVERLAYMANAGER
+                    insertNewlyCreatedOverlayObjectForSdrHdl(
+                        std::move(pOverlayObject),
+                        rPageWindow.GetObjectContact(),
+                        *xManager);
+                }
 
-                            if(aInvisible.count())
-                            {
-                                // also create overlay object for invisible parts to allow
-                                // a standard HitTest using the primitives from that overlay object
-                                // (see OverlayTableEdge implementation)
-                                sdr::overlay::OverlayObject* pOverlayObject = new OverlayTableEdge(aInvisible, false);
-                                xManager->add(*pOverlayObject);
-                                maOverlayGroup.append(pOverlayObject);
-                            }
-                        }
-                    }
+                if(aInvisible.count())
+                {
+                    // also create overlay object for invisible parts to allow
+                    // a standard HitTest using the primitives from that overlay object
+                    // (see OverlayTableEdge implementation)
+                    std::unique_ptr<sdr::overlay::OverlayObject> pOverlayObject(new OverlayTableEdge(aInvisible, false));
+
+                    // OVERLAYMANAGER
+                    insertNewlyCreatedOverlayObjectForSdrHdl(
+                        std::move(pOverlayObject),
+                        rPageWindow.GetObjectContact(),
+                        *xManager);
                 }
             }
         }
@@ -198,7 +201,7 @@ void TableEdgeHdl::CreateB2dIAObject()
 
 
 OverlayTableEdge::OverlayTableEdge( const basegfx::B2DPolyPolygon& rPolyPolygon, bool bVisible )
-:   OverlayObject(Color(COL_GRAY))
+:   OverlayObject(COL_GRAY)
 ,   maPolyPolygon( rPolyPolygon )
 ,   mbVisible(bVisible)
 {
@@ -246,7 +249,7 @@ TableBorderHdl::TableBorderHdl(
 {
 }
 
-Pointer TableBorderHdl::GetPointer() const
+PointerStyle TableBorderHdl::GetPointer() const
 {
     return PointerStyle::Move;
 }
@@ -256,52 +259,54 @@ void TableBorderHdl::CreateB2dIAObject()
 {
     GetRidOfIAObject();
 
-    if (pHdlList && pHdlList->GetView() && !pHdlList->GetView()->areMarkHandlesHidden())
+    if (!(pHdlList && pHdlList->GetView() && !pHdlList->GetView()->areMarkHandlesHidden()))
+        return;
+
+    SdrMarkView* pView = pHdlList->GetView();
+    SdrPageView* pPageView = pView->GetSdrPageView();
+
+    if (!pPageView)
+        return;
+
+    for(sal_uInt32 nWindow = 0; nWindow < pPageView->PageWindowCount(); nWindow++)
     {
-        SdrMarkView* pView = pHdlList->GetView();
-        SdrPageView* pPageView = pView->GetSdrPageView();
+        const SdrPageWindow& rPageWindow = *pPageView->GetPageWindow(nWindow);
 
-        if (!pPageView)
-            return;
-
-        for(sal_uInt32 nWindow = 0; nWindow < pPageView->PageWindowCount(); nWindow++)
+        if (rPageWindow.GetPaintWindow().OutputToWindow())
         {
-            const SdrPageWindow& rPageWindow = *pPageView->GetPageWindow(nWindow);
+            const rtl::Reference<sdr::overlay::OverlayManager>& xManager = rPageWindow.GetOverlayManager();
 
-            if (rPageWindow.GetPaintWindow().OutputToWindow())
+            if (xManager.is())
             {
-                rtl::Reference<sdr::overlay::OverlayManager> xManager = rPageWindow.GetOverlayManager();
+                const basegfx::B2DRange aRange = vcl::unotools::b2DRectangleFromRectangle(maRectangle);
+                const SvtOptionsDrawinglayer aSvtOptionsDrawinglayer;
+                const Color aHilightColor(aSvtOptionsDrawinglayer.getHilightColor());
+                const double fTransparence(aSvtOptionsDrawinglayer.GetTransparentSelectionPercent() * 0.01);
+                // make animation dependent from text edit active, because for tables
+                // this handle is also used when text edit *is* active for it. This
+                // interferes too much concerning repaint stuff (at least as long as
+                // text edit is not yet on the overlay)
 
-                if (xManager.is())
-                {
-                    const basegfx::B2DRange aRange(vcl::unotools::b2DRectangleFromRectangle(maRectangle));
-                    const SvtOptionsDrawinglayer aSvtOptionsDrawinglayer;
-                    const Color aHilightColor(aSvtOptionsDrawinglayer.getHilightColor());
-                    const double fTransparence(aSvtOptionsDrawinglayer.GetTransparentSelectionPercent() * 0.01);
-                    // make animation dependent from text edit active, because for tables
-                    // this handle is also used when text edit *is* active for it. This
-                    // interferes too much concerning repaint stuff (at least as long as
-                    // text edit is not yet on the overlay)
-                    const bool bAnimate = getAnimate();
+                OutputDevice& rOutDev = rPageWindow.GetPaintWindow().GetOutputDevice();
+                float fScaleFactor = rOutDev.GetDPIScaleFactor();
+                double fWidth = fScaleFactor * 6.0;
 
-                    OutputDevice& rOutDev = rPageWindow.GetPaintWindow().GetOutputDevice();
-                    float fScaleFactor = rOutDev.GetDPIScaleFactor();
-                    double fWidth = fScaleFactor * 6.0;
+                std::unique_ptr<sdr::overlay::OverlayObject> pOverlayObject(
+                    new sdr::overlay::OverlayRectangle(aRange.getMinimum(), aRange.getMaximum(),
+                                                       aHilightColor, fTransparence,
+                                                       fWidth, 0.0, 0.0, mbAnimate));
 
-                    sdr::overlay::OverlayObject* pOverlayObject =
-                        new sdr::overlay::OverlayRectangle(aRange.getMinimum(), aRange.getMaximum(),
-                                                           aHilightColor, fTransparence,
-                                                           fWidth, 0.0, 0.0, bAnimate);
-                    xManager->add(*pOverlayObject);
-                    maOverlayGroup.append(pOverlayObject);
-                }
+                // OVERLAYMANAGER
+                insertNewlyCreatedOverlayObjectForSdrHdl(
+                    std::move(pOverlayObject),
+                    rPageWindow.GetObjectContact(),
+                    *xManager);
             }
         }
     }
 }
 
 
-} // end of namespace table
-} // end of namespace sdr
+} // end of namespace sdr::table
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -19,28 +19,14 @@
 #ifndef INCLUDED_CUI_SOURCE_INC_HLTPBASE_HXX
 #define INCLUDED_CUI_SOURCE_INC_HLTPBASE_HXX
 
-#include <sfx2/app.hxx>
 #include <sfx2/tabdlg.hxx>
-#include <vcl/group.hxx>
-#include <vcl/button.hxx>
-#include <vcl/fixed.hxx>
-#include <vcl/combobox.hxx>
-#include <vcl/edit.hxx>
-#include <vcl/lstbox.hxx>
-#include <svl/stritem.hxx>
-#include <svl/eitem.hxx>
-#include <svtools/transfer.hxx>
+#include <vcl/transfer.hxx>
 #include <sfx2/dispatch.hxx>
-#include <vcl/msgbox.hxx>
-#include <sfx2/fcontnr.hxx>
 #include <svtools/inettbc.hxx>
 #include <vcl/timer.hxx>
+#include <vcl/waitobj.hxx>
 
-#include <dialmgr.hxx>
-#include <sfx2/docfile.hxx>
-#include <cuires.hrc>
 #include <com/sun/star/frame/XFrame.hpp>
-#include "helpid.hrc"
 #include <svx/hlnkitem.hxx>
 
 #include "hlmarkwn.hxx"
@@ -54,19 +40,20 @@ protected:
     virtual sal_Int8    ExecuteDrop( const ExecuteDropEvent& rEvt ) override;
 
 public:
-    SvxHyperURLBox( vcl::Window* pParent, INetProtocol eSmart = INetProtocol::File );
-
+    SvxHyperURLBox(std::unique_ptr<weld::ComboBox> xWidget);
 };
 
 /// Tabpage : Basisclass
 class SvxHyperlinkTabPageBase : public IconChoicePage
 {
 private:
-    VclPtr<ComboBox>            mpCbbFrame;
-    VclPtr<ListBox>             mpLbForm;
-    VclPtr<Edit>                mpEdIndication;
-    VclPtr<Edit>                mpEdText;
-    VclPtr<PushButton>          mpBtScript;
+    std::unique_ptr<weld::ComboBox> mxCbbFrame;
+    std::unique_ptr<weld::ComboBox> mxLbForm;
+    std::unique_ptr<weld::Entry> mxEdIndication;
+    std::unique_ptr<weld::Entry> mxEdText;
+    std::unique_ptr<weld::Button> mxBtScript;
+    std::unique_ptr<weld::Label> mxFormLabel;
+    std::unique_ptr<weld::Label> mxFrameLabel;
 
     bool                        mbIsCloseDisabled;
 
@@ -74,7 +61,7 @@ private:
                                 mxDocumentFrame;
 
 protected:
-    VclPtr<vcl::Window> mpDialog;
+    SvxHpLinkDlg* mpDialog;
 
     bool                mbStdControlsInit;
 
@@ -82,7 +69,9 @@ protected:
 
     Timer               maTimer;
 
-    VclPtr<SvxHlinkDlgMarkWnd> mpMarkWnd;
+    TopLevelWindowLocker maBusy;
+
+    std::shared_ptr<SvxHlinkDlgMarkWnd> mxMarkWnd;
 
     void InitStdControls ();
     void FillStandardDlgFields ( const SvxHyperlinkItem* pHyperlinkItem );
@@ -95,22 +84,21 @@ protected:
                                           OUString& aStrIntName, OUString& aStrFrame,
                                           SvxLinkInsertMode& eMode );
 
-    DECL_LINK (ClickScriptHdl_Impl, Button*, void ); ///< Button : Script
+    DECL_LINK (ClickScriptHdl_Impl, weld::Button&, void ); ///< Button : Script
 
     static OUString GetSchemeFromURL( const OUString& rStrURL );
 
-    void     DisableClose( bool _bDisable ) { mbIsCloseDisabled = _bDisable; }
+    void     DisableClose( bool _bDisable );
 
 public:
     SvxHyperlinkTabPageBase (
-        vcl::Window *pParent,
-        IconChoiceDialog* pDlg,
-        const OString& rID,
+        weld::Container* pParent,
+        SvxHpLinkDlg* pDlg,
         const OUString& rUIXMLDescription,
+        const OString& rID,
         const SfxItemSet* pItemSet
     );
     virtual ~SvxHyperlinkTabPageBase () override;
-    virtual void dispose() override;
 
     void    SetDocumentFrame(
         const css::uno::Reference< css::frame::XFrame >& rxDocumentFrame )
@@ -127,24 +115,21 @@ public:
     virtual void ActivatePage( const SfxItemSet& rItemSet ) override;
     virtual DeactivateRC DeactivatePage( SfxItemSet* pSet ) override;
 
-    bool IsMarkWndVisible ()      { return static_cast<vcl::Window*>(mpMarkWnd)->IsVisible(); }
-    Size GetSizeExtraWnd ()       { return ( mpMarkWnd->GetSizePixel() ); }
-    bool MoveToExtraWnd ( Point aNewPos, bool bDisConnectDlg = false );
+    bool IsMarkWndVisible() const { return static_cast<bool>(mxMarkWnd); }
+    void MoveToExtraWnd ( Point aNewPos );
 
-    using TabPage::ActivatePage;
-    using TabPage::DeactivatePage;
     virtual bool        QueryClose() override;
 
 protected:
     virtual bool ShouldOpenMarkWnd();
     virtual void SetMarkWndShouldOpen(bool bOpen);
 
-    void ShowMarkWnd ();
-    void HideMarkWnd ()           { static_cast<vcl::Window*>(mpMarkWnd)->Hide(); }
+    void ShowMarkWnd();
+    void HideMarkWnd();
 
     SfxDispatcher* GetDispatcher() const;
 
-    HyperDialogEvent   GetMacroEvents();
+    HyperDialogEvent   GetMacroEvents() const;
     SvxMacroTableDtor* GetMacroTable();
 };
 

@@ -18,13 +18,11 @@
  */
 
 
-#include <basegfx/matrix/b2dhommatrix.hxx>
 #include <basegfx/point/b2dpoint.hxx>
 #include "doublediamondwipe.hxx"
 
 
-namespace slideshow {
-namespace internal {
+namespace slideshow::internal {
 
 ::basegfx::B2DPolyPolygon DoubleDiamondWipe::operator () ( double t )
 {
@@ -51,7 +49,6 @@ namespace internal {
     return res;
 }
 
-}
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

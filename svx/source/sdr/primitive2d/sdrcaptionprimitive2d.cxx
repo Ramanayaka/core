@@ -18,9 +18,9 @@
  */
 
 #include <sdr/primitive2d/sdrcaptionprimitive2d.hxx>
+#include <basegfx/polygon/b2dpolypolygon.hxx>
 #include <basegfx/polygon/b2dpolygontools.hxx>
-#include <svx/sdr/primitive2d/sdrdecompositiontools.hxx>
-#include <drawinglayer/primitive2d/groupprimitive2d.hxx>
+#include <sdr/primitive2d/sdrdecompositiontools.hxx>
 #include <svx/sdr/primitive2d/svx_primitivetypes2d.hxx>
 #include <drawinglayer/primitive2d/sdrdecompositiontools2d.hxx>
 
@@ -28,16 +28,14 @@
 using namespace com::sun::star;
 
 
-namespace drawinglayer
+namespace drawinglayer::primitive2d
 {
-    namespace primitive2d
-    {
         void SdrCaptionPrimitive2D::create2DDecomposition(Primitive2DContainer& rContainer, const geometry::ViewInformation2D& /*aViewInformation*/) const
         {
             Primitive2DContainer aRetval;
 
             // create unit outline polygon
-            const basegfx::B2DPolygon aUnitOutline(basegfx::tools::createPolygonFromRect(
+            const basegfx::B2DPolygon aUnitOutline(basegfx::utils::createPolygonFromRect(
                 basegfx::B2DRange(0.0, 0.0, 1.0, 1.0),
                 getCornerRadiusX(),
                 getCornerRadiusY()));
@@ -110,7 +108,6 @@ namespace drawinglayer
                         getSdrLFSTAttribute().getText(),
                         getSdrLFSTAttribute().getLine(),
                         false,
-                        false,
                         false));
             }
 
@@ -125,7 +122,7 @@ namespace drawinglayer
 
         SdrCaptionPrimitive2D::SdrCaptionPrimitive2D(
             const basegfx::B2DHomMatrix& rTransform,
-            const attribute::SdrLineFillShadowTextAttribute& rSdrLFSTAttribute,
+            const attribute::SdrLineFillEffectsTextAttribute& rSdrLFSTAttribute,
             const basegfx::B2DPolygon& rTail,
             double fCornerRadiusX,
             double fCornerRadiusY)
@@ -164,7 +161,6 @@ namespace drawinglayer
         // provide unique ID
         ImplPrimitive2DIDBlock(SdrCaptionPrimitive2D, PRIMITIVE2D_ID_SDRCAPTIONPRIMITIVE2D)
 
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

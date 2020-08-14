@@ -17,10 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "sal/config.h"
+#include <sal/config.h>
 
 #include <osl/module.hxx>
-#include <osl/thread.h>
 
 #include <uno/environment.hxx>
 #include <uno/lbnames.h>
@@ -28,17 +27,18 @@
 
 #include <cppuhelper/factory.hxx>
 
-#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
-#include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/registry/XRegistryKey.hpp>
 
-#include "jni.h"
-#include "jvmaccess/virtualmachine.hxx"
-#include "jvmaccess/unovirtualmachine.hxx"
+#include <jni.h>
+#include <jvmaccess/unovirtualmachine.hxx>
 
 #include "juhx-export-functions.hxx"
 #include "vm.hxx"
+
+#ifdef DISABLE_DYNLOADING
+#include <osl/thread.h>
+#endif
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
@@ -74,7 +74,7 @@ jboolean Java_com_sun_star_comp_helper_SharedLibraryLoader_component_1writeInfo(
         {
             Environment java_env, loader_env;
 
-            const sal_Char * pEnvTypeName = nullptr;
+            const char * pEnvTypeName = nullptr;
             (*reinterpret_cast<component_getImplementationEnvironmentFunc>(pSym))(
                 &pEnvTypeName, reinterpret_cast<uno_Environment **>(&loader_env) );
             if (! loader_env.is())
@@ -124,7 +124,7 @@ jboolean Java_com_sun_star_comp_helper_SharedLibraryLoader_component_1writeInfo(
         lib.release();
     }
 #endif
-    return bRet ? JNI_TRUE : JNI_FALSE;
+    return bRet;
 }
 
 /*
@@ -163,7 +163,7 @@ jobject Java_com_sun_star_comp_helper_SharedLibraryLoader_component_1getFactory(
         {
             Environment java_env, loader_env;
 
-            const sal_Char * pEnvTypeName = nullptr;
+            const char * pEnvTypeName = nullptr;
             (*reinterpret_cast<component_getImplementationEnvironmentFunc>(pSym))(
                 &pEnvTypeName, reinterpret_cast<uno_Environment **>(&loader_env) );
 

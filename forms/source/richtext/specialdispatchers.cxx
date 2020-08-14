@@ -19,9 +19,10 @@
 
 #include "specialdispatchers.hxx"
 #include <editeng/editeng.hxx>
+#include <editeng/editids.hrc>
 #include <editeng/editview.hxx>
-#include <svx/svxids.hrc>
 #include <editeng/scriptspaceitem.hxx>
+#include <osl/diagnose.h>
 
 
 namespace frm
@@ -155,8 +156,8 @@ namespace frm
             bool bEnable = true;
             OSL_VERIFY( pLookup->Value >>= bEnable );
             if ( m_nAttributeId == SID_ATTR_PARA_SCRIPTSPACE )
-                return new SvxScriptSpaceItem( bEnable, (WhichId)m_nAttributeId );
-            return new SfxBoolItem( (WhichId)m_nAttributeId, bEnable );
+                return new SvxScriptSpaceItem( bEnable, static_cast<WhichId>(m_nAttributeId) );
+            return new SfxBoolItem( static_cast<WhichId>(m_nAttributeId), bEnable );
         }
 
         OSL_FAIL( "OAsianFontLayoutDispatcher::convertDispatchArgsToItem: did not find the one and only argument!" );

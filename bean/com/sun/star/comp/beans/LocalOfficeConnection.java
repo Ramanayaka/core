@@ -69,7 +69,7 @@ public class LocalOfficeConnection
 
     static
     {
-        // preload shared libraries whichs import lips are linked to officebean
+        // preload shared libraries which import lips are linked to officebean
         if ( System.getProperty( "os.name" ).startsWith( "Windows" ) )
         {
             try
@@ -192,7 +192,7 @@ public class LocalOfficeConnection
     /**
      * Sets an AWT container factory.
      *
-     * @param containerFactory This is a application provided AWT container
+     * @param containerFactory This is an application provided AWT container
      *  factory.
      */
     @Deprecated

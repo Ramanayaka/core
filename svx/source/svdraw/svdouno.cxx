@@ -20,35 +20,24 @@
 #include <sdr/contact/viewcontactofunocontrol.hxx>
 #include <sdr/contact/viewobjectcontactofunocontrol.hxx>
 #include <com/sun/star/container/XChild.hpp>
-#include <com/sun/star/awt/XWindow.hpp>
-#include <com/sun/star/awt/PosSize.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/io/XPersistObject.hpp>
-#include <com/sun/star/io/XOutputStream.hpp>
-#include <com/sun/star/io/XInputStream.hpp>
-#include <com/sun/star/io/XActiveDataSink.hpp>
-#include <com/sun/star/io/XActiveDataSource.hpp>
-#include <com/sun/star/io/XObjectOutputStream.hpp>
-#include <com/sun/star/io/XObjectInputStream.hpp>
 #include <com/sun/star/util/XCloneable.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
 #include <comphelper/processfactory.hxx>
-#include <comphelper/types.hxx>
-#include <vcl/pdfextoutdevdata.hxx>
 #include <svx/svdouno.hxx>
 #include <svx/svdpagv.hxx>
 #include <svx/svdmodel.hxx>
-#include "svdglob.hxx"
-#include "svx/svdstr.hrc"
-#include <svx/svdetc.hxx>
+#include <svx/dialmgr.hxx>
+#include <svx/strings.hrc>
 #include <svx/svdview.hxx>
 #include <svx/svdorect.hxx>
-#include "svx/svdviter.hxx"
+#include <svx/svdviter.hxx>
+#include <rtl/ustrbuf.hxx>
 #include <rtl/ref.hxx>
-#include <set>
 #include <svx/sdrpagewindow.hxx>
-#include <svx/sdrpaintwindow.hxx>
 #include <tools/diagnose_ex.h>
-#include <svx/svdograf.hxx>
+#include <tools/debug.hxx>
+#include <o3tl/sorted_vector.hxx>
 
 using namespace ::com::sun::star;
 using namespace sdr::contact;
@@ -112,7 +101,7 @@ struct SdrUnoObjDataHolder
 
 namespace
 {
-    void lcl_ensureControlVisibility( SdrView* _pView, const SdrUnoObj* _pObject, bool _bVisible )
+    void lcl_ensureControlVisibility( SdrView const * _pView, const SdrUnoObj* _pObject, bool _bVisible )
     {
         OSL_PRECOND( _pObject, "lcl_ensureControlVisibility: no object -> no survival!" );
 
@@ -145,9 +134,11 @@ namespace
     }
 }
 
-
-SdrUnoObj::SdrUnoObj(const OUString& rModelName)
-:   m_pImpl( new SdrUnoObjDataHolder )
+SdrUnoObj::SdrUnoObj(
+    SdrModel& rSdrModel,
+    const OUString& rModelName)
+:   SdrRectObj(rSdrModel),
+    m_pImpl( new SdrUnoObjDataHolder )
 {
     bIsUnoObj = true;
 
@@ -158,9 +149,12 @@ SdrUnoObj::SdrUnoObj(const OUString& rModelName)
         CreateUnoControlModel(rModelName);
 }
 
-SdrUnoObj::SdrUnoObj(const OUString& rModelName,
-                     const uno::Reference< lang::XMultiServiceFactory >& rxSFac)
-:   m_pImpl( new SdrUnoObjDataHolder )
+SdrUnoObj::SdrUnoObj(
+    SdrModel& rSdrModel,
+    const OUString& rModelName,
+    const uno::Reference< lang::XMultiServiceFactory >& rxSFac)
+:   SdrRectObj(rSdrModel),
+    m_pImpl( new SdrUnoObjDataHolder )
 {
     bIsUnoObj = true;
 
@@ -189,7 +183,7 @@ SdrUnoObj::~SdrUnoObj()
     }
     catch( const uno::Exception& )
     {
-        OSL_FAIL( "SdrUnoObj::~SdrUnoObj: caught an exception!" );
+        TOOLS_WARN_EXCEPTION( "svx", "SdrUnoObj::~SdrUnoObj" );
     }
 }
 
@@ -225,13 +219,13 @@ void SdrUnoObj::SetContextWritingMode( const sal_Int16 _nContextWritingMode )
     }
     catch( const uno::Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("svx");
     }
 }
 
 OUString SdrUnoObj::TakeObjNameSingul() const
 {
-    OUStringBuffer sName(ImpGetResStr(STR_ObjNameSingulUno));
+    OUStringBuffer sName(SvxResId(STR_ObjNameSingulUno));
 
     OUString aName(GetName());
     if (!aName.isEmpty())
@@ -247,12 +241,12 @@ OUString SdrUnoObj::TakeObjNameSingul() const
 
 OUString SdrUnoObj::TakeObjNamePlural() const
 {
-    return ImpGetResStr(STR_ObjNamePluralUno);
+    return SvxResId(STR_ObjNamePluralUno);
 }
 
-SdrUnoObj* SdrUnoObj::Clone() const
+SdrUnoObj* SdrUnoObj::CloneSdrObject(SdrModel& rTargetModel) const
 {
-    return CloneHelper< SdrUnoObj >();
+    return CloneHelper< SdrUnoObj >(rTargetModel);
 }
 
 SdrUnoObj& SdrUnoObj::operator= (const SdrUnoObj& rObj)
@@ -268,7 +262,7 @@ SdrUnoObj& SdrUnoObj::operator= (const SdrUnoObj& rObj)
     aUnoControlTypeName = rObj.aUnoControlTypeName;
 
     // copy the uno control model
-    const uno::Reference< awt::XControlModel > xSourceControlModel( rObj.GetUnoControlModel(), uno::UNO_QUERY );
+    const uno::Reference< awt::XControlModel > xSourceControlModel = rObj.GetUnoControlModel();
     if ( xSourceControlModel.is() )
     {
         try
@@ -278,7 +272,7 @@ SdrUnoObj& SdrUnoObj::operator= (const SdrUnoObj& rObj)
         }
         catch( const uno::Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("svx");
         }
     }
 
@@ -303,21 +297,21 @@ void SdrUnoObj::NbcResize(const Point& rRef, const Fraction& xFact, const Fracti
 {
     SdrRectObj::NbcResize(rRef,xFact,yFact);
 
-    if (aGeo.nShearAngle!=0 || aGeo.nRotationAngle!=0)
-    {
-        // small correctors
-        if (aGeo.nRotationAngle>=9000 && aGeo.nRotationAngle<27000)
-        {
-            maRect.Move(maRect.Left()-maRect.Right(),maRect.Top()-maRect.Bottom());
-        }
+    if (aGeo.nShearAngle==0 && aGeo.nRotationAngle==0)
+        return;
 
-        aGeo.nRotationAngle  = 0;
-        aGeo.nShearAngle = 0;
-        aGeo.nSin       = 0.0;
-        aGeo.nCos       = 1.0;
-        aGeo.nTan       = 0.0;
-        SetRectsDirty();
+    // small correctors
+    if (aGeo.nRotationAngle>=9000 && aGeo.nRotationAngle<27000)
+    {
+        maRect.Move(maRect.Left()-maRect.Right(),maRect.Top()-maRect.Bottom());
     }
+
+    aGeo.nRotationAngle  = 0;
+    aGeo.nShearAngle = 0;
+    aGeo.nSin       = 0.0;
+    aGeo.nCos       = 1.0;
+    aGeo.nTan       = 0.0;
+    SetRectsDirty();
 }
 
 
@@ -327,38 +321,6 @@ bool SdrUnoObj::hasSpecialDrag() const
     // do want frame handles
     return false;
 }
-
-bool SdrUnoObj::supportsFullDrag() const
-{
-    // override to have the possibility to enable/disable in debug and
-    // to check some things out. Current solution is working, so default is
-    // enabled
-    static bool bDoSupportFullDrag(true);
-
-    return bDoSupportFullDrag;
-}
-
-SdrObject* SdrUnoObj::getFullDragClone() const
-{
-    SdrObject* pRetval = nullptr;
-    static bool bHandleSpecial(false);
-
-    if(bHandleSpecial)
-    {
-        // special handling for SdrUnoObj (FormControl). Create a SdrGrafObj
-        // for drag containing the graphical representation. This does not work too
-        // well, so the default is to simply clone
-        pRetval = new SdrGrafObj(SdrDragView::GetObjGraphic(GetModel(), this), GetLogicRect());
-    }
-    else
-    {
-        // call parent (simply clone)
-        pRetval = SdrRectObj::getFullDragClone();
-    }
-
-    return pRetval;
-}
-
 
 void SdrUnoObj::NbcSetLayer( SdrLayerID _nLayer )
 {
@@ -375,7 +337,7 @@ void SdrUnoObj::NbcSetLayer( SdrLayerID _nLayer )
     // same time)
 
     // collect all views in which our old layer is visible
-    ::std::set< SdrView* > aPreviouslyVisible;
+    o3tl::sorted_vector< SdrView* > aPreviouslyVisible;
 
     {
         SdrViewIter aIter( this );
@@ -386,20 +348,13 @@ void SdrUnoObj::NbcSetLayer( SdrLayerID _nLayer )
     SdrRectObj::NbcSetLayer( _nLayer );
 
     // collect all views in which our new layer is visible
-    ::std::set< SdrView* > aNewlyVisible;
+    o3tl::sorted_vector< SdrView* > aNewlyVisible;
 
     {
         SdrViewIter aIter( this );
         for ( SdrView* pView = aIter.FirstView(); pView; pView = aIter.NextView() )
         {
-            ::std::set< SdrView* >::const_iterator aPrevPos = aPreviouslyVisible.find( pView );
-            if ( aPreviouslyVisible.end() != aPrevPos )
-            {   // in pView, we were visible _before_ the layer change, and are
-                // visible _after_ the layer change, too
-                // -> we're not interested in this view at all
-                aPreviouslyVisible.erase( aPrevPos );
-            }
-            else
+            if ( aPreviouslyVisible.erase(pView) == 0 )
             {
                 // in pView, we were visible _before_ the layer change, and are
                 // _not_ visible after the layer change
@@ -410,22 +365,15 @@ void SdrUnoObj::NbcSetLayer( SdrLayerID _nLayer )
     }
 
     // now aPreviouslyVisible contains all views where we became invisible
-    ::std::set< SdrView* >::const_iterator aLoopViews;
-    for (   aLoopViews = aPreviouslyVisible.begin();
-            aLoopViews != aPreviouslyVisible.end();
-            ++aLoopViews
-        )
+    for (const auto& rpView : aPreviouslyVisible)
     {
-        lcl_ensureControlVisibility( *aLoopViews, this, false );
+        lcl_ensureControlVisibility( rpView, this, false );
     }
 
     // and aNewlyVisible all views where we became visible
-    for (   aLoopViews = aNewlyVisible.begin();
-            aLoopViews != aNewlyVisible.end();
-            ++aLoopViews
-        )
+    for (const auto& rpView : aNewlyVisible)
     {
-        lcl_ensureControlVisibility( *aLoopViews, this, true );
+        lcl_ensureControlVisibility( rpView, this, true );
     }
 }
 
@@ -512,8 +460,8 @@ uno::Reference< awt::XControl > SdrUnoObj::GetUnoControl(const SdrView& _rView, 
     uno::Reference< awt::XControl > xControl;
 
     SdrPageView* pPageView = _rView.GetSdrPageView();
-    OSL_ENSURE( pPageView && GetPage() == pPageView->GetPage(), "SdrUnoObj::GetUnoControl: This object is not displayed in that particular view!" );
-    if ( !pPageView || GetPage() != pPageView->GetPage() )
+    OSL_ENSURE( pPageView && getSdrPageFromSdrObject() == pPageView->GetPage(), "SdrUnoObj::GetUnoControl: This object is not displayed in that particular view!" );
+    if ( !pPageView || getSdrPageFromSdrObject() != pPageView->GetPage() )
         return nullptr;
 
     SdrPageWindow* pPageWindow = pPageView->FindPageWindow( _rOut );
@@ -553,9 +501,9 @@ bool SdrUnoObj::impl_getViewContact( ViewContactOfUnoControl*& _out_rpContact ) 
 }
 
 
-sdr::contact::ViewContact* SdrUnoObj::CreateObjectSpecificViewContact()
+std::unique_ptr<sdr::contact::ViewContact> SdrUnoObj::CreateObjectSpecificViewContact()
 {
-  return new sdr::contact::ViewContactOfUnoControl( *this );
+  return std::make_unique<sdr::contact::ViewContactOfUnoControl>( *this );
 }
 
 

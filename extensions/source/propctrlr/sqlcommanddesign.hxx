@@ -23,7 +23,6 @@
 #include <com/sun/star/lang/XMultiComponentFactory.hpp>
 #include <com/sun/star/beans/XPropertyChangeListener.hpp>
 #include <com/sun/star/frame/XController.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
 
 #include <connectivity/dbtools.hxx>
@@ -46,7 +45,7 @@ namespace pcr
     /** encapsulates the code for calling and managing a query design frame, used
         for interactively designing the Command property of a ->RowSet
     */
-    class SQLCommandDesigner : public SQLCommandDesigner_Base
+    class SQLCommandDesigner final : public SQLCommandDesigner_Base
     {
     private:
         css::uno::Reference< css::uno::XComponentContext >        m_xContext;
@@ -107,14 +106,13 @@ namespace pcr
         */
         void    dispose();
 
-    protected:
+    private:
         // XPropertyChangeListener
         virtual void SAL_CALL propertyChange( const css::beans::PropertyChangeEvent& evt ) override;
 
         // XEventListener
         virtual void SAL_CALL disposing( const css::lang::EventObject& Source ) override;
 
-    protected:
         virtual ~SQLCommandDesigner() override;
 
         /** opens a new frame for interactively designing an SQL command
@@ -164,7 +162,6 @@ namespace pcr
         */
         bool impl_trySuspendDesigner_nothrow() const;
 
-    private:
         SQLCommandDesigner( const SQLCommandDesigner& ) = delete;
         SQLCommandDesigner& operator=( const SQLCommandDesigner& ) = delete;
     };

@@ -21,16 +21,13 @@
 #include <svx/sdr/contact/viewobjectcontact.hxx>
 #include <svx/sdr/animation/objectanimator.hxx>
 #include <svx/sdr/contact/objectcontact.hxx>
-#include <svx/sdr/contact/viewcontact.hxx>
 #include <drawinglayer/primitive2d/animatedprimitive2d.hxx>
 #include <drawinglayer/animation/animationtiming.hxx>
 #include <comphelper/lok.hxx>
 
 
-namespace sdr
+namespace sdr::animation
 {
-    namespace animation
-    {
         double PrimitiveAnimation::getSmallestNextTime(double fCurrentTime)
         {
             double fRetval(0.0);
@@ -39,7 +36,7 @@ namespace sdr
             {
                 const sal_Int32 nCount(maAnimatedPrimitives.size());
 
-                for(sal_Int32 a(0L); a < nCount; a++)
+                for(sal_Int32 a(0); a < nCount; a++)
                 {
                     const drawinglayer::primitive2d::Primitive2DReference xRef(maAnimatedPrimitives[a]);
                     const drawinglayer::primitive2d::AnimatedSwitchPrimitive2D* pCandidate = dynamic_cast< const drawinglayer::primitive2d::AnimatedSwitchPrimitive2D* >(xRef.get());
@@ -75,35 +72,35 @@ namespace sdr
 
             // getSmallestNextTime will be zero when animation ended. If not zero, a next step
             // exists
-            if(!::basegfx::fTools::equalZero(fNextTime))
+            if(::basegfx::fTools::equalZero(fNextTime))
+                return;
+
+            // next time point exists, use it
+            sal_uInt32 nNextTime;
+
+            if(fNextTime >= double(0xffffff00))
             {
-                // next time point exists, use it
-                sal_uInt32 nNextTime;
-
-                if(fNextTime >= (double)0xffffff00)
-                {
-                    // take care for very late points in time, e.g. when a text animation stops
-                    // in a defined AnimationEntryFixed with endless (0xffffffff) duration
-                    nNextTime = GetTime() + (1000 * 60 * 60); // one hour, works with vcl timers, 0xffffff00 was too much...
-                }
-                else
-                {
-                    nNextTime = (sal_uInt32)fNextTime;
-                }
-
-                // ensure step forward in integer timing, the floating step difference maybe smaller than 1.0. Use
-                // at least 25ms for next step
-                const sal_uInt32 nMinimumStepTime((sal_uInt32)fCurrentTime + 25L);
-
-                if(nNextTime <= nMinimumStepTime)
-                {
-                    nNextTime = nMinimumStepTime;
-                }
-
-                // set time and reactivate by re-adding to the scheduler
-                SetTime(nNextTime);
-                mrVOContact.GetObjectContact().getPrimitiveAnimator().InsertEvent(this);
+                // take care for very late points in time, e.g. when a text animation stops
+                // in a defined AnimationEntryFixed with endless (0xffffffff) duration
+                nNextTime = GetTime() + (1000 * 60 * 60); // one hour, works with vcl timers, 0xffffff00 was too much...
             }
+            else
+            {
+                nNextTime = static_cast<sal_uInt32>(fNextTime);
+            }
+
+            // ensure step forward in integer timing, the floating step difference maybe smaller than 1.0. Use
+            // at least 25ms for next step
+            const sal_uInt32 nMinimumStepTime(static_cast<sal_uInt32>(fCurrentTime) + 25);
+
+            if(nNextTime <= nMinimumStepTime)
+            {
+                nNextTime = nMinimumStepTime;
+            }
+
+            // set time and reactivate by re-adding to the scheduler
+            SetTime(nNextTime);
+            mrVOContact.GetObjectContact().getPrimitiveAnimator().InsertEvent(*this);
         }
 
         PrimitiveAnimation::PrimitiveAnimation(sdr::contact::ViewObjectContact& rVOContact, const drawinglayer::primitive2d::Primitive2DContainer& rAnimatedPrimitives)
@@ -132,7 +129,7 @@ namespace sdr
                 // re-setup
                 prepareNextEvent();
         }
-    } // end of namespace animation
-} // end of namespace sdr
+
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

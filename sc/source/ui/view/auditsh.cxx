@@ -17,22 +17,19 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "scitems.hxx"
-#include <svl/srchitem.hxx>
 #include <sfx2/bindings.hxx>
 #include <sfx2/objface.hxx>
 #include <sfx2/objsh.hxx>
 #include <sfx2/request.hxx>
 #include <vcl/EnumContext.hxx>
 
-#include "auditsh.hxx"
-#include "tabvwsh.hxx"
-#include "scresid.hxx"
-#include "sc.hrc"
-#include "document.hxx"
+#include <auditsh.hxx>
+#include <tabvwsh.hxx>
+#include <sc.hrc>
+#include <document.hxx>
 
-#define ScAuditingShell
-#include "scslots.hxx"
+#define ShellClass_ScAuditingShell
+#include <scslots.hxx>
 
 
 SFX_IMPL_INTERFACE(ScAuditingShell, SfxShell)
@@ -48,7 +45,7 @@ ScAuditingShell::ScAuditingShell(ScViewData* pData) :
     nFunction( SID_FILL_ADD_PRED )
 {
     SetPool( &pViewData->GetViewShell()->GetPool() );
-    ::svl::IUndoManager* pMgr = pViewData->GetSfxDocShell()->GetUndoManager();
+    SfxUndoManager* pMgr = pViewData->GetSfxDocShell()->GetUndoManager();
     SetUndoManager( pMgr );
     if ( !pViewData->GetDocument()->IsUndoEnabled() )
     {
@@ -62,7 +59,7 @@ ScAuditingShell::~ScAuditingShell()
 {
 }
 
-void ScAuditingShell::Execute( SfxRequest& rReq )
+void ScAuditingShell::Execute( const SfxRequest& rReq )
 {
     SfxBindings& rBindings = pViewData->GetBindings();
     sal_uInt16 nSlot = rReq.GetSlot();

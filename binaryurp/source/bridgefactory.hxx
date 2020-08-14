@@ -20,28 +20,25 @@
 #ifndef INCLUDED_BINARYURP_SOURCE_BRIDGEFACTORY_HXX
 #define INCLUDED_BINARYURP_SOURCE_BRIDGEFACTORY_HXX
 
-#include "sal/config.h"
+#include <sal/config.h>
 
-#include <exception>
-#include <list>
+#include <vector>
 #include <map>
 
-#include "com/sun/star/bridge/XBridgeFactory2.hpp"
-#include "com/sun/star/lang/XServiceInfo.hpp"
-#include "com/sun/star/uno/Exception.hpp"
-#include "com/sun/star/uno/Reference.hxx"
-#include "com/sun/star/uno/RuntimeException.hpp"
-#include "cppuhelper/basemutex.hxx"
-#include "cppuhelper/compbase.hxx"
-#include "sal/types.h"
+#include <com/sun/star/bridge/XBridgeFactory2.hpp>
+#include <com/sun/star/lang/XServiceInfo.hpp>
+#include <com/sun/star/uno/Reference.hxx>
+#include <cppuhelper/basemutex.hxx>
+#include <cppuhelper/compbase.hxx>
+#include <sal/types.h>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace connection { class XConnection; }
     namespace uno {
         class XComponentContext;
         class XInterface;
     }
-} } }
+}
 
 namespace binaryurp {
 
@@ -57,16 +54,6 @@ typedef
 class BridgeFactory : private cppu::BaseMutex, public BridgeFactoryBase
 {
 public:
-    static com::sun::star::uno::Reference< com::sun::star::uno::XInterface >
-    SAL_CALL static_create(
-        com::sun::star::uno::Reference< com::sun::star::uno::XComponentContext >
-            const & xContext);
-
-    static OUString SAL_CALL static_getImplementationName();
-
-    static com::sun::star::uno::Sequence< OUString > SAL_CALL
-    static_getSupportedServiceNames();
-
     void removeBridge(
         com::sun::star::uno::Reference< com::sun::star::bridge::XBridge >
             const & bridge);
@@ -74,7 +61,6 @@ public:
     using BridgeFactoryBase::acquire;
     using BridgeFactoryBase::release;
 
-private:
     BridgeFactory(const BridgeFactory&) = delete;
     BridgeFactory& operator=(const BridgeFactory&) = delete;
 
@@ -82,6 +68,7 @@ private:
 
     virtual ~BridgeFactory() override;
 
+private:
     virtual OUString SAL_CALL getImplementationName() override;
 
     virtual sal_Bool SAL_CALL supportsService(OUString const & ServiceName) override;
@@ -110,9 +97,9 @@ private:
     void SAL_CALL disposing() override;
 
     typedef
-        std::list<
+        std::vector<
             com::sun::star::uno::Reference< com::sun::star::bridge::XBridge > >
-        BridgeList;
+        BridgeVector;
 
     typedef
         std::map<
@@ -120,7 +107,7 @@ private:
             com::sun::star::uno::Reference< com::sun::star::bridge::XBridge > >
         BridgeMap;
 
-    BridgeList unnamed_;
+    BridgeVector unnamed_;
     BridgeMap named_;
 };
 

@@ -20,12 +20,13 @@
 
 #include <svtools/embedhlp.hxx>
 #include <vcl/graphicfilter.hxx>
-#include <svtools/svtools.hrc>
-#include "bitmaps.hlst"
-#include <svtools/svtresid.hxx>
+#include <vcl/gdimtf.hxx>
+#include <vcl/outdev.hxx>
+#include <bitmaps.hlst>
 
+#include <sal/log.hxx>
+#include <comphelper/fileformat.h>
 #include <comphelper/embeddedobjectcontainer.hxx>
-#include <comphelper/seqstream.hxx>
 #include <toolkit/helper/vclunohelper.hxx>
 #include <unotools/ucbstreamhelper.hxx>
 #include <unotools/streamwrap.hxx>
@@ -41,21 +42,23 @@
 #include <com/sun/star/util/XModifyListener.hpp>
 #include <com/sun/star/util/XModifiable.hpp>
 #include <com/sun/star/embed/Aspects.hpp>
-#include <com/sun/star/embed/EmbedMisc.hpp>
 #include <com/sun/star/embed/EmbedStates.hpp>
 #include <com/sun/star/embed/NoVisualAreaSizeException.hpp>
 #include <com/sun/star/embed/XEmbeddedObject.hpp>
 #include <com/sun/star/embed/XStateChangeListener.hpp>
 #include <com/sun/star/embed/XLinkageSupport.hpp>
-#include <com/sun/star/datatransfer/XTransferable.hpp>
 #include <com/sun/star/chart2/XDefaultSizeTransmitter.hpp>
 #include <cppuhelper/implbase.hxx>
 #include <vcl/svapp.hxx>
+#include <tools/diagnose_ex.h>
+#include <tools/debug.hxx>
 #include <memory>
 
 using namespace com::sun::star;
 
 namespace svt {
+
+namespace {
 
 class EmbedEventListener_Impl : public ::cppu::WeakImplHelper < embed::XStateChangeListener,
                                                                  document::XEventListener,
@@ -71,7 +74,7 @@ public:
                                     , nState(-1)
                                 {}
 
-    static EmbedEventListener_Impl* Create( EmbeddedObjectRef* );
+    static rtl::Reference<EmbedEventListener_Impl> Create( EmbeddedObjectRef* );
 
     virtual void SAL_CALL changingState( const lang::EventObject& aEvent, ::sal_Int32 nOldState, ::sal_Int32 nNewState ) override;
     virtual void SAL_CALL stateChanged( const lang::EventObject& aEvent, ::sal_Int32 nOldState, ::sal_Int32 nNewState ) override;
@@ -82,23 +85,24 @@ public:
     virtual void SAL_CALL modified( const css::lang::EventObject& aEvent ) override;
 };
 
-EmbedEventListener_Impl* EmbedEventListener_Impl::Create( EmbeddedObjectRef* p )
+}
+
+rtl::Reference<EmbedEventListener_Impl> EmbedEventListener_Impl::Create( EmbeddedObjectRef* p )
 {
-    EmbedEventListener_Impl* pRet = new EmbedEventListener_Impl( p );
-    pRet->acquire();
+    rtl::Reference<EmbedEventListener_Impl> pRet(new EmbedEventListener_Impl( p ));
 
     if ( p->GetObject().is() )
     {
-        p->GetObject()->addStateChangeListener( pRet );
+        p->GetObject()->addStateChangeListener( pRet.get() );
 
-        uno::Reference < util::XCloseable > xClose( p->GetObject(), uno::UNO_QUERY );
+        uno::Reference < util::XCloseable > xClose = p->GetObject();
         DBG_ASSERT( xClose.is(), "Object does not support XCloseable!" );
         if ( xClose.is() )
-            xClose->addCloseListener( pRet );
+            xClose->addCloseListener( pRet.get() );
 
-        uno::Reference < document::XEventBroadcaster > xBrd( p->GetObject(), uno::UNO_QUERY );
+        uno::Reference < document::XEventBroadcaster > xBrd = p->GetObject();
         if ( xBrd.is() )
-            xBrd->addEventListener( pRet );
+            xBrd->addEventListener( pRet.get() );
 
         pRet->nState = p->GetObject()->getCurrentState();
         if ( pRet->nState == embed::EmbedStates::RUNNING )
@@ -106,7 +110,7 @@ EmbedEventListener_Impl* EmbedEventListener_Impl::Create( EmbeddedObjectRef* p )
             uno::Reference < util::XModifiable > xMod( p->GetObject()->getComponent(), uno::UNO_QUERY );
             if ( xMod.is() )
                 // listen for changes in running state (update replacements in case of changes)
-                xMod->addModifyListener( pRet );
+                xMod->addModifyListener( pRet.get() );
         }
     }
 
@@ -160,23 +164,23 @@ void SAL_CALL EmbedEventListener_Impl::stateChanged( const lang::EventObject&,
 void SAL_CALL EmbedEventListener_Impl::modified( const lang::EventObject& )
 {
     SolarMutexGuard aGuard;
-    if ( pObject && pObject->GetViewAspect() != embed::Aspects::MSOLE_ICON )
+    if ( !(pObject && pObject->GetViewAspect() != embed::Aspects::MSOLE_ICON) )
+        return;
+
+    if ( nState == embed::EmbedStates::RUNNING )
     {
-        if ( nState == embed::EmbedStates::RUNNING )
-        {
-            // updates only necessary in non-active states
-            if( pObject->IsChart() )
-                pObject->UpdateReplacementOnDemand();
-            else
-                pObject->UpdateReplacement();
-        }
-        else if ( nState == embed::EmbedStates::ACTIVE ||
-                  nState == embed::EmbedStates::UI_ACTIVE ||
-                  nState == embed::EmbedStates::INPLACE_ACTIVE )
-        {
-            // in case the object is inplace or UI active the replacement image should be updated on demand
+        // updates only necessary in non-active states
+        if( pObject->IsChart() )
             pObject->UpdateReplacementOnDemand();
-        }
+        else
+            pObject->UpdateReplacement();
+    }
+    else if ( nState == embed::EmbedStates::ACTIVE ||
+              nState == embed::EmbedStates::UI_ACTIVE ||
+              nState == embed::EmbedStates::INPLACE_ACTIVE )
+    {
+        // in case the object is inplace or UI active the replacement image should be updated on demand
+        pObject->UpdateReplacementOnDemand();
     }
 }
 
@@ -221,7 +225,7 @@ struct EmbeddedObjectRef_Impl
 {
     uno::Reference <embed::XEmbeddedObject> mxObj;
 
-    EmbedEventListener_Impl*                    xListener;
+    rtl::Reference<EmbedEventListener_Impl>     mxListener;
     OUString                                    aPersistName;
     OUString                                    aMediaType;
     comphelper::EmbeddedObjectContainer*        pContainer;
@@ -229,32 +233,31 @@ struct EmbeddedObjectRef_Impl
     sal_Int64                                   nViewAspect;
     bool                                        bIsLocked:1;
     bool                                        bNeedUpdate:1;
+    bool                                        bUpdating:1;
 
     // #i104867#
     sal_uInt32                                  mnGraphicVersion;
-    awt::Size                                   aDefaultSizeForChart_In_100TH_MM;//#i103460# charts do not necessaryly have an own size within ODF files, in this case they need to use the size settings from the surrounding frame, which is made available with this member
+    awt::Size                                   aDefaultSizeForChart_In_100TH_MM;//#i103460# charts do not necessarily have an own size within ODF files, in this case they need to use the size settings from the surrounding frame, which is made available with this member
 
     EmbeddedObjectRef_Impl() :
-        xListener(nullptr),
         pContainer(nullptr),
-        pGraphic(nullptr),
         nViewAspect(embed::Aspects::MSOLE_CONTENT),
         bIsLocked(false),
         bNeedUpdate(false),
+        bUpdating(false),
         mnGraphicVersion(0),
         aDefaultSizeForChart_In_100TH_MM(awt::Size(8000,7000))
     {}
 
     EmbeddedObjectRef_Impl( const EmbeddedObjectRef_Impl& r ) :
         mxObj(r.mxObj),
-        xListener(nullptr),
         aPersistName(r.aPersistName),
         aMediaType(r.aMediaType),
         pContainer(r.pContainer),
-        pGraphic(nullptr),
         nViewAspect(r.nViewAspect),
         bIsLocked(r.bIsLocked),
         bNeedUpdate(r.bNeedUpdate),
+        bUpdating(r.bUpdating),
         mnGraphicVersion(0),
         aDefaultSizeForChart_In_100TH_MM(r.aDefaultSizeForChart_In_100TH_MM)
     {
@@ -280,13 +283,13 @@ EmbeddedObjectRef::EmbeddedObjectRef( const uno::Reference < embed::XEmbeddedObj
 {
     mpImpl->nViewAspect = nAspect;
     mpImpl->mxObj = xObj;
-    mpImpl->xListener = EmbedEventListener_Impl::Create( this );
+    mpImpl->mxListener = EmbedEventListener_Impl::Create( this );
 }
 
 EmbeddedObjectRef::EmbeddedObjectRef( const EmbeddedObjectRef& rObj ) :
     mpImpl(new EmbeddedObjectRef_Impl(*rObj.mpImpl))
 {
-    mpImpl->xListener = EmbedEventListener_Impl::Create( this );
+    mpImpl->mxListener = EmbedEventListener_Impl::Create( this );
 }
 
 EmbeddedObjectRef::~EmbeddedObjectRef()
@@ -301,7 +304,7 @@ void EmbeddedObjectRef::Assign( const uno::Reference < embed::XEmbeddedObject >&
     Clear();
     mpImpl->nViewAspect = nAspect;
     mpImpl->mxObj = xObj;
-    mpImpl->xListener = EmbedEventListener_Impl::Create( this );
+    mpImpl->mxListener = EmbedEventListener_Impl::Create( this );
 
     //#i103460#
     if ( IsChart() )
@@ -315,44 +318,35 @@ void EmbeddedObjectRef::Assign( const uno::Reference < embed::XEmbeddedObject >&
 
 void EmbeddedObjectRef::Clear()
 {
-    if (mpImpl->mxObj.is() && mpImpl->xListener)
+    if (mpImpl->mxObj.is() && mpImpl->mxListener.is())
     {
-        mpImpl->mxObj->removeStateChangeListener(mpImpl->xListener);
+        mpImpl->mxObj->removeStateChangeListener(mpImpl->mxListener.get());
 
-        uno::Reference<util::XCloseable> xClose(mpImpl->mxObj, uno::UNO_QUERY);
-        if ( xClose.is() )
-            xClose->removeCloseListener( mpImpl->xListener );
-
-        uno::Reference<document::XEventBroadcaster> xBrd(mpImpl->mxObj, uno::UNO_QUERY);
-        if ( xBrd.is() )
-            xBrd->removeEventListener( mpImpl->xListener );
+        mpImpl->mxObj->removeCloseListener( mpImpl->mxListener.get() );
+        mpImpl->mxObj->removeEventListener( mpImpl->mxListener.get() );
 
         if ( mpImpl->bIsLocked )
         {
-            if ( xClose.is() )
+            try
             {
-                try
-                {
-                    mpImpl->mxObj->changeState(embed::EmbedStates::LOADED);
-                    xClose->close( true );
-                }
-                catch (const util::CloseVetoException&)
-                {
-                    // there's still someone who needs the object!
-                }
-                catch (const uno::Exception& e)
-                {
-                    SAL_WARN("svtools.misc", "Error on switching of the object to loaded state and closing: \"" << e.Message << "\"");
-                }
+                mpImpl->mxObj->changeState(embed::EmbedStates::LOADED);
+                mpImpl->mxObj->close( true );
+            }
+            catch (const util::CloseVetoException&)
+            {
+                // there's still someone who needs the object!
+            }
+            catch (const uno::Exception&)
+            {
+                TOOLS_WARN_EXCEPTION("svtools.misc", "Error on switching of the object to loaded state and closing");
             }
         }
     }
 
-    if (mpImpl->xListener)
+    if (mpImpl->mxListener.is())
     {
-        mpImpl->xListener->pObject = nullptr;
-        mpImpl->xListener->release();
-        mpImpl->xListener = nullptr;
+        mpImpl->mxListener->pObject = nullptr;
+        mpImpl->mxListener.clear();
     }
 
     mpImpl->mxObj = nullptr;
@@ -402,10 +396,15 @@ bool EmbeddedObjectRef::IsLocked() const
 
 void EmbeddedObjectRef::GetReplacement( bool bUpdate )
 {
+    Graphic aOldGraphic;
+
     if ( bUpdate )
     {
+        if (mpImpl->pGraphic)
+            aOldGraphic = *mpImpl->pGraphic;
+
         mpImpl->pGraphic.reset();
-        (mpImpl->aMediaType).clear();
+        mpImpl->aMediaType.clear();
         mpImpl->pGraphic.reset( new Graphic );
         mpImpl->mnGraphicVersion++;
     }
@@ -428,6 +427,17 @@ void EmbeddedObjectRef::GetReplacement( bool bUpdate )
             rGF.ImportGraphic( *mpImpl->pGraphic, OUString(), *pGraphicStream );
         mpImpl->mnGraphicVersion++;
     }
+
+    // note that UpdateReplacementOnDemand which resets mpImpl->pGraphic to null may have been called
+    // e.g. when exporting ooo58458-1.odt to doc
+    if (bUpdate && (!mpImpl->pGraphic || mpImpl->pGraphic->IsNone()) && !aOldGraphic.IsNone())
+    {
+        // We used to have an old graphic, tried to update and the update
+        // failed. Go back to the old graphic instead of having no graphic at
+        // all.
+        mpImpl->pGraphic.reset(new Graphic(aOldGraphic));
+        SAL_WARN("svtools.misc", "EmbeddedObjectRef::GetReplacement: update failed");
+    }
 }
 
 const Graphic* EmbeddedObjectRef::GetGraphic() const
@@ -440,15 +450,15 @@ const Graphic* EmbeddedObjectRef::GetGraphic() const
         else if ( !mpImpl->pGraphic )
             const_cast < EmbeddedObjectRef* >(this)->GetReplacement(false);
     }
-    catch( const uno::Exception& ex )
+    catch( const uno::Exception& )
     {
-        SAL_WARN("svtools.misc", "Something went wrong on getting the graphic: " << ex.Message);
+        DBG_UNHANDLED_EXCEPTION("svtools.misc", "Something went wrong on getting the graphic");
     }
 
     return mpImpl->pGraphic.get();
 }
 
-Size EmbeddedObjectRef::GetSize( MapMode* pTargetMapMode ) const
+Size EmbeddedObjectRef::GetSize( MapMode const * pTargetMapMode ) const
 {
     MapMode aSourceMapMode( MapUnit::Map100thMM );
     Size aResult;
@@ -477,18 +487,18 @@ Size EmbeddedObjectRef::GetSize( MapMode* pTargetMapMode ) const
             catch(const embed::NoVisualAreaSizeException&)
             {
             }
-            catch (const uno::Exception& e)
+            catch (const uno::Exception&)
             {
-                SAL_WARN("svtools.misc", "Something went wrong on getting of the size of the object: \"" << e.Message << "\"");
+                TOOLS_WARN_EXCEPTION("svtools.misc", "Something went wrong on getting of the size of the object");
             }
 
             try
             {
-                aSourceMapMode = VCLUnoHelper::UnoEmbed2VCLMapUnit(mpImpl->mxObj->getMapUnit(mpImpl->nViewAspect));
+                aSourceMapMode = MapMode(VCLUnoHelper::UnoEmbed2VCLMapUnit(mpImpl->mxObj->getMapUnit(mpImpl->nViewAspect)));
             }
-            catch (const uno::Exception& e)
+            catch (const uno::Exception&)
             {
-                SAL_WARN("svtools.misc", "Can not get the map mode: \"" << e.Message << "\"");
+                TOOLS_WARN_EXCEPTION("svtools.misc", "Can not get the map mode");
             }
         }
 
@@ -547,7 +557,7 @@ void EmbeddedObjectRef::SetGraphic( const Graphic& rGraphic, const OUString& rMe
     mpImpl->bNeedUpdate = false;
 }
 
-SvStream* EmbeddedObjectRef::GetGraphicStream( bool bUpdate ) const
+std::unique_ptr<SvStream> EmbeddedObjectRef::GetGraphicStream( bool bUpdate ) const
 {
     DBG_ASSERT( bUpdate || mpImpl->pContainer, "Can't retrieve current graphic!" );
     uno::Reference < io::XInputStream > xStream;
@@ -559,7 +569,7 @@ SvStream* EmbeddedObjectRef::GetGraphicStream( bool bUpdate ) const
         if ( xStream.is() )
         {
             const sal_Int32 nConstBufferSize = 32000;
-            SvStream *pStream = new SvMemoryStream( 32000, 32000 );
+            std::unique_ptr<SvStream> pStream(new SvMemoryStream( 32000, 32000 ));
             try
             {
                 sal_Int32 nRead=0;
@@ -573,10 +583,9 @@ SvStream* EmbeddedObjectRef::GetGraphicStream( bool bUpdate ) const
                 pStream->Seek(0);
                 return pStream;
             }
-            catch (const uno::Exception& ex)
+            catch (const uno::Exception&)
             {
-                SAL_WARN("svtools.misc", "discarding broken embedded object preview: " << ex.Message);
-                delete pStream;
+                DBG_UNHANDLED_EXCEPTION("svtools.misc", "discarding broken embedded object preview");
                 xStream.clear();
             }
         }
@@ -609,7 +618,7 @@ SvStream* EmbeddedObjectRef::GetGraphicStream( bool bUpdate ) const
                 if (mpImpl->pContainer)
                     mpImpl->pContainer->InsertGraphicStream(xStream,mpImpl->aPersistName,mpImpl->aMediaType);
 
-                SvStream* pResult = ::utl::UcbStreamHelper::CreateStream( xStream );
+                std::unique_ptr<SvStream> pResult = ::utl::UcbStreamHelper::CreateStream( xStream );
                 if (pResult && bUpdate)
                     mpImpl->bNeedUpdate = false;
 
@@ -627,7 +636,7 @@ void EmbeddedObjectRef::DrawPaintReplacement( const tools::Rectangle &rRect, con
     Size aAppFontSz = pOut->LogicToLogic( Size( 0, 8 ), &aMM, nullptr );
     vcl::Font aFnt( "Helvetica", aAppFontSz );
     aFnt.SetTransparent( true );
-    aFnt.SetColor( Color( COL_LIGHTRED ) );
+    aFnt.SetColor( COL_LIGHTRED );
     aFnt.SetWeight( WEIGHT_BOLD );
     aFnt.SetFamily( FAMILY_SWISS );
 
@@ -641,19 +650,19 @@ void EmbeddedObjectRef::DrawPaintReplacement( const tools::Rectangle &rRect, con
     // We start with the default size and decrease 1-AppFont
     for( sal_uInt16 i = 8; i > 2; i-- )
     {
-        aPt.X() = (rRect.GetWidth()  - pOut->GetTextWidth( rText )) / 2;
-        aPt.Y() = (rRect.GetHeight() - pOut->GetTextHeight()) / 2;
+        aPt.setX( (rRect.GetWidth()  - pOut->GetTextWidth( rText )) / 2 );
+        aPt.setY( (rRect.GetHeight() - pOut->GetTextHeight()) / 2 );
 
         bool bTiny = false;
         if( aPt.X() < 0 )
         {
             bTiny = true;
-            aPt.X() = 0;
+            aPt.setX( 0 );
         }
         if( aPt.Y() < 0 )
         {
             bTiny = true;
-            aPt.Y() = 0;
+            aPt.setY( 0 );
         }
         if( bTiny )
         {
@@ -670,7 +679,7 @@ void EmbeddedObjectRef::DrawPaintReplacement( const tools::Rectangle &rRect, con
     long nWidth = rRect.GetWidth();
     if(nHeight > 0 && nWidth > 0 && aBmp.GetSizePixel().Width() > 0)
     {
-        aPt.Y() = nHeight;
+        aPt.setY( nHeight );
         Point   aP = rRect.TopLeft();
         Size    aBmpSize = aBmp.GetSizePixel();
         // fit bitmap in
@@ -681,7 +690,7 @@ void EmbeddedObjectRef::DrawPaintReplacement( const tools::Rectangle &rRect, con
             // keep proportions
             long nH = nWidth * aBmpSize.Height() / aBmpSize.Width();
             // center
-            aP.Y() += (nHeight - nH) / 2;
+            aP.AdjustY((nHeight - nH) / 2 );
             nHeight = nH;
         }
         else
@@ -690,11 +699,11 @@ void EmbeddedObjectRef::DrawPaintReplacement( const tools::Rectangle &rRect, con
             // keep proportions
             long nW = nHeight * aBmpSize.Width() / aBmpSize.Height();
             // center
-            aP.X() += (nWidth - nW) / 2;
+            aP.AdjustX((nWidth - nW) / 2 );
             nWidth = nW;
         }
 
-        pOut->DrawBitmap(aP, Size( nWidth, nHeight ), aBmp.GetBitmap());
+        pOut->DrawBitmapEx(aP, Size( nWidth, nHeight ), aBmp);
     }
 
     pOut->IntersectClipRegion( rRect );
@@ -710,11 +719,11 @@ void EmbeddedObjectRef::DrawShading( const tools::Rectangle &rRect, OutputDevice
         return;
 
     pOut->Push();
-    pOut->SetLineColor( Color( COL_BLACK ) );
+    pOut->SetLineColor( COL_BLACK );
 
     Size aPixSize = pOut->LogicToPixel( rRect.GetSize() );
-    aPixSize.Width() -= 1;
-    aPixSize.Height() -= 1;
+    aPixSize.AdjustWidth( -1 );
+    aPixSize.AdjustHeight( -1 );
     Point aPixViewPos = pOut->LogicToPixel( rRect.TopLeft() );
     sal_Int32 nMax = aPixSize.Width() + aPixSize.Height();
     for( sal_Int32 i = 5; i < nMax; i += 5 )
@@ -765,8 +774,8 @@ void EmbeddedObjectRef::SetGraphicToContainer( const Graphic& rGraphic,
     {
         aStream.Seek( 0 );
 
-           uno::Reference < io::XInputStream > xStream = new ::utl::OSeekableInputStreamWrapper( aStream );
-           aContainer.InsertGraphicStream( xStream, aName, aMediaType );
+        uno::Reference < io::XInputStream > xStream = new ::utl::OSeekableInputStreamWrapper( aStream );
+        aContainer.InsertGraphicStream( xStream, aName, aMediaType );
     }
     else
         OSL_FAIL( "Export of graphic is failed!" );
@@ -790,26 +799,16 @@ bool EmbeddedObjectRef::IsChart(const css::uno::Reference < css::embed::XEmbedde
         || SvGlobalName(SO3_SCH_CLASSID_60) == aObjClsId;
 }
 
-bool EmbeddedObjectRef::IsGLChart(const css::uno::Reference < css::embed::XEmbeddedObject >& xObj)
-{
-    static const char* env = getenv("CHART_DUMMY_FACTORY");
-    if (IsChart(xObj))
-    {
-        if (env)
-            return true;
-
-        uno::Reference< chart2::XChartDocument > xChartDoc(xObj->getComponent(), uno::UNO_QUERY);
-        if (!xChartDoc.is())
-            return false;
-
-        return xChartDoc->isOpenGLChart();
-    }
-    return false;
-}
-
 void EmbeddedObjectRef::UpdateReplacement()
 {
-    GetReplacement( true );
+    if (mpImpl->bUpdating)
+    {
+        SAL_WARN("svtools.misc", "UpdateReplacement called while UpdateReplacement already underway");
+        return;
+    }
+    mpImpl->bUpdating = true;
+    GetReplacement(true);
+    mpImpl->bUpdating = false;
 }
 
 void EmbeddedObjectRef::UpdateReplacementOnDemand()
@@ -840,14 +839,6 @@ bool EmbeddedObjectRef::IsChart() const
     return EmbeddedObjectRef::IsChart(mpImpl->mxObj);
 }
 
-bool EmbeddedObjectRef::IsGLChart() const
-{
-    if (!mpImpl->mxObj.is())
-        return false;
-
-    return EmbeddedObjectRef::IsGLChart(mpImpl->mxObj);
-}
-
 // MT: Only used for getting accessible attributes, which are not localized
 OUString EmbeddedObjectRef::GetChartType()
 {
@@ -865,21 +856,21 @@ OUString EmbeddedObjectRef::GetChartType()
                     if( ! xDiagram.is())
                         return OUString();
                     uno::Reference< chart2::XCoordinateSystemContainer > xCooSysCnt( xDiagram, uno::UNO_QUERY_THROW );
-                    uno::Sequence< uno::Reference< chart2::XCoordinateSystem > > aCooSysSeq( xCooSysCnt->getCoordinateSystems());
+                    const uno::Sequence< uno::Reference< chart2::XCoordinateSystem > > aCooSysSeq( xCooSysCnt->getCoordinateSystems());
                     // IA2 CWS. Unused: int nCoordinateCount = aCooSysSeq.getLength();
                     bool bGetChartType = false;
-                    for( sal_Int32 nCooSysIdx=0; nCooSysIdx<aCooSysSeq.getLength(); ++nCooSysIdx )
+                    for( const auto& rCooSys : aCooSysSeq )
                     {
-                        uno::Reference< chart2::XChartTypeContainer > xCTCnt( aCooSysSeq[nCooSysIdx], uno::UNO_QUERY_THROW );
-                        uno::Sequence< uno::Reference< chart2::XChartType > > aChartTypes( xCTCnt->getChartTypes());
-                        int nDimesionCount = aCooSysSeq[nCooSysIdx]->getDimension();
+                        uno::Reference< chart2::XChartTypeContainer > xCTCnt( rCooSys, uno::UNO_QUERY_THROW );
+                        const uno::Sequence< uno::Reference< chart2::XChartType > > aChartTypes( xCTCnt->getChartTypes());
+                        int nDimesionCount = rCooSys->getDimension();
                         if( nDimesionCount == 3 )
                             Style += "3D ";
                         else
                             Style += "2D ";
-                        for( sal_Int32 nCTIdx=0; nCTIdx<aChartTypes.getLength(); ++nCTIdx )
+                        for( const auto& rChartType : aChartTypes )
                         {
-                            OUString strChartType = aChartTypes[nCTIdx]->getChartType();
+                            OUString strChartType = rChartType->getChartType();
                             if (strChartType == "com.sun.star.chart2.AreaChartType")
                             {
                                 Style += "Areas";
@@ -892,7 +883,7 @@ OUString EmbeddedObjectRef::GetChartType()
                             }
                             else if (strChartType == "com.sun.star.chart2.ColumnChartType")
                             {
-                                uno::Reference< beans::XPropertySet > xProp( aCooSysSeq[nCooSysIdx], uno::UNO_QUERY );
+                                uno::Reference< beans::XPropertySet > xProp( rCooSys, uno::UNO_QUERY );
                                 if( xProp.is())
                                 {
                                     bool bCurrent = false;
@@ -950,7 +941,7 @@ sal_uInt32 EmbeddedObjectRef::getGraphicVersion() const
 
 void EmbeddedObjectRef::SetDefaultSizeForChart( const Size& rSizeIn_100TH_MM )
 {
-    //#i103460# charts do not necessaryly have an own size within ODF files,
+    //#i103460# charts do not necessarily have an own size within ODF files,
     //for this case they need to use the size settings from the surrounding frame,
     //which is made available with this method
 

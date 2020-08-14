@@ -23,15 +23,14 @@
 #include "pivotcachebuffer.hxx"
 #include "stylesbuffer.hxx"
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace sheet { class XDataPilotDescriptor; }
     namespace sheet { class XDataPilotField; }
-} } }
+}
 
 class ScDPObject;
 
-namespace oox {
-namespace xls {
+namespace oox::xls {
 
 class PivotTable;
 
@@ -297,6 +296,8 @@ public:
     void                importPageField( const AttributeList& rAttribs );
     /** Reads the settings of a field located in the data dimension from the dataField element. */
     void                importDataField( const AttributeList& rAttribs );
+    /** Puts the attributes to the named grab bag value. */
+    void putToInteropGrabBag(const OUString& sName, const AttributeList& rAttribs);
 
     /** Reads global pivot table settings from the PTDEFINITION record. */
     void                importPTDefinition( SequenceInputStream& rStrm );
@@ -379,6 +380,7 @@ private:
     PivotCache*           mpPivotCache;       /// The pivot cache this table is based on.
     css::uno::Reference< css::sheet::XDataPilotDescriptor >
                           mxDPDescriptor;     /// Descriptor of the DataPilot object.
+    std::map<OUString, css::uno::Any> maInteropGrabBag;
 
 };
 
@@ -398,8 +400,7 @@ private:
     PivotTableVector    maTables;
 };
 
-} // namespace xls
-} // namespace oox
+} // namespace oox::xls
 
 #endif
 

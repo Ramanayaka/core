@@ -20,17 +20,16 @@
 #ifndef INCLUDED_SW_SOURCE_CORE_INC_DRAWFONT_HXX
 #define INCLUDED_SW_SOURCE_CORE_INC_DRAWFONT_HXX
 
-#include <tools/solar.h>
 #include <osl/diagnose.h>
 #include <vcl/vclptr.hxx>
 #include <vcl/outdev.hxx>
+#include "TextFrameIndex.hxx"
+#include <swdllapi.h>
 
 class SwTextFrame;
 class SwViewShell;
 class SwScriptInfo;
-class Point;
-class SwWrongList;
-class Size;
+namespace sw { class WrongListIterator; }
 class SwFont;
 namespace vcl {
     class Font;
@@ -49,16 +48,17 @@ class SW_DLLPUBLIC SwDrawTextInfo
     Point m_aPos;
     vcl::TextLayoutCache const* m_pCachedVclData;
     OUString m_aText;
-    const SwWrongList* m_pWrong;
-    const SwWrongList* m_pGrammarCheck;
-    const SwWrongList* m_pSmartTags;
+    sw::WrongListIterator* m_pWrong;
+    sw::WrongListIterator* m_pGrammarCheck;
+    sw::WrongListIterator* m_pSmartTags;
     Size m_aSize;
     SwFont *m_pFnt;
     SwUnderlineFont* m_pUnderFnt;
-    sal_Int32* m_pHyphPos;
+    TextFrameIndex* m_pHyphPos;
     long m_nKanaDiff;
-    sal_Int32 m_nIdx;
-    sal_Int32 m_nLen;
+    TextFrameIndex m_nIdx;
+    TextFrameIndex m_nLen;
+    /// this is not a string index
     sal_Int32 m_nOfst;
     sal_uInt16 m_nWidth;
     sal_uInt16 m_nAscent;
@@ -66,7 +66,7 @@ class SW_DLLPUBLIC SwDrawTextInfo
     long m_nSperren;
     long m_nSpace;
     long m_nKern;
-    sal_Int32 m_nNumberOfBlanks;
+    TextFrameIndex m_nNumberOfBlanks;
     sal_uInt8 m_nCursorBidiLevel;
     bool m_bBullet : 1;
     bool m_bUpper : 1;        // for small caps: upper case flag
@@ -78,7 +78,7 @@ class SW_DLLPUBLIC SwDrawTextInfo
     bool m_bSnapToGrid : 1;   // Does paragraph snap to grid?
     // Paint text as if text has LTR direction, used for line numbering
     bool m_bIgnoreFrameRTL : 1;
-    // GetCursorOfst should not return the next position if screen position is
+    // GetModelPositionForViewPoint should not return the next position if screen position is
     // inside second half of bound rect, used for Accessibility
     bool m_bPosMatchesBounds :1;
 
@@ -103,8 +103,15 @@ public:
     bool m_bDrawSp: 1;
 #endif
 
+    /// constructor for simple strings
+    SwDrawTextInfo( SwViewShell const *pSh, OutputDevice &rOut,
+                    const OUString &rText, sal_Int32 const nIdx, sal_Int32 const nLen,
+                    sal_uInt16 nWidth = 0, bool bBullet = false)
+        : SwDrawTextInfo(pSh, rOut, nullptr, rText, TextFrameIndex(nIdx), TextFrameIndex(nLen), nWidth, bBullet)
+    {}
+    /// constructor for text frame contents
     SwDrawTextInfo( SwViewShell const *pSh, OutputDevice &rOut, const SwScriptInfo* pSI,
-                    const OUString &rText, sal_Int32 nIdx, sal_Int32 nLen,
+                    const OUString &rText, TextFrameIndex const nIdx, TextFrameIndex const nLen,
                     sal_uInt16 nWidth = 0, bool bBullet = false,
                     vcl::TextLayoutCache const*const pCachedVclData = nullptr)
         : m_pCachedVclData(pCachedVclData)
@@ -119,7 +126,7 @@ public:
         m_nKern = 0;
         m_nCompress = 0;
         m_nWidth = nWidth;
-        m_nNumberOfBlanks = 0;
+        m_nNumberOfBlanks = TextFrameIndex(0);
         m_nCursorBidiLevel = 0;
         m_bBullet = bBullet;
         m_pUnderFnt = nullptr;
@@ -193,7 +200,7 @@ public:
         return m_aPos;
     }
 
-    sal_Int32 *GetHyphPos() const
+    TextFrameIndex *GetHyphPos() const
     {
 #ifdef DBG_UTIL
         OSL_ENSURE( m_bHyph, "DrawTextInfo: Undefined Hyph Position" );
@@ -211,7 +218,7 @@ public:
         return m_aText;
     }
 
-    const SwWrongList* GetWrong() const
+    sw::WrongListIterator* GetWrong() const
     {
 #ifdef DBG_UTIL
         OSL_ENSURE( m_bWrong, "DrawTextInfo: Undefined WrongList" );
@@ -219,7 +226,7 @@ public:
         return m_pWrong;
     }
 
-    const SwWrongList* GetGrammarCheck() const
+    sw::WrongListIterator* GetGrammarCheck() const
     {
 #ifdef DBG_UTIL
         OSL_ENSURE( m_bGrammarCheck, "DrawTextInfo: Undefined GrammarCheck List" );
@@ -227,7 +234,7 @@ public:
         return m_pGrammarCheck;
     }
 
-    const SwWrongList* GetSmartTags() const
+    sw::WrongListIterator* GetSmartTags() const
     {
         return m_pSmartTags;
     }
@@ -253,17 +260,17 @@ public:
         return m_pUnderFnt;
     }
 
-    sal_Int32 GetIdx() const
+    TextFrameIndex GetIdx() const
     {
         return m_nIdx;
     }
 
-    sal_Int32 GetLen() const
+    TextFrameIndex GetLen() const
     {
         return m_nLen;
     }
 
-    sal_Int32 GetOfst() const
+    sal_Int32 GetOffset() const
     {
 #ifdef DBG_UTIL
         OSL_ENSURE( m_bOfst, "DrawTextInfo: Undefined Offset" );
@@ -271,7 +278,7 @@ public:
         return m_nOfst;
     }
 
-    sal_Int32 GetEnd() const
+    TextFrameIndex GetEnd() const
     {
         return m_nIdx + m_nLen;
     }
@@ -323,7 +330,7 @@ public:
         return m_nSpace;
     }
 
-    sal_Int32 GetNumberOfBlanks() const
+    TextFrameIndex GetNumberOfBlanks() const
     {
 #ifdef DBG_UTIL
         OSL_ENSURE( m_bNumberOfBlanks, "DrawTextInfo::Undefined NumberOfBlanks" );
@@ -395,7 +402,7 @@ public:
 #endif
     }
 
-    void SetHyphPos( sal_Int32 *pNew )
+    void SetHyphPos(TextFrameIndex *const pNew)
     {
         m_pHyphPos = pNew;
 #ifdef DBG_UTIL
@@ -409,7 +416,7 @@ public:
         m_pCachedVclData = nullptr; // would any case benefit from save/restore?
     }
 
-    void SetWrong( const SwWrongList* pNew )
+    void SetWrong(sw::WrongListIterator *const pNew)
     {
         m_pWrong = pNew;
 #ifdef DBG_UTIL
@@ -417,7 +424,7 @@ public:
 #endif
     }
 
-    void SetGrammarCheck( const SwWrongList* pNew )
+    void SetGrammarCheck(sw::WrongListIterator *const pNew)
     {
         m_pGrammarCheck = pNew;
 #ifdef DBG_UTIL
@@ -425,7 +432,7 @@ public:
 #endif
     }
 
-    void SetSmartTags( const SwWrongList* pNew )
+    void SetSmartTags(sw::WrongListIterator *const pNew)
     {
         m_pSmartTags = pNew;
     }
@@ -446,17 +453,17 @@ public:
 #endif
     }
 
-    void SetIdx( sal_Int32 nNew )
+    void SetIdx(TextFrameIndex const nNew)
     {
         m_nIdx = nNew;
     }
 
-    void SetLen( sal_Int32 nNew )
+    void SetLen(TextFrameIndex const nNew)
     {
         m_nLen = nNew;
     }
 
-    void SetOfst( sal_Int32 nNew )
+    void SetOffset( sal_Int32 nNew )
     {
         m_nOfst = nNew;
 #ifdef DBG_UTIL
@@ -508,7 +515,7 @@ public:
 #endif
     }
 
-    void SetNumberOfBlanks( sal_Int32 nNew )
+    void SetNumberOfBlanks( TextFrameIndex const nNew )
     {
 #ifdef DBG_UTIL
         m_bNumberOfBlanks = true;

@@ -17,11 +17,11 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <tools/stream.hxx>
 #include <svx/grfcrop.hxx>
 #include <editeng/itemtype.hxx>
 #include <com/sun/star/text/GraphicCrop.hpp>
 #include <tools/mapunit.hxx>
+#include <tools/UnitConversion.hxx>
 
 using namespace ::com::sun::star;
 
@@ -49,45 +49,6 @@ bool SvxGrfCrop::operator==( const SfxPoolItem& rAttr ) const
            nRight   == rCrop.GetRight() &&
            nTop     == rCrop.GetTop() &&
            nBottom  == rCrop.GetBottom();
-}
-
-SfxPoolItem* SvxGrfCrop::Create( SvStream& rStrm, sal_uInt16 nVersion ) const
-{
-    sal_Int32 top, left, right, bottom;
-    rStrm.ReadInt32( top ).ReadInt32( left ).ReadInt32( right ).ReadInt32( bottom );
-
-    if( GRFCROP_VERSION_SWDEFAULT == nVersion )
-    {
-        top = -top;
-        bottom = -bottom;
-        left = -left;
-        right = -right;
-    }
-
-    SvxGrfCrop* pNew = static_cast<SvxGrfCrop*>(Clone());
-    pNew->SetLeft( left );
-    pNew->SetRight( right );
-    pNew->SetTop( top );
-    pNew->SetBottom( bottom );
-    return pNew;
-}
-
-
-SvStream& SvxGrfCrop::Store( SvStream& rStrm, sal_uInt16 nVersion ) const
-{
-    sal_Int32 left = GetLeft(), right = GetRight(),
-            top = GetTop(), bottom = GetBottom();
-    if( GRFCROP_VERSION_SWDEFAULT == nVersion )
-    {
-        top = -top;
-        bottom = -bottom;
-        left = -left;
-        right = -right;
-    }
-
-    rStrm.WriteInt32( top ).WriteInt32( left ).WriteInt32( right ).WriteInt32( bottom );
-
-    return rStrm;
 }
 
 
@@ -137,7 +98,7 @@ bool SvxGrfCrop::PutValue( const uno::Any& rVal, sal_uInt8 nMemberId )
 
 bool SvxGrfCrop::GetPresentation(
     SfxItemPresentation ePres, MapUnit eCoreUnit, MapUnit /*ePresUnit*/,
-    OUString &rText, const IntlWrapper* pIntl ) const
+    OUString &rText, const IntlWrapper& rIntl ) const
 {
     rText.clear();
     switch( ePres )
@@ -145,10 +106,10 @@ bool SvxGrfCrop::GetPresentation(
     case SfxItemPresentation::Nameless:
         return true;
     case SfxItemPresentation::Complete:
-        rText = "L: "  + ::GetMetricText( GetLeft(), eCoreUnit, MapUnit::MapMM, pIntl ) +
-                " R: " + ::GetMetricText( GetRight(), eCoreUnit, MapUnit::MapMM, pIntl ) +
-                " T: " + ::GetMetricText( GetTop(), eCoreUnit, MapUnit::MapMM, pIntl ) +
-                " B: " + ::GetMetricText( GetBottom(), eCoreUnit, MapUnit::MapMM, pIntl );
+        rText = "L: "  + ::GetMetricText( GetLeft(), eCoreUnit, MapUnit::MapMM, &rIntl ) +
+                " R: " + ::GetMetricText( GetRight(), eCoreUnit, MapUnit::MapMM, &rIntl ) +
+                " T: " + ::GetMetricText( GetTop(), eCoreUnit, MapUnit::MapMM, &rIntl ) +
+                " B: " + ::GetMetricText( GetBottom(), eCoreUnit, MapUnit::MapMM, &rIntl );
         return true;
         break;
 

@@ -24,12 +24,11 @@
 #include "MacabHeader.hxx"
 #include "MacabRecord.hxx"
 
+#include <memory>
 #include <vector>
 
-namespace connectivity
+namespace connectivity::macab
 {
-    namespace macab
-    {
         class MacabOrder
         {
         public:
@@ -44,14 +43,14 @@ namespace connectivity
             bool m_bAscending;
 
         public:
-            MacabSimpleOrder(MacabHeader *header, OUString &sColumnName, bool bAscending);
+            MacabSimpleOrder(MacabHeader const *header, OUString const &sColumnName, bool bAscending);
 
             virtual sal_Int32 compare(const MacabRecord *record1, const MacabRecord *record2) const override;
         };
 
         class MacabComplexOrder : public MacabOrder
         {
-            std::vector<MacabOrder *> m_aOrders;
+            std::vector<std::unique_ptr<MacabOrder>> m_aOrders;
 
         public:
             MacabComplexOrder();
@@ -60,7 +59,6 @@ namespace connectivity
             void addOrder(MacabOrder *pOrder);
             virtual sal_Int32 compare(const MacabRecord *record1, const MacabRecord *record2) const override;
         };
-    }
 }
 
 #endif

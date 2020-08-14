@@ -19,7 +19,9 @@
 
 #include <sal/config.h>
 
-#include <canvas/propertysethelper.hxx>
+#include <propertysethelper.hxx>
+#include <com/sun/star/beans/PropertyVetoException.hpp>
+#include <com/sun/star/beans/UnknownPropertyException.hpp>
 
 using namespace ::com::sun::star;
 
@@ -69,7 +71,7 @@ namespace canvas
                    EntryComparator() );
 
         if( !maMapEntries.empty() )
-            mpMap.reset( new MapType(&maMapEntries[0],
+            mpMap.reset( new MapType(maMapEntries.data(),
                                      maMapEntries.size(),
                                      true) );
     }
@@ -86,7 +88,7 @@ namespace canvas
 
     bool PropertySetHelper::isPropertyName( const OUString& aPropertyName ) const
     {
-        if( !mpMap.get() )
+        if (!mpMap)
             return false;
 
         Callbacks aDummy;
@@ -104,9 +106,7 @@ namespace canvas
                                               const uno::Any&        aValue )
     {
         Callbacks aCallbacks;
-        if( !mpMap.get() ||
-            !mpMap->lookup( aPropertyName,
-                            aCallbacks ) )
+        if (!mpMap || !mpMap->lookup(aPropertyName, aCallbacks))
         {
             throwUnknown( aPropertyName );
         }
@@ -120,9 +120,7 @@ namespace canvas
     uno::Any PropertySetHelper::getPropertyValue( const OUString& aPropertyName ) const
     {
         Callbacks aCallbacks;
-        if( !mpMap.get() ||
-            !mpMap->lookup( aPropertyName,
-                            aCallbacks ) )
+        if (!mpMap || !mpMap->lookup(aPropertyName, aCallbacks))
         {
             throwUnknown( aPropertyName );
         }

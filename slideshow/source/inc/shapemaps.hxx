@@ -26,16 +26,11 @@
 #include <memory>
 #include <map>
 
-namespace com { namespace sun { namespace star { namespace drawing
-{
-    class XShape;
-} } } }
+namespace com::sun::star::drawing { class XShape; }
 
 /* Definition of two shape maps */
 
-namespace slideshow
-{
-    namespace internal
+namespace slideshow::internal
     {
         /// Maps XShape to shape listener
         typedef ::std::map< css::uno::Reference< css::drawing::XShape>,
@@ -45,7 +40,7 @@ namespace slideshow
         /// Maps XShape to mouse cursor
         typedef ::std::map< css::uno::Reference< css::drawing::XShape>,
                             sal_Int16>         ShapeCursorMap;
-    }
+
 }
 
 #endif // INCLUDED_SLIDESHOW_SOURCE_INC_SHAPEMAPS_HXX

@@ -17,89 +17,78 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_SFX2_SFXBASEMODEL_HXX
-#define INCLUDED_SFX2_SFXBASEMODEL_HXX
+#pragma once
 
 #include <sal/config.h>
 #include <sfx2/dllapi.h>
 #include <sal/types.h>
-#include <com/sun/star/lang/XTypeProvider.hpp>
 #include <com/sun/star/frame/XModule.hpp>
 #include <com/sun/star/frame/XTitle.hpp>
 #include <com/sun/star/frame/XTitleChangeBroadcaster.hpp>
 #include <com/sun/star/frame/XUntitledNumbers.hpp>
 #include <com/sun/star/container/XChild.hpp>
-#include <com/sun/star/container/XNameContainer.hpp>
-#include <com/sun/star/container/XNameReplace.hpp>
-#include <com/sun/star/frame/XController2.hpp>
 #include <com/sun/star/document/XCmisDocument.hpp>
-#include <com/sun/star/document/CmisVersion.hpp>
 #include <com/sun/star/document/XDocumentPropertiesSupplier.hpp>
 #include <com/sun/star/document/XDocumentRecovery.hpp>
 #include <com/sun/star/document/XUndoManagerSupplier.hpp>
 #include <com/sun/star/rdf/XDocumentMetadataAccess.hpp>
 #include <com/sun/star/document/XEventBroadcaster.hpp>
+#include <com/sun/star/document/XShapeEventBroadcaster.hpp>
 #include <com/sun/star/document/XDocumentEventBroadcaster.hpp>
-#include <com/sun/star/document/XEventListener.hpp>
 #include <com/sun/star/document/XEventsSupplier.hpp>
 #include <com/sun/star/document/XEmbeddedScripts.hpp>
-#include <com/sun/star/document/EventObject.hpp>
 #include <com/sun/star/document/XDocumentSubStorageSupplier.hpp>
 #include <com/sun/star/document/XStorageBasedDocument.hpp>
 #include <com/sun/star/document/XScriptInvocationContext.hpp>
 #include <com/sun/star/lang/XEventListener.hpp>
-#include <com/sun/star/lang/NotInitializedException.hpp>
-#include <com/sun/star/lang/DisposedException.hpp>
 #include <com/sun/star/frame/XModel2.hpp>
-#include <com/sun/star/frame/DoubleInitializationException.hpp>
 #include <com/sun/star/util/XModifiable2.hpp>
-#include <com/sun/star/util/XModifyListener.hpp>
 #include <com/sun/star/util/XCloseable.hpp>
-#include <com/sun/star/util/XCloseBroadcaster.hpp>
-#include <com/sun/star/util/XCloseListener.hpp>
-#include <com/sun/star/util/CloseVetoException.hpp>
 #include <com/sun/star/view/XPrintable.hpp>
 #include <com/sun/star/view/XPrintJobBroadcaster.hpp>
 #include <com/sun/star/frame/XStorable2.hpp>
 #include <com/sun/star/frame/XLoadable.hpp>
-#include <com/sun/star/beans/PropertyValue.hpp>
-#include <com/sun/star/document/CmisProperty.hpp>
 #include <com/sun/star/lang/EventObject.hpp>
 #include <com/sun/star/datatransfer/XTransferable.hpp>
 #include <com/sun/star/script/provider/XScriptProviderSupplier.hpp>
-#include <com/sun/star/ui/XUIConfigurationManager2.hpp>
 #include <com/sun/star/ui/XUIConfigurationManagerSupplier.hpp>
 #include <com/sun/star/embed/XVisualObject.hpp>
 #include <com/sun/star/uno/Sequence.hxx>
 #include <com/sun/star/uno/Reference.hxx>
 #include <com/sun/star/uno/Any.hxx>
-#include <cppuhelper/weak.hxx>
 #include <cppuhelper/basemutex.hxx>
-#include <cppuhelper/typeprovider.hxx>
 #include <com/sun/star/script/XStarBasicAccess.hpp>
-#include <vcl/svapp.hxx>
 
 #include <com/sun/star/document/XViewDataSupplier.hpp>
 #include <com/sun/star/lang/XUnoTunnel.hpp>
-#include <com/sun/star/task/XInteractionHandler.hpp>
 #include <cppuhelper/implbase.hxx>
 #include <svl/lstner.hxx>
 
 #include <memory>
 
+class ErrCode;
 class SfxMedium;
-class   SfxPrinter;
-class   SfxViewShell;
 class   SfxObjectShell                      ;
-class   SfxEventHint;
 class   SfxViewFrame;
 struct  IMPL_SfxBaseModel_DataContainer     ;   // impl. struct to hold member of class SfxBaseModel
 
-namespace sfx { namespace intern {
+namespace sfx::intern {
     class ViewCreationGuard;
-} }
+}
 
-//  class declarations
+namespace com::sun::star::beans { struct PropertyValue; }
+namespace com::sun::star::container { class XNameContainer; }
+namespace com::sun::star::container { class XNameReplace; }
+namespace com::sun::star::document { class XEventListener; }
+namespace com::sun::star::document { struct CmisProperty; }
+namespace com::sun::star::document { struct CmisVersion; }
+namespace com::sun::star::document { struct EventObject; }
+namespace com::sun::star::frame { class XController2; }
+namespace com::sun::star::task { class XInteractionHandler; }
+namespace com::sun::star::ui { class XUIConfigurationManager2; }
+namespace com::sun::star::util { class XCloseListener; }
+namespace com::sun::star::util { class XModifyListener; }
+
 
 
 /**_______________________________________________________________________________________________________
@@ -129,7 +118,7 @@ typedef ::cppu::WeakImplHelper  <   css::container::XChild
                                         ,   css::rdf::XDocumentMetadataAccess
                                         ,   css::document::XDocumentRecovery
                                         ,   css::document::XUndoManagerSupplier
-                                        ,   css::document::XEventBroadcaster
+                                        ,   css::document::XShapeEventBroadcaster
                                         ,   css::document::XDocumentEventBroadcaster
                                         ,   css::lang::XEventListener
                                         ,   css::document::XEventsSupplier
@@ -172,7 +161,7 @@ public:
     //  constructor/destructor
 
 
-    SfxBaseModel( SfxObjectShell *pObjectShell = nullptr ) ;
+    SfxBaseModel( SfxObjectShell *pObjectShell ) ;
 
     virtual ~SfxBaseModel() override ;
 
@@ -202,7 +191,8 @@ public:
         @onerror    A RuntimeException is thrown.
     */
 
-    virtual void SAL_CALL acquire() throw() override ;
+    virtual void SAL_CALL acquire() throw() override
+    { OWeakObject::acquire(); }
 
     /**___________________________________________________________________________________________________
         @short      decrement refcount
@@ -211,7 +201,8 @@ public:
         @onerror    A RuntimeException is thrown.
     */
 
-    virtual void SAL_CALL release() throw() override ;
+    virtual void SAL_CALL release() throw() override
+    { OWeakObject::release(); }
 
 
     //  XTypeProvider
@@ -335,6 +326,8 @@ public:
                                                                                           const css::uno::Sequence< css::beans::PropertyValue >& Arguments      ,
                                                                                           const css::uno::Reference< css::frame::XFrame >&       Frame          ) override;
 
+    virtual void SAL_CALL setArgs(const css::uno::Sequence<css::beans::PropertyValue>& aArgs) override;
+
 
     //  XModifiable2
 
@@ -404,6 +397,9 @@ public:
     virtual void SAL_CALL storeToURL(   const   OUString& sURL,
                                         const   css::uno::Sequence< css::beans::PropertyValue >&   seqArguments    ) override;
 
+    SAL_DLLPRIVATE void
+    impl_store(const OUString& sURL,
+               const css::uno::Sequence<css::beans::PropertyValue>& seqArguments, bool bSaveTo);
 
     //  XLoadable
 
@@ -499,24 +495,33 @@ public:
     virtual css::uno::Reference< css::document::XEmbeddedScripts > SAL_CALL getScriptContainer() override;
 
 
-    //  XEventBroadcaster
-
+    //  document::XEventBroadcaster
 
     /**___________________________________________________________________________________________________
         @descr      -   registers the given XEventListener.
     */
-
     virtual void SAL_CALL addEventListener( const css::uno::Reference< css::document::XEventListener >& xListener ) override;
 
     /**___________________________________________________________________________________________________
         @descr      -   unregisters the given XEventListener.
     */
-
     virtual void SAL_CALL removeEventListener( const css::uno::Reference< css::document::XEventListener >& xListener ) override;
 
 
-    //  XDocumentEventBroadcaster
+    //  document::XShapeEventBroadcaster
 
+    /**___________________________________________________________________________________________________
+        @descr      -   registers the given XEventListener.
+    */
+    virtual void SAL_CALL addShapeEventListener( const css::uno::Reference< css::drawing::XShape >& xShape, const css::uno::Reference< css::document::XShapeEventListener >& xListener ) override;
+
+    /**___________________________________________________________________________________________________
+        @descr      -   unregisters the given XEventListener.
+    */
+    virtual void SAL_CALL removeShapeEventListener( const css::uno::Reference< css::drawing::XShape >& xShape, const css::uno::Reference< css::document::XShapeEventListener >& xListener ) override;
+
+
+    //  XDocumentEventBroadcaster
 
     virtual void SAL_CALL addDocumentEventListener( const css::uno::Reference< css::document::XDocumentEventListener >& Listener ) override;
     virtual void SAL_CALL removeDocumentEventListener( const css::uno::Reference< css::document::XDocumentEventListener >& Listener ) override;
@@ -708,13 +713,9 @@ protected:
 private:
     /// @throws css::uno::RuntimeException
     css::uno::Reference< css::ui::XUIConfigurationManager2 > getUIConfigurationManager2();
-    bool impl_getPrintHelper();
+    void impl_getPrintHelper();
     SAL_DLLPRIVATE void ListenForStorage_Impl( const css::uno::Reference< css::embed::XStorage >& xStorage );
-    SAL_DLLPRIVATE OUString GetMediumFilterName_Impl();
-
-    SAL_DLLPRIVATE void impl_store( const OUString& sURL,
-                        const   css::uno::Sequence< css::beans::PropertyValue >&   seqArguments    ,
-                                bool                    bSaveTo         ) ;
+    SAL_DLLPRIVATE OUString GetMediumFilterName_Impl() const;
 
     SAL_DLLPRIVATE void postEvent_Impl( const OUString& aName, const css::uno::Reference< css::frame::XController2 >& xController = css::uno::Reference< css::frame::XController2 >() );
 
@@ -738,13 +739,11 @@ private:
 
 private:
 
-    std::unique_ptr<IMPL_SfxBaseModel_DataContainer> m_pData;
+    std::shared_ptr<IMPL_SfxBaseModel_DataContainer> m_pData;
     // cannot be held in m_pData, since it needs to be accessed in non-threadsafe context
     const bool                          m_bSupportEmbeddedScripts;
     const bool                          m_bSupportDocRecovery;
 
 } ; // class SfxBaseModel
-
-#endif // INCLUDED_SFX2_SFXBASEMODEL_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

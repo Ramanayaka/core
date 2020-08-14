@@ -22,11 +22,10 @@
 
 #include <basic/sbxobj.hxx>
 #include <vcl/graph.hxx>
-#include <basic/sbxfac.hxx>
+#include "sbxfac.hxx"
 #include <basic/basicdllapi.h>
 
-// class SbStdFactory
-class BASIC_DLLPUBLIC SbStdFactory : public SbxFactory
+class SbStdFactory final : public SbxFactory
 {
 public:
     SbStdFactory();
@@ -34,10 +33,8 @@ public:
     virtual SbxObject*  CreateObject( const OUString& rClassName ) override;
 };
 
-// class SbStdPicture
-class BASIC_DLLPUBLIC SbStdPicture : public SbxObject
+class SbStdPicture final : public SbxObject
 {
-protected:
     Graphic     aGraphic;
 
     virtual ~SbStdPicture() override;
@@ -55,10 +52,8 @@ public:
     void    SetGraphic( const Graphic& rGrf ) { aGraphic = rGrf; }
 };
 
-// class SbStdFont
-class BASIC_DLLPUBLIC SbStdFont : public SbxObject
+class SbStdFont final : public SbxObject
 {
-protected:
     bool    bBold;
     bool    bItalic;
     bool    bStrikeThrough;
@@ -90,23 +85,19 @@ public:
     bool     IsUnderline() const { return bUnderline; }
     void     SetSize( sal_uInt16 nS ) { nSize = nS; }
     sal_uInt16 GetSize() const { return nSize; }
-    const OUString& GetFontName() const { return aName; }
 };
 
-// class SbStdClipboard
-class BASIC_DLLPUBLIC SbStdClipboard : public SbxObject
+class SbStdClipboard final : public SbxObject
 {
-protected:
-
     virtual ~SbStdClipboard() override;
     virtual void   Notify( SfxBroadcaster& rBC, const SfxHint& rHint ) override;
 
-    static void    MethClear( SbxVariable* pVar, SbxArray* pPar_, bool bWrite );
-    static void    MethGetData( SbxArray* pPar_, bool bWrite );
-    static void    MethGetFormat( SbxVariable* pVar, SbxArray* pPar_, bool bWrite );
-    static void    MethGetText( SbxVariable* pVar, SbxArray* pPar_, bool bWrite );
-    static void    MethSetData( SbxArray* pPar_, bool bWrite );
-    static void    MethSetText( SbxArray* pPar_, bool bWrite );
+    static void    MethClear( SbxArray const * pPar_ );
+    static void    MethGetData( SbxArray* pPar_ );
+    static void    MethGetFormat( SbxVariable* pVar, SbxArray* pPar_ );
+    static void    MethGetText( SbxVariable* pVar, SbxArray const * pPar_ );
+    static void    MethSetData( SbxArray* pPar_ );
+    static void    MethSetText( SbxArray const * pPar_ );
 
 public:
 

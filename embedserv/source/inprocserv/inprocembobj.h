@@ -20,10 +20,9 @@
 #ifndef INCLUDED_EMBEDSERV_SOURCE_INPROCSERV_INPROCEMBOBJ_H
 #define INCLUDED_EMBEDSERV_SOURCE_INPROCSERV_INPROCEMBOBJ_H
 
-#if defined _MSC_VER
-#pragma warning(disable : 4668)
+#if !defined WIN32_LEAN_AND_MEAN
+# define WIN32_LEAN_AND_MEAN
 #endif
-
 #include <windows.h>
 #include <oleidl.h>
 
@@ -101,7 +100,7 @@ class InprocEmbedDocument_Impl : public InprocCountedObject_Impl
         virtual ~InternalCacheWrapper() {}
 
         /* IUnknown methods */
-        STDMETHOD(QueryInterface)(REFIID riid, LPVOID FAR * ppvObj) override;
+        STDMETHOD(QueryInterface)(REFIID riid, void ** ppvObj) override;
         STDMETHOD_(ULONG, AddRef)() override;
         STDMETHOD_(ULONG, Release)() override;
 
@@ -138,7 +137,7 @@ public:
     ComSmart< IUnknown >& GetDefHandler() { return m_pDefHandler; }
 
     /* IUnknown methods */
-    STDMETHOD(QueryInterface)(REFIID riid, LPVOID FAR * ppvObj) override;
+    STDMETHOD(QueryInterface)(REFIID riid, void ** ppvObj) override;
     STDMETHOD_(ULONG, AddRef)() override;
     STDMETHOD_(ULONG, Release)() override;
 

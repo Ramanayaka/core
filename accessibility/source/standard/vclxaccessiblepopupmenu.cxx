@@ -28,18 +28,6 @@ using namespace ::com::sun::star::uno;
 using namespace ::comphelper;
 
 
-// class VCLXAccessiblePopupMenu
-
-
-VCLXAccessiblePopupMenu::VCLXAccessiblePopupMenu( Menu* pMenu )
-    :OAccessibleMenuComponent( pMenu )
-{
-}
-
-
-VCLXAccessiblePopupMenu::~VCLXAccessiblePopupMenu()
-{
-}
 
 
 bool VCLXAccessiblePopupMenu::IsFocused()
@@ -53,7 +41,7 @@ bool VCLXAccessiblePopupMenu::IsFocused()
 
 OUString VCLXAccessiblePopupMenu::getImplementationName()
 {
-    return OUString( "com.sun.star.comp.toolkit.AccessiblePopupMenu" );
+    return "com.sun.star.comp.toolkit.AccessiblePopupMenu";
 }
 
 
@@ -89,7 +77,7 @@ sal_Int32 VCLXAccessiblePopupMenu::getBackground(  )
 {
     OExternalLockGuard aGuard( this );
 
-    return Application::GetSettings().GetStyleSettings().GetMenuColor().GetColor();
+    return sal_Int32(Application::GetSettings().GetStyleSettings().GetMenuColor());
 }
 
 

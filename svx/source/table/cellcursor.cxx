@@ -17,16 +17,17 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "sal/config.h"
+#include <sal/config.h>
 
-#include "com/sun/star/lang/NoSupportException.hpp"
-#include "svx/svdotable.hxx"
+#include <com/sun/star/lang/NoSupportException.hpp>
+#include <svx/svdotable.hxx>
 #include "cellcursor.hxx"
 #include "tablelayouter.hxx"
-#include "cell.hxx"
-#include "svx/svdmodel.hxx"
-#include "svx/svdstr.hrc"
-#include "svdglob.hxx"
+#include <cell.hxx>
+#include <svx/svdmodel.hxx>
+#include <svx/strings.hrc>
+#include <svx/dialmgr.hxx>
+#include <tools/debug.hxx>
 
 
 using namespace ::com::sun::star::uno;
@@ -36,7 +37,7 @@ using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::table;
 
 
-namespace sdr { namespace table {
+namespace sdr::table {
 
 CellCursor::CellCursor( const TableModelRef & xTable, sal_Int32 nLeft, sal_Int32 nTop, sal_Int32 nRight, sal_Int32 nBottom )
 : CellCursorBase( xTable, nLeft, nTop, nRight, nBottom )
@@ -242,11 +243,11 @@ void SAL_CALL CellCursor::merge(  )
     if( !mxTable.is() || (mxTable->getSdrTableObj() == nullptr) )
         throw DisposedException();
 
-    SdrModel* pModel = mxTable->getSdrTableObj()->GetModel();
-    const bool bUndo = pModel && mxTable->getSdrTableObj()->IsInserted() && pModel->IsUndoEnabled();
+    SdrModel& rModel(mxTable->getSdrTableObj()->getSdrModelFromSdrObject());
+    const bool bUndo(mxTable->getSdrTableObj()->IsInserted() && rModel.IsUndoEnabled());
 
     if( bUndo )
-        pModel->BegUndo( ImpGetResStr(STR_TABLE_MERGE) );
+        rModel.BegUndo( SvxResId(STR_TABLE_MERGE) );
 
     try
     {
@@ -260,10 +261,9 @@ void SAL_CALL CellCursor::merge(  )
     }
 
     if( bUndo )
-        pModel->EndUndo();
+        rModel.EndUndo();
 
-    if( pModel )
-        pModel->SetChanged();
+    rModel.SetChanged();
 }
 
 
@@ -284,7 +284,7 @@ void CellCursor::split_column( sal_Int32 nCol, sal_Int32 nColumns, std::vector< 
     if( nNewCols > 0 )
     {
         const OUString sWidth("Width");
-        Reference< XTableColumns > xCols( mxTable->getColumns(), UNO_QUERY_THROW );
+        Reference< XTableColumns > xCols( mxTable->getColumns(), UNO_SET_THROW );
         Reference< XPropertySet > xRefColumn( xCols->getByIndex( nCol ), UNO_QUERY_THROW );
         sal_Int32 nWidth = 0;
         xRefColumn->getPropertyValue( sWidth ) >>= nWidth;
@@ -314,7 +314,7 @@ void CellCursor::split_column( sal_Int32 nCol, sal_Int32 nColumns, std::vector< 
                 // merged cells are ignored, but newly added columns will be added to leftovers
                 xCell.set( dynamic_cast< Cell* >(mxTable->getCellByPosition( nCol+1, nRow ).get() ) );
                 if( !xCell.is() || !xCell->isMerged() )
-                rLeftOvers[nRow] += nNewCols;
+                    rLeftOvers[nRow] += nNewCols;
             }
         }
         else
@@ -398,7 +398,7 @@ void CellCursor::split_row( sal_Int32 nRow, sal_Int32 nRows, std::vector< sal_In
     if( nNewRows > 0 )
     {
         const OUString sHeight("Height");
-        Reference< XTableRows > xRows( mxTable->getRows(), UNO_QUERY_THROW );
+        Reference< XTableRows > xRows( mxTable->getRows(), UNO_SET_THROW );
         Reference< XPropertySet > xRefRow( xRows->getByIndex( nRow ), UNO_QUERY_THROW );
         sal_Int32 nHeight = 0;
         xRefRow->getPropertyValue( sHeight ) >>= nHeight;
@@ -503,10 +503,11 @@ void SAL_CALL CellCursor::split( sal_Int32 nColumns, sal_Int32 nRows )
     if( !mxTable.is() || (mxTable->getSdrTableObj() == nullptr) )
         throw DisposedException();
 
-    SdrModel* pModel = mxTable->getSdrTableObj()->GetModel();
-    const bool bUndo = pModel && mxTable->getSdrTableObj()->IsInserted() && pModel->IsUndoEnabled();
+    SdrModel& rModel(mxTable->getSdrTableObj()->getSdrModelFromSdrObject());
+    const bool bUndo(mxTable->getSdrTableObj()->IsInserted() && rModel.IsUndoEnabled());
+
     if( bUndo )
-        pModel->BegUndo( ImpGetResStr(STR_TABLE_SPLIT) );
+        rModel.BegUndo( SvxResId(STR_TABLE_SPLIT) );
 
     try
     {
@@ -526,10 +527,9 @@ void SAL_CALL CellCursor::split( sal_Int32 nColumns, sal_Int32 nRows )
     }
 
     if( bUndo )
-        pModel->EndUndo();
+        rModel.EndUndo();
 
-    if( pModel )
-        pModel->SetChanged();
+    rModel.SetChanged();
 }
 
 
@@ -540,6 +540,6 @@ sal_Bool SAL_CALL CellCursor::isMergeable(  )
 }
 
 
-} }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

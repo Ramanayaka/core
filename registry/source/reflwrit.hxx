@@ -20,11 +20,12 @@
 #ifndef INCLUDED_REGISTRY_SOURCE_REFLWRIT_HXX
 #define INCLUDED_REGISTRY_SOURCE_REFLWRIT_HXX
 
-#include <registry/refltype.hxx>
-#include <registry/regtype.h>
+#include <registry/types.hxx>
 #include <rtl/ustring.hxx>
 
-/// Implememetation handle
+class RTConstValue;
+
+/// Implementation handle
 typedef void* TypeWriterImpl;
 
 /** RegistryTypeWriter writes/creates a binary type blob.
@@ -45,12 +46,12 @@ public:
         @param typeName specifies the full qualified type name with '/' as separator.
         @param superTypeName specifies the full qualified type name of the base type
                              with '/' as separator.
-        @param fieldCount specifies the number of fields (eg. number of attrbutes/properties,
+        @param fieldCount specifies the number of fields (eg. number of attributes/properties,
                           enum values or constants).
      */
     RegistryTypeWriter(RTTypeClass               RTTypeClass,
-                              const rtl::OUString&    typeName,
-                              const rtl::OUString&    superTypeName,
+                              const OUString&    typeName,
+                              const OUString&    superTypeName,
                               sal_uInt16                fieldCount);
 
     /** Destructor. The Destructor frees the internal data block.
@@ -71,10 +72,10 @@ public:
                           for enum values or constants.
      */
     void setFieldData( sal_uInt16              index,
-                              const rtl::OUString&    name,
-                              const rtl::OUString&    typeName,
-                              const rtl::OUString&    doku,
-                              const rtl::OUString&    fileName,
+                              const OUString&    name,
+                              const OUString&    typeName,
+                              const OUString&    doku,
+                              const OUString&    fileName,
                               RTFieldAccess           access,
                               const RTConstValue&     constValue);
 
@@ -90,8 +91,8 @@ public:
     sal_uInt32       getBlopSize();
 
 private:
-    RegistryTypeWriter(RegistryTypeWriter &) = delete;
-    void operator =(RegistryTypeWriter) = delete;
+    RegistryTypeWriter(RegistryTypeWriter const &) = delete;
+    void operator =(RegistryTypeWriter const &) = delete;
 
     /// stores the handle of an implementation class
     TypeWriterImpl                                               m_hImpl;

@@ -18,6 +18,8 @@
  */
 
 #include <dispatch/loaddispatcher.hxx>
+#include <loadenv/loadenvexception.hxx>
+#include <sal/log.hxx>
 
 #include <com/sun/star/frame/DispatchResultState.hpp>
 
@@ -72,17 +74,17 @@ css::uno::Any LoadDispatcher::impl_dispatch( const css::util::URL& rURL,
                                              const css::uno::Reference< css::frame::XDispatchResultListener >& xListener )
 {
     // Attention: May be nobody outside hold such temp. dispatch object alive (because
-    // the container in which we resists isn't implemented threadsafe but updated by a timer
-    // and clear our reference ...) we should hold us self alive!
+    // the container in which we resist isn't implemented threadsafe but updated by a timer
+    // and clear our reference...) we should hold us self alive!
     css::uno::Reference< css::uno::XInterface > xThis(static_cast< css::frame::XNotifyingDispatch* >(this), css::uno::UNO_QUERY);
 
     osl::MutexGuard g(m_mutex);
 
-    // We are the only client of this load env object ... but
+    // We are the only client of this load env object... but
     // may a dispatch request before is still in progress (?!).
     // Then we should wait a little bit and block this new request.
     // In case we run into the timeout, we should reject this new request
-    // and return "FAILED" as result. Otherwhise we can start this new operation.
+    // and return "FAILED" as result. Otherwise we can start this new operation.
     if (!m_aLoader.waitWhileLoading(2000)) // => 2 sec.
     {
         if (xListener.is())
@@ -91,21 +93,17 @@ css::uno::Any LoadDispatcher::impl_dispatch( const css::util::URL& rURL,
     }
 
     css::uno::Reference< css::frame::XFrame > xBaseFrame(m_xOwnerFrame.get(), css::uno::UNO_QUERY);
-    if (!xBaseFrame.is())
-    {
-        if (xListener.is())
-            xListener->dispatchFinished(
-                css::frame::DispatchResultEvent(xThis, css::frame::DispatchResultState::FAILURE, css::uno::Any()));
-    }
+    if (!xBaseFrame.is() && xListener.is())
+        xListener->dispatchFinished(
+            css::frame::DispatchResultEvent(xThis, css::frame::DispatchResultState::FAILURE, css::uno::Any()));
 
-    // OK ... now the internal loader seems to be useable for new requests
+    // OK ... now the internal loader seems to be usable for new requests
     // and our owner frame seems to be valid for such operations.
     // Initialize it with all new but needed properties and start the loading.
     css::uno::Reference< css::lang::XComponent > xComponent;
     try
     {
-        m_aLoader.initializeLoading( rURL.Complete, lArguments, xBaseFrame, m_sTarget, m_nSearchFlags, LoadEnvFeatures::AllowContentHandler | LoadEnvFeatures::WorkWithUI);
-        m_aLoader.startLoading();
+        m_aLoader.startLoading( rURL.Complete, lArguments, xBaseFrame, m_sTarget, m_nSearchFlags, LoadEnvFeatures::AllowContentHandler | LoadEnvFeatures::WorkWithUI);
         m_aLoader.waitWhileLoading(); // wait for ever!
         xComponent = m_aLoader.getTargetComponent();
 

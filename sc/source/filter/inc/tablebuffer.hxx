@@ -24,8 +24,7 @@
 #include "tablecolumnsbuffer.hxx"
 #include "workbookhelper.hxx"
 
-namespace oox {
-namespace xls {
+namespace oox::xls {
 
 struct TableModel
 {
@@ -115,16 +114,13 @@ private:
 
 private:
     typedef RefVector< Table >           TableVector;
-    typedef RefMap< sal_Int32, Table >   TableIdMap;
-    typedef RefMap< OUString, Table >    TableNameMap;
 
     TableVector         maTables;
-    TableIdMap          maIdTables;
-    TableNameMap        maNameTables;
+    RefMap< sal_Int32, Table >  maIdTables;
+    RefMap< OUString, Table >   maNameTables;
 };
 
-} // namespace xls
-} // namespace oox
+} // namespace oox::xls
 
 #endif
 

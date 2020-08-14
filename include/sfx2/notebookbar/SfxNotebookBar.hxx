@@ -11,9 +11,17 @@
 #define INCLUDED_SFX2_NOTEBOOKBAR_SFXNOTEBOOKBAR_HXX
 
 #include <sfx2/dllapi.h>
-#include <vcl/notebookbar.hxx>
+#include <rtl/ustring.hxx>
+#include <map>
+
+namespace com::sun::star::frame { class XFrame; }
+namespace com::sun::star::uno { template <typename > class Reference; }
 
 class SfxBindings;
+class SfxViewFrame;
+class SfxViewShell;
+class SystemWindow;
+class WeldedTabbedNotebookbar;
 
 namespace sfx2 {
 
@@ -31,24 +39,33 @@ public:
     static void ExecMethod(SfxBindings& rBindings, const OUString& rUIName);
 
     /// Function to be called from the sdi's StateMethod.
-    static bool StateMethod(SfxBindings& rBindings, const OUString& rUIFile);
+    static bool StateMethod(SfxBindings& rBindings, const OUString& rUIFile,
+                            bool bReloadNotebookbar = false);
     static bool StateMethod(SystemWindow* pSysWindow,
-                            const css::uno::Reference<css::frame::XFrame> & xFrame,
-                            const OUString& rUIFile);
+                            const css::uno::Reference<css::frame::XFrame>& xFrame,
+                            const OUString& rUIFile, bool bReloadNotebookbar = false);
 
     /// Method temporarily blocks showing of the NotebookBar
     static void LockNotebookBar();
     /// Method restores normal behaviour of the Notebookbar
     static void UnlockNotebookBar();
 
-    static void RemoveListeners(SystemWindow* pSysWindow);
+    static void RemoveListeners(SystemWindow const * pSysWindow);
 
+    /** Show menu bar in all frames of current application */
     static void ShowMenubar(bool bShow);
+    /** Show menu bar only in current frame */
+    static void ShowMenubar(SfxViewFrame const * pViewFrame, bool bShow);
     static void ToggleMenubar();
+    static void ReloadNotebookBar(const OUString& sUIPath);
 
 private:
     static bool m_bLock;
     static bool m_bHide;
+
+    static std::map<const SfxViewShell*, std::shared_ptr<WeldedTabbedNotebookbar>> m_pNotebookBarWeldedWrapper;
+
+    DECL_STATIC_LINK(SfxNotebookBar, VclDisposeHdl, const SfxViewShell*, void);
 };
 
 } // namespace sfx2

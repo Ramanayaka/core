@@ -21,6 +21,7 @@
 #define INCLUDED_SVX_SDR_CONTACT_OBJECTCONTACT_HXX
 
 #include <svx/sdr/animation/objectanimator.hxx>
+#include <svx/sdr/animation/animationstate.hxx>
 #include <svx/svxdllapi.h>
 #include <drawinglayer/geometry/viewinformation2d.hxx>
 
@@ -29,22 +30,18 @@ namespace tools { class Rectangle; }
 class SdrPageView;
 class OutputDevice;
 
-namespace sdr { namespace event {
-    class TimerEventHandler;
-}}
-
 namespace basegfx {
     class B2DRange;
     class B2DHomMatrix;
 }
 
-namespace sdr { namespace contact {
+namespace sdr::contact {
 
 class DisplayInfo;
 class ViewContact;
 class ViewObjectContactRedirector;
 
-class SVX_DLLPUBLIC ObjectContact
+class SVXCORE_DLLPUBLIC ObjectContact
 {
 private:
     // make ViewObjectContact a friend to exclusively allow it to use
@@ -65,9 +62,6 @@ private:
     // the primitiveAnimator which is used if this View and/or the contained primitives
     // support animatedSwitchPrimitives
     sdr::animation::primitiveAnimator               maPrimitiveAnimator;
-
-    // the EventHandler for e.g. asynchronious loading of graphics
-    sdr::event::TimerEventHandler*                  mpEventHandler;
 
     // The redirector. If set it is used to pipe all supported calls
     // to the redirector
@@ -118,9 +112,6 @@ public:
     // this ObjectContact. Default does nothing.
     virtual void InvalidatePartOfView(const basegfx::B2DRange& rRange) const;
 
-    // Get info if given Rectangle is visible in this view
-    virtual bool IsAreaVisible(const basegfx::B2DRange& rRange) const;
-
     // Get info about the need to visualize GluePoints. The default
     // is that it is not necessary.
     virtual bool AreGluePointsVisible() const;
@@ -128,21 +119,11 @@ public:
     // method to get the primitiveAnimator
     sdr::animation::primitiveAnimator& getPrimitiveAnimator() {  return maPrimitiveAnimator; }
 
-    // method to get the EventHandler. It will
-    // return a existing one or create a new one using CreateEventHandler().
-    sdr::event::TimerEventHandler& GetEventHandler() const;
-
-    // test if there is an EventHandler without creating one on demand
-    bool HasEventHandler() const;
-
     // check if text animation is allowed. Default is sal_true.
     virtual bool IsTextAnimationAllowed() const;
 
     // check if graphic animation is allowed. Default is sal_true.
     virtual bool IsGraphicAnimationAllowed() const;
-
-    // check if asynchronious graphis loading is allowed. Default is sal_False.
-    virtual bool IsAsynchronGraphicsLoadingAllowed() const;
 
     // access to ViewObjectContactRedirector
     ViewObjectContactRedirector* GetViewObjectContactRedirector() const {  return mpViewObjectContactRedirector; }
@@ -150,12 +131,6 @@ public:
 
     // print? Default is false
     virtual bool isOutputToPrinter() const;
-
-    // window? Default is true
-    virtual bool isOutputToWindow() const;
-
-    // VirtualDevice? Default is false
-    virtual bool isOutputToVirtualDevice() const;
 
     // recording MetaFile? Default is false
     virtual bool isOutputToRecordingMetaFile() const;
@@ -165,9 +140,6 @@ public:
 
     // gray display mode
     virtual bool isDrawModeGray() const;
-
-    // gray display mode
-    virtual bool isDrawModeBlackWhite() const;
 
     // high contrast display mode
     virtual bool isDrawModeHighContrast() const;
@@ -184,16 +156,18 @@ public:
     /// access to OutputDevice. May return 0L like the default implementations do. Override as needed.
     virtual OutputDevice* TryToGetOutputDevice() const;
 
-    // reset ViewPort at internal ViewInformation2D. This is needed when the OC is used
-    // not for ProcessDisplay() but to get a VOC associated with it. When trying to get
-    // a sequence of primitives from the VOC then, the last initialized ViewPort from
-    // the last ProcessDisplay() is used for geometric visibility testing. If this is not
-    // wanted (like in such cases) this method is used. It will reuse the current
-    // ViewInformation2D, but clear the ViewPort (no ViewPort means all is visible)
-    void resetViewPort();
+    // interface to support GridOffset for non-linear ViewToDevice transformation (calc)
+    virtual bool supportsGridOffsets() const;
+    virtual void calculateGridOffsetForViewOjectContact(
+        basegfx::B2DVector& rTarget,
+        const ViewObjectContact& rClient) const;
+    virtual void calculateGridOffsetForB2DRange(
+        basegfx::B2DVector& rTarget,
+        const basegfx::B2DRange& rB2DRange) const;
+    void resetAllGridOffsets();
 };
 
-}}
+}
 
 
 #endif // INCLUDED_SVX_SDR_CONTACT_OBJECTCONTACT_HXX

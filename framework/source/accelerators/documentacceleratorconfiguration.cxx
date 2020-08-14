@@ -20,20 +20,12 @@
 #include <accelerators/acceleratorconfiguration.hxx>
 #include <accelerators/presethandler.hxx>
 
-#include <xml/acceleratorconfigurationreader.hxx>
-#include <xml/acceleratorconfigurationwriter.hxx>
-#include <xml/saxnamespacefilter.hxx>
-
-#include <acceleratorconst.h>
-
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/ui/XUIConfigurationStorage.hpp>
 
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <comphelper/sequenceashashmap.hxx>
 #include <i18nlangtag/languagetag.hxx>
-#include <rtl/ref.hxx>
 #include <vcl/svapp.hxx>
 
 using namespace framework;
@@ -64,7 +56,7 @@ public:
     /** initialize this instance and fill the internal cache.
 
         @param  xSMGR
-                reference to an uno service manager, which is used internally.
+                reference to a uno service manager, which is used internally.
      */
     DocumentAcceleratorConfiguration(
             const css::uno::Reference< css::uno::XComponentContext >& xContext,
@@ -74,7 +66,7 @@ public:
 
     virtual OUString SAL_CALL getImplementationName() override
     {
-        return OUString("com.sun.star.comp.framework.DocumentAcceleratorConfiguration");
+        return "com.sun.star.comp.framework.DocumentAcceleratorConfiguration";
     }
 
     virtual sal_Bool SAL_CALL supportsService(OUString const & ServiceName) override
@@ -101,20 +93,18 @@ DocumentAcceleratorConfiguration::DocumentAcceleratorConfiguration(
         const css::uno::Sequence< css::uno::Any >& lArguments)
     : DocumentAcceleratorConfiguration_BASE(xContext)
 {
+    SolarMutexGuard g;
+    css::uno::Reference<css::embed::XStorage> xRoot;
+    if (lArguments.getLength() == 1 && (lArguments[0] >>= xRoot))
     {
-        SolarMutexGuard g;
-        css::uno::Reference<css::embed::XStorage> xRoot;
-        if (lArguments.getLength() == 1 && (lArguments[0] >>= xRoot))
-        {
-            m_xDocumentRoot = xRoot;
-        }
-        else
-        {
-            ::comphelper::SequenceAsHashMap lArgs(lArguments);
-            m_xDocumentRoot = lArgs.getUnpackedValueOrDefault(
-                "DocumentRoot",
-                css::uno::Reference< css::embed::XStorage >());
-        }
+        m_xDocumentRoot = xRoot;
+    }
+    else
+    {
+        ::comphelper::SequenceAsHashMap lArgs(lArguments);
+        m_xDocumentRoot = lArgs.getUnpackedValueOrDefault(
+            "DocumentRoot",
+            css::uno::Reference< css::embed::XStorage >());
     }
 }
 
@@ -190,7 +180,7 @@ void DocumentAcceleratorConfiguration::fillCache()
 
 } // namespace framework
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_framework_DocumentAcceleratorConfiguration_get_implementation(
     css::uno::XComponentContext *context,
     css::uno::Sequence<css::uno::Any> const &arguments)

@@ -20,18 +20,20 @@
 #include "PresenterConfigurationAccess.hxx"
 
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
-#include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/container/XHierarchicalNameAccess.hpp>
 #include <com/sun/star/configuration/theDefaultProvider.hpp>
 #include <com/sun/star/util/XChangesBatch.hpp>
+#include <comphelper/propertysequence.hxx>
 #include <osl/diagnose.h>
+#include <tools/diagnose_ex.h>
+#include <sal/log.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 
-namespace sdext { namespace presenter {
+namespace sdext::presenter {
 
-const OUString PresenterConfigurationAccess::msPresenterScreenRootName =
+const OUStringLiteral PresenterConfigurationAccess::msPresenterScreenRootName =
     "/org.openoffice.Office.PresenterScreen/";
 
 PresenterConfigurationAccess::PresenterConfigurationAccess (
@@ -45,22 +47,11 @@ PresenterConfigurationAccess::PresenterConfigurationAccess (
     {
         if (rxContext.is())
         {
-            Sequence<Any> aCreationArguments(3);
-            aCreationArguments[0] <<= beans::PropertyValue(
-                "nodepath",
-                0,
-                makeAny(rsRootName),
-                beans::PropertyState_DIRECT_VALUE);
-            aCreationArguments[1] <<= beans::PropertyValue(
-                "depth",
-                0,
-                makeAny((sal_Int32)-1),
-                beans::PropertyState_DIRECT_VALUE);
-            aCreationArguments[2] <<= beans::PropertyValue(
-                "lazywrite",
-                0,
-                makeAny(true),
-                beans::PropertyState_DIRECT_VALUE);
+            uno::Sequence<uno::Any> aCreationArguments(comphelper::InitAnyPropertySequence(
+            {
+                {"nodepath", uno::Any(rsRootName)},
+                {"depth", uno::Any(sal_Int32(-1))}
+            }));
 
             OUString sAccessService;
             if (eMode == READ_ONLY)
@@ -75,9 +66,9 @@ PresenterConfigurationAccess::PresenterConfigurationAccess (
             maNode <<= mxRoot;
         }
     }
-    catch (const Exception& rException)
+    catch (const Exception&)
     {
-        SAL_WARN("sdext.presenter", "caught exception while opening configuration: " << rException.Message);
+        DBG_UNHANDLED_EXCEPTION("sdext.presenter", "caught exception while opening configuration");
     }
 }
 
@@ -157,9 +148,9 @@ Any PresenterConfigurationAccess::GetConfigurationNode (
             return rxNode->getByHierarchicalName(sPathToNode);
         }
     }
-    catch (const Exception& rException)
+    catch (const Exception&)
     {
-        SAL_WARN("sdext.presenter", "caught exception while getting configuration node " << sPathToNode << " : " << rException.Message);
+        TOOLS_WARN_EXCEPTION("sdext.presenter", "caught exception while getting configuration node " << sPathToNode);
     }
 
     return Any();
@@ -184,34 +175,33 @@ void PresenterConfigurationAccess::ForAll (
     const ::std::vector<OUString>& rArguments,
     const ItemProcessor& rProcessor)
 {
-    if (rxContainer.is())
+    if (!rxContainer.is())
+        return;
+
+    ::std::vector<Any> aValues(rArguments.size());
+    const Sequence<OUString> aKeys (rxContainer->getElementNames());
+    for (const OUString& rsKey : aKeys)
     {
-        ::std::vector<Any> aValues(rArguments.size());
-        Sequence<OUString> aKeys (rxContainer->getElementNames());
-        for (sal_Int32 nItemIndex=0; nItemIndex<aKeys.getLength(); ++nItemIndex)
+        bool bHasAllValues (true);
+        Reference<container::XNameAccess> xSetItem (rxContainer->getByName(rsKey), UNO_QUERY);
+        Reference<beans::XPropertySet> xSet (xSetItem, UNO_QUERY);
+        OSL_ASSERT(xSet.is());
+        if (xSetItem.is())
         {
-            bool bHasAllValues (true);
-            const OUString& rsKey (aKeys[nItemIndex]);
-            Reference<container::XNameAccess> xSetItem (rxContainer->getByName(rsKey), UNO_QUERY);
-            Reference<beans::XPropertySet> xSet (xSetItem, UNO_QUERY);
-            OSL_ASSERT(xSet.is());
-            if (xSetItem.is())
+            // Get from the current item of the container the children
+            // that match the names in the rArguments list.
+            for (size_t nValueIndex=0; nValueIndex<aValues.size(); ++nValueIndex)
             {
-                // Get from the current item of the container the children
-                // that match the names in the rArguments list.
-                for (size_t nValueIndex=0; nValueIndex<aValues.size(); ++nValueIndex)
-                {
-                    if ( ! xSetItem->hasByName(rArguments[nValueIndex]))
-                        bHasAllValues = false;
-                    else
-                        aValues[nValueIndex] = xSetItem->getByName(rArguments[nValueIndex]);
-                }
+                if ( ! xSetItem->hasByName(rArguments[nValueIndex]))
+                    bHasAllValues = false;
+                else
+                    aValues[nValueIndex] = xSetItem->getByName(rArguments[nValueIndex]);
             }
-            else
-                bHasAllValues = false;
-            if (bHasAllValues)
-                rProcessor(aValues);
         }
+        else
+            bHasAllValues = false;
+        if (bHasAllValues)
+            rProcessor(aValues);
     }
 }
 
@@ -221,10 +211,9 @@ void PresenterConfigurationAccess::ForAll (
 {
     if (rxContainer.is())
     {
-        Sequence<OUString> aKeys (rxContainer->getElementNames());
-        for (sal_Int32 nItemIndex=0; nItemIndex<aKeys.getLength(); ++nItemIndex)
+        const Sequence<OUString> aKeys (rxContainer->getElementNames());
+        for (const OUString& rsKey : aKeys)
         {
-            const OUString& rsKey (aKeys[nItemIndex]);
             Reference<beans::XPropertySet> xSet (rxContainer->getByName(rsKey), UNO_QUERY);
             if (xSet.is())
                 rProcessor(rsKey, xSet);
@@ -238,14 +227,14 @@ Any PresenterConfigurationAccess::Find (
 {
     if (rxContainer.is())
     {
-        Sequence<OUString> aKeys (rxContainer->getElementNames());
-        for (sal_Int32 nItemIndex=0; nItemIndex<aKeys.getLength(); ++nItemIndex)
+        const Sequence<OUString> aKeys (rxContainer->getElementNames());
+        for (const auto& rKey : aKeys)
         {
             Reference<beans::XPropertySet> xProperties (
-                rxContainer->getByName(aKeys[nItemIndex]),
+                rxContainer->getByName(rKey),
                 UNO_QUERY);
             if (xProperties.is())
-                if (rPredicate(aKeys[nItemIndex], xProperties))
+                if (rPredicate(rKey, xProperties))
                     return Any(xProperties);
         }
     }
@@ -285,6 +274,6 @@ Any PresenterConfigurationAccess::GetProperty (
     return Any();
 }
 
-} } // end of namespace sdext::tools
+} // end of namespace sdext::presenter
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

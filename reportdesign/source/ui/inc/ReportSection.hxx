@@ -20,13 +20,13 @@
 #define INCLUDED_REPORTDESIGN_SOURCE_UI_INC_REPORTSECTION_HXX
 
 #include <vcl/window.hxx>
-#include "RptPage.hxx"
+#include <RptPage.hxx>
 #include <com/sun/star/beans/NamedValue.hpp>
 #include <comphelper/propmultiplex.hxx>
 #include <cppuhelper/basemutex.hxx>
 #include "ReportDefines.hxx"
 #include "dlgedfunc.hxx"
-#include <svtools/transfer.hxx>
+#include <vcl/transfer.hxx>
 #include <rtl/ref.hxx>
 #include <memory>
 
@@ -61,8 +61,8 @@ namespace rptui
         */
         void impl_adjustObjectSizePosition(sal_Int32 i_nPaperWidth,sal_Int32 i_nLeftMargin,sal_Int32 i_nRightMargin);
 
-        OReportSection(OReportSection&) = delete;
-        void operator =(OReportSection&) = delete;
+        OReportSection(OReportSection const &) = delete;
+        void operator =(OReportSection const &) = delete;
     protected:
         // DropTargetHelper overridables
         virtual sal_Int8    AcceptDrop( const AcceptDropEvent& _rEvt ) override;

@@ -19,29 +19,25 @@
 #ifndef INCLUDED_CHART2_SOURCE_CONTROLLER_CHARTAPIWRAPPER_DATASERIESPOINTWRAPPER_HXX
 #define INCLUDED_CHART2_SOURCE_CONTROLLER_CHARTAPIWRAPPER_DATASERIESPOINTWRAPPER_HXX
 
-#include "WrappedPropertySet.hxx"
+#include <WrappedPropertySet.hxx>
 #include "ReferenceSizePropertyProvider.hxx"
 #include <cppuhelper/implbase.hxx>
-#include <comphelper/uno3.hxx>
 #include <comphelper/interfacecontainer2.hxx>
-#include <com/sun/star/chart2/XDataSeries.hpp>
 #include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/lang/XEventListener.hpp>
 #include <com/sun/star/lang/XInitialization.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
 
 #include <memory>
 
-namespace chart
-{
+namespace com::sun::star::chart2 { class XDataSeries; }
 
-namespace wrapper
+namespace chart::wrapper
 {
 
 class Chart2ModelContact;
 
-class DataSeriesPointWrapper : public ::cppu::ImplInheritanceHelper<
+class DataSeriesPointWrapper final : public ::cppu::ImplInheritanceHelper<
                                           WrappedPropertySet
                                         , css::lang::XServiceInfo
                                         , css::lang::XInitialization
@@ -69,7 +65,7 @@ public:
     virtual ~DataSeriesPointWrapper() override;
 
     bool isSupportingAreaProperties();
-    bool isLinesForbidden() { return !m_bLinesAllowed;}
+    bool isLinesForbidden() const { return !m_bLinesAllowed;}
 
     /// XServiceInfo declarations
     virtual OUString SAL_CALL getImplementationName() override;
@@ -84,7 +80,7 @@ public:
     virtual css::uno::Any getReferenceSize() override;
     virtual css::awt::Size getCurrentSizeForReference() override;
 
-protected:
+private:
     // ____ XComponent ____
     virtual void SAL_CALL dispose() override;
     virtual void SAL_CALL addEventListener( const css::uno::Reference< css::lang::XEventListener >& xListener ) override;
@@ -93,10 +89,9 @@ protected:
     // ____ XEventListener ____
     virtual void SAL_CALL disposing( const css::lang::EventObject& Source ) override;
 
-protected:
     // ____ WrappedPropertySet ____
     virtual const css::uno::Sequence< css::beans::Property >& getPropertySequence() override;
-    virtual const std::vector< WrappedProperty* > createWrappedProperties() override;
+    virtual std::vector< std::unique_ptr<WrappedProperty> > createWrappedProperties() override;
     virtual void SAL_CALL setPropertyValue( const OUString& aPropertyName, const css::uno::Any& aValue ) override;
     virtual css::uno::Any SAL_CALL getPropertyValue( const OUString& PropertyName ) override;
     virtual css::uno::Reference< css::beans::XPropertySet > getInnerPropertySet() override;
@@ -109,7 +104,6 @@ protected:
     css::uno::Reference< css::chart2::XDataSeries > getDataSeries();
     css::uno::Reference< css::beans::XPropertySet > getDataPointProperties();
 
-private:
     std::shared_ptr< Chart2ModelContact >         m_spChart2ModelContact;
     ::comphelper::OInterfaceContainerHelper2      m_aEventListenerContainer;
 
@@ -120,13 +114,12 @@ private:
     bool                m_bLinesAllowed;
 
     //this should only be used, if the DataSeriesPointWrapper is initialized via the XInitialize interface
-    //because a big change in the chartmodel may lead to an dataseriespointer that is not connected to the model anymore
+    //because a big change in the chartmodel may lead to a dataseriespointer that is not connected to the model anymore
     //with the indices instead we can always get the new dataseries
     css::uno::Reference< css::chart2::XDataSeries >     m_xDataSeries;
 };
 
-} //  namespace wrapper
-} //  namespace chart
+} //  namespace chart::wrapper
 
 // INCLUDED_CHART2_SOURCE_CONTROLLER_CHARTAPIWRAPPER_DATASERIESPOINTWRAPPER_HXX
 #endif

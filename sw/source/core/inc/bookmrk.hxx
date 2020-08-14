@@ -24,26 +24,21 @@
 #include <sfx2/Metadatable.hxx>
 #include <vcl/keycod.hxx>
 #include <memory>
-#include <map>
 #include <rtl/ustring.hxx>
+#include <osl/diagnose.h>
+#include <tools/ref.hxx>
 #include <IMark.hxx>
-#include <swserv.hxx>
+#include <swrect.hxx>
+#include "FormFieldButton.hxx"
 
-namespace com {
-    namespace sun {
-        namespace star {
-            namespace text {
-                class XTextContent;
-            }
-        }
-    }
-}
+namespace com::sun::star::text { class XTextContent; }
 
-struct SwPosition;  // fwd Decl. wg. UI
 class SwDoc;
+class SwEditWin;
+class SwServerObject;
+class SvNumberFormatter;
 
-namespace sw {
-    namespace mark {
+namespace sw::mark {
         class MarkBase
             : virtual public IMark
         {
@@ -86,8 +81,10 @@ namespace sw {
             virtual void ClearOtherMarkPos()
                 { m_pPos2.reset(); }
 
+            virtual auto InvalidateFrames() -> void;
+
             virtual OUString ToString( ) const override;
-            virtual void dumpAsXml(struct _xmlTextWriter* pWriter) const override;
+            virtual void dumpAsXml(xmlTextWriterPtr pWriter) const override;
 
             void Swap()
             {
@@ -95,7 +92,7 @@ namespace sw {
                     m_pPos1.swap(m_pPos2);
             }
 
-            virtual void InitDoc(SwDoc* const)
+            virtual void InitDoc(SwDoc* const, sw::mark::InsertMode, SwPosition const*)
             {
             }
 
@@ -162,9 +159,11 @@ namespace sw {
             Bookmark(const SwPaM& rPaM,
                 const vcl::KeyCode& rCode,
                 const OUString& rName);
-            virtual void InitDoc(SwDoc* const io_Doc) override;
+            virtual void InitDoc(SwDoc* const io_Doc, sw::mark::InsertMode eMode, SwPosition const* pSepPos) override;
 
             virtual void DeregisterFromDoc(SwDoc* const io_pDoc) override;
+
+            virtual auto InvalidateFrames() -> void override;
 
             virtual const OUString& GetShortName() const override
                 { return m_sShortName; }
@@ -174,6 +173,12 @@ namespace sw {
                 { m_sShortName = rShortName; }
             virtual void SetKeyCode(const vcl::KeyCode& rCode) override
                 { m_aCode = rCode; }
+            virtual bool IsHidden() const override
+                { return m_bHidden; }
+            virtual const OUString& GetHideCondition() const override
+                { return m_sHideCondition; }
+            virtual void Hide(bool rHide) override;
+            virtual void SetHideCondition(const OUString& rHideCondition) override;
 
             // ::sfx2::Metadatable
             virtual ::sfx2::IXmlIdRegistry& GetRegistry() override;
@@ -185,6 +190,8 @@ namespace sw {
         private:
             vcl::KeyCode m_aCode;
             OUString m_sShortName;
+            bool m_bHidden;
+            OUString m_sHideCondition;
         };
 
         class Fieldmark
@@ -217,7 +224,7 @@ namespace sw {
 
             virtual void Invalidate() override;
             virtual OUString ToString() const override;
-            virtual void dumpAsXml(struct _xmlTextWriter* pWriter) const override;
+            virtual void dumpAsXml(xmlTextWriterPtr pWriter) const override;
 
         private:
             OUString m_aFieldname;
@@ -229,24 +236,112 @@ namespace sw {
             : public Fieldmark
         {
         public:
-            TextFieldmark(const SwPaM& rPaM);
-            virtual void InitDoc(SwDoc* const io_pDoc) override;
+            TextFieldmark(const SwPaM& rPaM, const OUString& rName);
+            virtual void InitDoc(SwDoc* const io_pDoc, sw::mark::InsertMode eMode, SwPosition const* pSepPos) override;
             virtual void ReleaseDoc(SwDoc* const pDoc) override;
         };
 
+        // Non text fieldmarks have no content between the start and end marks.
+        class NonTextFieldmark
+            : public Fieldmark
+        {
+        public:
+            NonTextFieldmark(const SwPaM& rPaM);
+            virtual void InitDoc(SwDoc* const io_pDoc, sw::mark::InsertMode eMode, SwPosition const* pSepPos) override;
+            virtual void ReleaseDoc(SwDoc* const pDoc) override;
+        };
+
+        /// Fieldmark representing a checkbox form field.
         class CheckboxFieldmark
             : virtual public ICheckboxFieldmark
-            , public Fieldmark
+            , public NonTextFieldmark
         {
         public:
             CheckboxFieldmark(const SwPaM& rPaM);
-            virtual void InitDoc(SwDoc* const io_pDoc) override;
-            virtual void ReleaseDoc(SwDoc* const pDoc) override;
             bool IsChecked() const override;
             void SetChecked(bool checked) override;
         };
-    }
+
+        /// Fieldmark with a drop down button (e.g. this button opens the date picker for a date field)
+        class FieldmarkWithDropDownButton
+            : public NonTextFieldmark
+        {
+        public:
+            FieldmarkWithDropDownButton(const SwPaM& rPaM);
+            virtual ~FieldmarkWithDropDownButton() override;
+
+            virtual void ShowButton(SwEditWin* pEditWin) = 0;
+            virtual void HideButton();
+            virtual void RemoveButton();
+
+        protected:
+            VclPtr<FormFieldButton> m_pButton;
+        };
+
+        /// Fieldmark representing a drop-down form field.
+        class DropDownFieldmark
+            : public FieldmarkWithDropDownButton
+        {
+        public:
+            DropDownFieldmark(const SwPaM& rPaM);
+            virtual ~DropDownFieldmark() override;
+
+            virtual void ShowButton(SwEditWin* pEditWin) override;
+            virtual void HideButton() override;
+            virtual void RemoveButton() override;
+
+            // This method should be called only by the portion so we can now the portion's painting area
+            void SetPortionPaintArea(const SwRect& rPortionPaintArea);
+
+            void SendLOKMessage(const OString& sAction);
+
+        private:
+            SwRect m_aPortionPaintArea;
+            OString m_sLastSentLOKMsg;
+        };
+
+        /// Fieldmark representing a date form field.
+        class DateFieldmark
+            : virtual public IDateFieldmark
+            , public FieldmarkWithDropDownButton
+        {
+        public:
+            DateFieldmark(const SwPaM& rPaM);
+            virtual ~DateFieldmark() override;
+
+            virtual void InitDoc(SwDoc* const io_pDoc, sw::mark::InsertMode eMode, SwPosition const* pSepPos) override;
+            virtual void ReleaseDoc(SwDoc* const pDoc) override;
+
+            virtual void ShowButton(SwEditWin* pEditWin) override;
+
+            void SetPortionPaintAreaStart(const SwRect& rPortionPaintArea);
+            void SetPortionPaintAreaEnd(const SwRect& rPortionPaintArea);
+
+            virtual OUString GetContent() const override;
+            virtual void ReplaceContent(const OUString& sNewContent) override;
+
+            virtual std::pair<bool, double> GetCurrentDate() const override;
+            virtual void SetCurrentDate(double fDate) override;
+            virtual OUString GetDateInStandardDateFormat(double fDate) const override;
+
+        private:
+            OUString GetDateInCurrentDateFormat(double fDate) const;
+            std::pair<bool, double> ParseCurrentDateParam() const;
+            void InvalidateCurrentDateParam();
+
+            SvNumberFormatter* m_pNumberFormatter;
+            sw::DocumentContentOperationsManager* m_pDocumentContentOperationsManager;
+            SwRect m_aPaintAreaStart;
+            SwRect m_aPaintAreaEnd;
+        };
+
+        /// return position of the CH_TXT_ATR_FIELDSEP for rMark
+        SwPosition FindFieldSep(IFieldmark const& rMark);
+
+        /// check if rPaM is valid range of new fieldmark
+        bool IsFieldmarkOverlap(SwPaM const& rPaM);
 }
+
 #endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

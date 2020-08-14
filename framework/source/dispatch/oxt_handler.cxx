@@ -18,31 +18,32 @@
  */
 
 #include <dispatch/oxt_handler.hxx>
-#include <threadhelp/transactionguard.hxx>
 #include <services.h>
 #include <unotools/mediadescriptor.hxx>
 
-#include <com/sun/star/io/XInputStream.hpp>
 #include <com/sun/star/frame/DispatchResultState.hpp>
 #include <com/sun/star/task/XJobExecutor.hpp>
-
-#include <comphelper/sequenceashashmap.hxx>
-#include <rtl/ustrbuf.hxx>
+#include <cppuhelper/supportsservice.hxx>
 
 namespace framework{
 
-//  XInterface, XTypeProvider, XServiceInfo
+// XInterface, XTypeProvider, XServiceInfo
 
-DEFINE_XSERVICEINFO_MULTISERVICE    (   Oxt_Handler                                                ,
-                                        ::cppu::OWeakObject                                        ,
-                                        SERVICENAME_CONTENTHANDLER                                 ,
-                                        IMPLEMENTATIONNAME_OXT_HANDLER
-                                    )
+OUString SAL_CALL Oxt_Handler::getImplementationName()
+{
+    return "com.sun.star.comp.framework.OXTFileHandler";
+}
 
-DEFINE_INIT_SERVICE                 (   Oxt_Handler,
-                                        {
-                                        }
-                                    )
+sal_Bool SAL_CALL Oxt_Handler::supportsService( const OUString& sServiceName )
+{
+    return cppu::supportsService(this, sServiceName);
+}
+
+css::uno::Sequence< OUString > SAL_CALL Oxt_Handler::getSupportedServiceNames()
+{
+    return { "com.sun.star.frame.ContentHandler" };
+}
+
 
 /*-************************************************************************************************************
     @short      standard ctor
@@ -54,8 +55,8 @@ DEFINE_INIT_SERVICE                 (   Oxt_Handler,
     @onerror    Show an assertion and do nothing else.
     @threadsafe yes
 *//*-*************************************************************************************************************/
-Oxt_Handler::Oxt_Handler( const css::uno::Reference< css::lang::XMultiServiceFactory >& xFactory )
-        :   m_xFactory          ( xFactory )
+Oxt_Handler::Oxt_Handler( const css::uno::Reference< css::uno::XComponentContext >& xContext )
+        :   m_xContext          ( xContext )
 {
 }
 
@@ -64,13 +65,6 @@ Oxt_Handler::Oxt_Handler( const css::uno::Reference< css::lang::XMultiServiceFac
 *//*-*************************************************************************************************************/
 Oxt_Handler::~Oxt_Handler()
 {
-    if ( m_xListener.is() )
-    {
-        css::frame::DispatchResultEvent aEvent;
-        aEvent.State = css::frame::DispatchResultState::FAILURE;
-        m_xListener->dispatchFinished( aEvent );
-        m_xListener.clear();
-    }
 }
 
 /*-************************************************************************************************************
@@ -99,13 +93,10 @@ void SAL_CALL Oxt_Handler::dispatchWithNotification( const css::util::URL& aURL,
 {
     osl::MutexGuard g(m_mutex);
 
-    OUString sServiceName = "com.sun.star.deployment.ui.PackageManagerDialog";
     css::uno::Sequence< css::uno::Any > lParams(1);
     lParams[0] <<= aURL.Main;
 
-    css::uno::Reference< css::uno::XInterface > xService;
-
-    xService = m_xFactory->createInstanceWithArguments( sServiceName, lParams );
+    css::uno::Reference< css::uno::XInterface > xService = m_xContext->getServiceManager()->createInstanceWithArgumentsAndContext( "com.sun.star.deployment.ui.PackageManagerDialog", lParams, m_xContext );
     css::uno::Reference< css::task::XJobExecutor > xExecuteable( xService, css::uno::UNO_QUERY );
     if ( xExecuteable.is() )
         xExecuteable->trigger( OUString() );
@@ -172,5 +163,13 @@ OUString SAL_CALL Oxt_Handler::detect( css::uno::Sequence< css::beans::PropertyV
 }
 
 } // namespace framework
+
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+framework_Oxt_Handler_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const& )
+{
+    return cppu::acquire(new framework::Oxt_Handler(context));
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

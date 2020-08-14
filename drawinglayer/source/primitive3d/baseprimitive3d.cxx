@@ -19,17 +19,15 @@
 
 #include <drawinglayer/primitive3d/baseprimitive3d.hxx>
 #include <drawinglayer/geometry/viewinformation3d.hxx>
-#include <basegfx/tools/canvastools.hxx>
+#include <basegfx/utils/canvastools.hxx>
 #include <comphelper/sequence.hxx>
 
 
 using namespace com::sun::star;
 
 
-namespace drawinglayer
+namespace drawinglayer::primitive3d
 {
-    namespace primitive3d
-    {
         BasePrimitive3D::BasePrimitive3D()
         :   BasePrimitive3DImplBase(m_aMutex)
         {
@@ -54,7 +52,7 @@ namespace drawinglayer
             return Primitive3DContainer();
         }
 
-        Primitive3DSequence SAL_CALL BasePrimitive3D::getDecomposition( const uno::Sequence< beans::PropertyValue >& rViewParameters )
+        css::uno::Sequence< ::css::uno::Reference< ::css::graphic::XPrimitive3D > > SAL_CALL BasePrimitive3D::getDecomposition( const uno::Sequence< beans::PropertyValue >& rViewParameters )
         {
             const geometry::ViewInformation3D aViewInformation(rViewParameters);
             return comphelper::containerToSequence(get3DDecomposition(aViewInformation));
@@ -65,14 +63,8 @@ namespace drawinglayer
             const geometry::ViewInformation3D aViewInformation(rViewParameters);
             return basegfx::unotools::rectangle3DFromB3DRectangle(getB3DRange(aViewInformation));
         }
-    } // end of namespace primitive3d
-} // end of namespace drawinglayer
 
 
-namespace drawinglayer
-{
-    namespace primitive3d
-    {
         Primitive3DContainer BufferedDecompositionPrimitive3D::create3DDecomposition(const geometry::ViewInformation3D& /*rViewInformation*/) const
         {
             return Primitive3DContainer();
@@ -96,16 +88,9 @@ namespace drawinglayer
 
             return getBuffered3DDecomposition();
         }
-    } // end of namespace primitive3d
-} // end of namespace drawinglayer
-
 
 // tooling
 
-namespace drawinglayer
-{
-    namespace primitive3d
-    {
         // get range3D from a given Primitive3DReference
         basegfx::B3DRange getB3DRangeFromPrimitive3DReference(const Primitive3DReference& rCandidate, const geometry::ViewInformation3D& aViewInformation)
         {
@@ -141,7 +126,7 @@ namespace drawinglayer
             {
                 const size_t nCount(size());
 
-                for(size_t a(0L); a < nCount; a++)
+                for(size_t a(0); a < nCount; a++)
                 {
                     aRetval.expand(getB3DRangeFromPrimitive3DReference((*this)[a], aViewInformation));
                 }
@@ -166,19 +151,13 @@ namespace drawinglayer
 
             const BasePrimitive3D* pA(dynamic_cast< const BasePrimitive3D* >(rxA.get()));
             const BasePrimitive3D* pB(dynamic_cast< const BasePrimitive3D* >(rxB.get()));
-            const bool bAEqualZero(pA == nullptr);
 
-            if(bAEqualZero != (pB == nullptr))
+            if(!pA || !pB)
             {
                 return false;
             }
 
-            if(bAEqualZero)
-            {
-                return false;
-            }
-
-            return (pA->operator==(*pB));
+            return pA->operator==(*pB);
         }
 
         bool Primitive3DContainer::operator==(const Primitive3DContainer& rB) const
@@ -202,7 +181,7 @@ namespace drawinglayer
                 return false;
             }
 
-            for(size_t a(0L); a < nCount; a++)
+            for(size_t a(0); a < nCount; a++)
             {
                 if(!arePrimitive3DReferencesEqual((*this)[a], rB[a]))
                 {
@@ -218,7 +197,6 @@ namespace drawinglayer
             insert(end(), rSource.begin(), rSource.end());
         }
 
-    } // end of namespace primitive3d
-} // end of namespace drawinglayer
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

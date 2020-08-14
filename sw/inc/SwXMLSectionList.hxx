@@ -19,41 +19,22 @@
 #ifndef INCLUDED_SW_INC_SWXMLSECTIONLIST_HXX
 #define INCLUDED_SW_INC_SWXMLSECTIONLIST_HXX
 
-#include <xmloff/xmlictxt.hxx>
 #include <xmloff/xmlimp.hxx>
 
-class SwXMLSectionList : public SvXMLImport
+class SwXMLSectionList final : public SvXMLImport
 {
-protected:
-    // This method is called after the namespace map has been updated, but
-    // before a context for the current element has been pushed.
-    virtual SvXMLImportContext *CreateContext( sal_uInt16 nPrefix,
-                  const OUString& rLocalName,
-                  const css::uno::Reference< css::xml::sax::XAttributeList > & xAttrList ) override;
 public:
-    std::vector<OUString*> &rSectionList;
+    std::vector<OUString> & m_rSectionList;
 
     SwXMLSectionList(
         const css::uno::Reference< css::uno::XComponentContext >& rContext,
-        std::vector<OUString*> &rNewSectionList );
+        std::vector<OUString> & rNewSectionList);
 
-    virtual ~SwXMLSectionList ( )
-        throw() override;
-};
+    virtual ~SwXMLSectionList ( ) throw() override;
 
-class SvXMLSectionListContext : public SvXMLImportContext
-{
 private:
-    SwXMLSectionList & rLocalRef;
-public:
-    SvXMLSectionListContext ( SwXMLSectionList& rImport,
-                           sal_uInt16 nPrefix,
-                           const OUString& rLocalName,
-                           const css::uno::Reference< css::xml::sax::XAttributeList > & xAttrList );
-    virtual SvXMLImportContext *CreateChildContext( sal_uInt16 nPrefix,
-                           const OUString& rLocalName,
-                           const css::uno::Reference< css::xml::sax::XAttributeList > & xAttrList ) override;
-    virtual ~SvXMLSectionListContext() override;
+    virtual SvXMLImportContext *CreateFastContext( sal_Int32 Element,
+        const css::uno::Reference< css::xml::sax::XFastAttributeList > & xAttrList ) override;
 };
 
 #endif

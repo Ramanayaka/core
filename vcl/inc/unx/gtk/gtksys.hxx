@@ -9,18 +9,16 @@
 #ifndef INCLUDED_VCL_INC_UNX_GTK_GTKSYS_HXX
 #define INCLUDED_VCL_INC_UNX_GTK_GTKSYS_HXX
 
-#include "unx/gensys.h"
+#include <unx/gensys.h>
 #include <gtk/gtk.h>
 #include <unx/saltype.h>
 #include <deque>
 
-class GtkSalSystem : public SalGenericSystem
+class GtkSalSystem final : public SalGenericSystem
 {
-    typedef std::deque<std::pair<GdkScreen*, int> > ScreenMonitors_t;
-
     GdkDisplay *mpDisplay;
     // Number of monitors for every active screen.
-    ScreenMonitors_t maScreenMonitors;
+    std::deque<std::pair<GdkScreen*, int> > maScreenMonitors;
 public:
              GtkSalSystem();
     virtual ~GtkSalSystem() override;
@@ -32,11 +30,9 @@ public:
     virtual tools::Rectangle     GetDisplayScreenPosSizePixel   (unsigned int nScreen) override;
     virtual int           ShowNativeDialog (const OUString&              rTitle,
                                             const OUString&              rMessage,
-                                            const std::list< OUString >& rButtons,
-                                            int                        nDefButton) override;
+                                            const std::vector< OUString >& rButtons) override;
     SalX11Screen      GetDisplayDefaultXScreen()
             { return getXScreenFromDisplayScreen( GetDisplayBuiltInScreen() ); }
-    int               GetDisplayXScreenCount();
     SalX11Screen      getXScreenFromDisplayScreen(unsigned int nDisplayScreen);
     void              countScreenMonitors();
     // We have a 'screen' number that is combined from screen-idx + monitor-idx

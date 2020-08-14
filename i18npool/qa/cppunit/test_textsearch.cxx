@@ -17,23 +17,16 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <cppuhelper/bootstrap.hxx>
-#include <cppuhelper/basemutex.hxx>
 #include <com/sun/star/util/SearchFlags.hpp>
 #include <com/sun/star/util/SearchOptions.hpp>
 #include <com/sun/star/util/SearchAlgorithms2.hpp>
 #include <com/sun/star/util/XTextSearch2.hpp>
-#include <com/sun/star/i18n/Transliteration.hpp>
 #include <unotest/bootstrapfixturebase.hxx>
 #include <i18nutil/transliteration.hxx>
 
 #include <unicode/regex.h>
 
-#include <rtl/strbuf.hxx>
-#include <rtl/ustrbuf.hxx>
-
 using namespace ::com::sun::star;
-using namespace U_ICU_NAMESPACE;
 typedef U_ICU_NAMESPACE::UnicodeString IcuUniString;
 
 class TestTextSearch : public test::BootstrapFixtureBase
@@ -60,14 +53,13 @@ private:
 void TestTextSearch::testICU()
 {
     UErrorCode nErr = U_ZERO_ERROR;
-    RegexMatcher* pRegexMatcher;
     sal_uInt32 nSearchFlags = UREGEX_UWORD | UREGEX_CASE_INSENSITIVE;
 
     OUString aString( "abcdefgh" );
     OUString aPattern( "e" );
     IcuUniString aSearchPat( reinterpret_cast<const UChar*>(aPattern.getStr()), aPattern.getLength() );
 
-    pRegexMatcher = new RegexMatcher( aSearchPat, nSearchFlags, nErr );
+    std::unique_ptr<icu::RegexMatcher> pRegexMatcher(new icu::RegexMatcher( aSearchPat, nSearchFlags, nErr ));
 
     IcuUniString aSource( reinterpret_cast<const UChar*>(aString.getStr()), aString.getLength() );
     pRegexMatcher->reset( aSource );
@@ -79,13 +71,11 @@ void TestTextSearch::testICU()
     CPPUNIT_ASSERT_EQUAL( static_cast<int32_t>(5), pRegexMatcher->end( nErr ) );
     CPPUNIT_ASSERT_EQUAL( U_ZERO_ERROR, nErr );
 
-    delete pRegexMatcher;
-
     OUString aString2( "acababaabcababadcdaa" );
     OUString aPattern2( "a" );
 
     IcuUniString aSearchPat2( reinterpret_cast<const UChar*>(aPattern2.getStr()), aPattern2.getLength() );
-    pRegexMatcher = new RegexMatcher( aSearchPat2, nSearchFlags, nErr );
+    pRegexMatcher.reset(new icu::RegexMatcher( aSearchPat2, nSearchFlags, nErr ));
 
     IcuUniString aSource2( reinterpret_cast<const UChar*>(aString2.getStr()), aString2.getLength() );
     pRegexMatcher->reset( aSource2 );
@@ -96,14 +86,12 @@ void TestTextSearch::testICU()
     CPPUNIT_ASSERT_EQUAL( U_ZERO_ERROR, nErr );
     CPPUNIT_ASSERT_EQUAL( static_cast<int32_t>(1), pRegexMatcher->end( nErr ) );
     CPPUNIT_ASSERT_EQUAL( U_ZERO_ERROR, nErr );
-    delete pRegexMatcher;
 }
 
 void TestTextSearch::testSearches()
 {
     OUString str( "acababaabcababadcdaa" );
     sal_Int32 startPos = 2, endPos = 20 ;
-    OUString const searchStr( "(ab)*a(c|d)+" );
     sal_Int32 const fStartRes = 10, fEndRes = 18 ;
     sal_Int32 const bStartRes = 18, bEndRes = 10 ;
 
@@ -111,7 +99,7 @@ void TestTextSearch::testSearches()
     util::SearchOptions aOptions;
     aOptions.algorithmType = util::SearchAlgorithms_REGEXP ;
     aOptions.searchFlag = util::SearchFlags::ALL_IGNORE_CASE;
-    aOptions.searchString = searchStr;
+    aOptions.searchString = "(ab)*a(c|d)+";
     m_xSearch->setOptions( aOptions );
 
     util::SearchResult aRes;
@@ -128,7 +116,7 @@ void TestTextSearch::testSearches()
     CPPUNIT_ASSERT_EQUAL( bStartRes, aRes.startOffset[0] );
     CPPUNIT_ASSERT_EQUAL( bEndRes, aRes.endOffset[0] );
 
-    aOptions.transliterateFlags = (int) (TransliterationFlags::IGNORE_CASE
+    aOptions.transliterateFlags = static_cast<int>(TransliterationFlags::IGNORE_CASE
                                 | TransliterationFlags::IGNORE_WIDTH);
     aOptions.searchString = "([^ ]*)[ ]*([^ ]*)";
     m_xSearch->setOptions(aOptions);
@@ -149,7 +137,7 @@ void TestTextSearch::testWildcardSearch()
     aOptions.WildcardEscapeCharacter = '~';
     // aOptions.searchFlag = ::css::util::SearchFlags::WILD_MATCH_SELECTION;
     // is not set, so substring match is allowed.
-    aOptions.transliterateFlags = (sal_Int32)::css::i18n::TransliterationModules::TransliterationModules_IGNORE_CASE;
+    aOptions.transliterateFlags = sal_Int32(::css::i18n::TransliterationModules::TransliterationModules_IGNORE_CASE);
     aText = "abAca";
 
     aOptions.searchString = "a";

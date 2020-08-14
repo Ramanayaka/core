@@ -13,20 +13,10 @@ $(eval $(call gb_UnpackedTarball_set_tarball,libvisio,$(VISIO_TARBALL)))
 
 $(eval $(call gb_UnpackedTarball_set_patchlevel,libvisio,0))
 
+$(eval $(call gb_UnpackedTarball_update_autoconf_configs,libvisio))
+
 $(eval $(call gb_UnpackedTarball_add_patches,libvisio, \
     external/libvisio/ubsan.patch \
-))
-
-ifeq ($(COM_IS_CLANG),TRUE)
-ifneq ($(filter -fsanitize=%,$(CC)),)
-$(eval $(call gb_UnpackedTarball_add_patches,libvisio, \
-    external/libvisio/ubsan-visibility.patch \
-))
-endif
-endif
-
-$(eval $(call gb_UnpackedTarball_add_patches,libvisio, \
-    external/libvisio/iOS.patch.0 \
 ))
 
 # vim: set noet sw=4 ts=4:

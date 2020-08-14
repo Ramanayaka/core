@@ -18,10 +18,12 @@
  */
 
 #include <sal/macros.h>
+#include <sal/log.hxx>
 #include <comphelper/processfactory.hxx>
 #include <comphelper/uno3.hxx>
 #include <comphelper/proparrhlp.hxx>
 #include <comphelper/propertycontainer.hxx>
+#include <tools/diagnose_ex.h>
 
 #include <ooo/vba/XVBAToOOEventDescGen.hpp>
 
@@ -30,7 +32,6 @@
 #include <com/sun/star/beans/PropertyAttribute.hpp>
 
 #include <com/sun/star/lang/XMultiComponentFactory.hpp>
-#include <com/sun/star/lang/XServiceName.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/lang/XInitialization.hpp>
 
@@ -41,7 +42,6 @@
 
 #include <com/sun/star/script/ScriptEventDescriptor.hpp>
 #include <com/sun/star/script/provider/XScriptProviderSupplier.hpp>
-#include <com/sun/star/script/vba/XVBACompatibility.hpp>
 
 #include <com/sun/star/container/XNamed.hpp>
 
@@ -58,18 +58,13 @@
 #include <com/sun/star/awt/XListBox.hpp>
 
 #include <sfx2/objsh.hxx>
-#include <basic/sbstar.hxx>
 #include <basic/basmgr.hxx>
-#include <basic/sbmeth.hxx>
-#include <basic/sbmod.hxx>
-#include <basic/sbx.hxx>
 #include <filter/msfilter/msvbahelper.hxx>
 #include <vbahelper/vbareturntypes.hxx>
 
-#include <comphelper/anytostring.hxx>
-
 #include <com/sun/star/script/XScriptListener.hpp>
 #include <cppuhelper/implbase.hxx>
+#include <cppuhelper/supportsservice.hxx>
 #include <comphelper/evtmethodhelper.hxx>
 
 #include <list>
@@ -81,20 +76,20 @@ using namespace ::com::sun::star::uno;
 using namespace ::ooo::vba;
 
 // Some constants
-static const char DELIM[] = "::";
-static const sal_Int32 DELIMLEN = strlen(DELIM);
+const char DELIM[] = "::";
+const sal_Int32 DELIMLEN = strlen(DELIM);
 
-bool isKeyEventOk( awt::KeyEvent& evt, const Sequence< Any >& params )
+static bool isKeyEventOk( awt::KeyEvent& evt, const Sequence< Any >& params )
 {
-    return ( params.getLength() > 0 ) && ( params[ 0 ] >>= evt );
+    return params.hasElements() && ( params[ 0 ] >>= evt );
 }
 
-bool isMouseEventOk( awt::MouseEvent& evt, const Sequence< Any >& params )
+static bool isMouseEventOk( awt::MouseEvent& evt, const Sequence< Any >& params )
 {
-    return ( params.getLength() > 0 ) && ( params[ 0 ] >>= evt );
+    return params.hasElements() && ( params[ 0 ] >>= evt );
 }
 
-Sequence< Any > ooMouseEvtToVBADblClick( const Sequence< Any >& params )
+static Sequence< Any > ooMouseEvtToVBADblClick( const Sequence< Any >& params )
 {
     awt::MouseEvent evt;
 
@@ -105,7 +100,7 @@ Sequence< Any > ooMouseEvtToVBADblClick( const Sequence< Any >& params )
     return params;
 }
 
-Sequence< Any > ooMouseEvtToVBAMouseEvt( const Sequence< Any >& params )
+static Sequence< Any > ooMouseEvtToVBAMouseEvt( const Sequence< Any >& params )
 {
     Sequence< Any > translatedParams;
     awt::MouseEvent evt;
@@ -126,7 +121,7 @@ Sequence< Any > ooMouseEvtToVBAMouseEvt( const Sequence< Any >& params )
     return translatedParams;
 }
 
-Sequence< Any > ooKeyPressedToVBAKeyPressed( const Sequence< Any >& params )
+static Sequence< Any > ooKeyPressedToVBAKeyPressed( const Sequence< Any >& params )
 {
     Sequence< Any > translatedParams;
     awt::KeyEvent evt;
@@ -141,7 +136,7 @@ Sequence< Any > ooKeyPressedToVBAKeyPressed( const Sequence< Any >& params )
     return  translatedParams;
 }
 
-Sequence< Any > ooKeyPressedToVBAKeyUpDown( const Sequence< Any >& params )
+static Sequence< Any > ooKeyPressedToVBAKeyUpDown( const Sequence< Any >& params )
 {
     Sequence< Any > translatedParams;
     awt::KeyEvent evt;
@@ -162,6 +157,8 @@ Sequence< Any > ooKeyPressedToVBAKeyUpDown( const Sequence< Any >& params )
 
 typedef Sequence< Any > (*Translator)(const Sequence< Any >&);
 
+namespace {
+
 //expand the "TranslateInfo" struct to support more kinds of events
 struct TranslateInfo
 {
@@ -171,12 +168,13 @@ struct TranslateInfo
     void const *pPara;            //Parameters for the above approve method
 };
 
+}
 
 typedef std::unordered_map<
     OUString,
-    std::list< TranslateInfo >,
-    OUStringHash > EventInfoHash;
+    std::list< TranslateInfo > > EventInfoHash;
 
+namespace {
 
 struct TranslatePropMap
 {
@@ -184,16 +182,22 @@ struct TranslatePropMap
     TranslateInfo aTransInfo;
 };
 
-bool ApproveAll(const ScriptEvent& evt, void const * pPara); //allow all types of controls to execute the event
-bool ApproveType(const ScriptEvent& evt, void const * pPara); //certain types of controls should execute the event, those types are given by pPara
-bool DenyType(const ScriptEvent& evt, void const * pPara);    //certain types of controls should not execute the event, those types are given by pPara
-bool DenyMouseDrag(const ScriptEvent& evt, void const * pPara); //used for VBA MouseMove event when "Shift" key is pressed
+}
+
+static bool ApproveAll(const ScriptEvent& evt, void const * pPara); //allow all types of controls to execute the event
+static bool ApproveType(const ScriptEvent& evt, void const * pPara); //certain types of controls should execute the event, those types are given by pPara
+static bool DenyType(const ScriptEvent& evt, void const * pPara);    //certain types of controls should not execute the event, those types are given by pPara
+static bool DenyMouseDrag(const ScriptEvent& evt, void const * pPara); //used for VBA MouseMove event when "Shift" key is pressed
+
+namespace {
 
 struct TypeList
 {
     uno::Type const * pTypeList;
     int nListLength;
 };
+
+}
 
 Type const typeXFixedText = cppu::UnoType<awt::XFixedText>::get();
 Type const typeXTextComponent = cppu::UnoType<awt::XTextComponent>::get();
@@ -256,12 +260,11 @@ static TranslatePropMap aTranslatePropMap_Impl[] =
     { OUString("keyPressed"), { OUString("_KeyPress"), ooKeyPressedToVBAKeyPressed, ApproveAll, nullptr } }
 };
 
-EventInfoHash& getEventTransInfo()
+static EventInfoHash& getEventTransInfo()
 {
-    static bool initialised = false;
-    static EventInfoHash eventTransInfo;
-    if ( !initialised )
+    static EventInfoHash eventTransInfo = [&]()
     {
+        EventInfoHash tmp;
         OUString sEventInfo;
         TranslatePropMap* pTransProp = aTranslatePropMap_Impl;
         int nCount = SAL_N_ELEMENTS(aTranslatePropMap_Impl);
@@ -277,15 +280,17 @@ EventInfoHash& getEventTransInfo()
                 pTransProp++;
                 i++;
             }while(i < nCount && sEventInfo == pTransProp->sEventInfo);
-            eventTransInfo[sEventInfo] = infoList;
+            tmp[sEventInfo] = infoList;
         }
-        initialised = true;
-    }
+        return tmp;
+    }();
     return eventTransInfo;
 }
 
 
 // Helper class
+
+namespace {
 
 class ScriptEventHelper
 {
@@ -294,14 +299,16 @@ public:
     explicit ScriptEventHelper( const OUString& sCntrlServiceName );
     ~ScriptEventHelper();
     Sequence< ScriptEventDescriptor > createEvents( const OUString& sCodeName );
-    Sequence< OUString > getEventListeners();
+    Sequence< OUString > getEventListeners() const;
 private:
     Reference< XComponentContext > m_xCtx;
     Reference< XInterface > m_xControl;
     bool m_bDispose;
 };
 
-bool
+}
+
+static bool
 eventMethodToDescriptor( const OUString& rEventMethod, ScriptEventDescriptor& evtDesc, const OUString& sCodeName )
 {
     // format of ControlListener is TypeName::methodname e.g.
@@ -373,7 +380,7 @@ ScriptEventHelper::~ScriptEventHelper()
 }
 
 Sequence< OUString >
-ScriptEventHelper::getEventListeners()
+ScriptEventHelper::getEventListeners() const
 {
     std::list< OUString > eventMethods;
 
@@ -381,23 +388,15 @@ ScriptEventHelper::getEventListeners()
 
     Reference< beans::XIntrospectionAccess > xIntrospectionAccess =
         xIntrospection->inspect( makeAny( m_xControl ) );
-    Sequence< Type > aControlListeners =
+    const Sequence< Type > aControlListeners =
         xIntrospectionAccess->getSupportedListeners();
-    sal_Int32 nLength = aControlListeners.getLength();
-    for ( sal_Int32 i = 0; i< nLength; ++i )
+    for ( const Type& listType : aControlListeners )
     {
-        Type& listType = aControlListeners[ i ];
         OUString sFullTypeName = listType.getTypeName();
         Sequence< OUString > sMeths =
             comphelper::getEventMethodsForType( listType );
-        sal_Int32 sMethLen = sMeths.getLength();
-        for ( sal_Int32 j=0 ; j < sMethLen; ++j )
-        {
-            OUString sEventMethod = sFullTypeName;
-            sEventMethod += DELIM;
-            sEventMethod += sMeths[ j ];
-            eventMethods.push_back( sEventMethod );
-        }
+        std::transform(sMeths.begin(), sMeths.end(), std::back_inserter(eventMethods),
+            [&sFullTypeName](const OUString& rMeth) -> OUString { return sFullTypeName + DELIM + rMeth; });
     }
 
     return comphelper::containerToSequence(eventMethods);
@@ -406,20 +405,19 @@ ScriptEventHelper::getEventListeners()
 Sequence< ScriptEventDescriptor >
 ScriptEventHelper::createEvents( const OUString& sCodeName )
 {
-    Sequence< OUString > aControlListeners = getEventListeners();
-    OUString* pSrc = aControlListeners.getArray();
+    const Sequence< OUString > aControlListeners = getEventListeners();
     sal_Int32 nLength = aControlListeners.getLength();
 
     Sequence< ScriptEventDescriptor > aDest( nLength );
     sal_Int32 nEvts = 0;
-    for ( sal_Int32 i = 0; i< nLength; ++i, ++pSrc )
+    for ( OUString const & i : aControlListeners)
     {
         // from getListeners eventName is of form
         // "com.sun.star.awt.XActionListener::actionPerformed"
         // we need to strip "com.sun.star.awt." from that for form
         // controls
         ScriptEventDescriptor evtDesc;
-        if ( eventMethodToDescriptor( *pSrc, evtDesc, sCodeName ) )
+        if ( eventMethodToDescriptor( i, evtDesc, sCodeName ) )
         {
             sal_Int32 dIndex = nEvts;
             ++nEvts;
@@ -435,6 +433,8 @@ ScriptEventHelper::createEvents( const OUString& sCodeName )
 
 
 typedef ::cppu::WeakImplHelper< container::XNameContainer > NameContainer_BASE;
+
+namespace {
 
 class ReadOnlyEventsNameContainer : public NameContainer_BASE
 {
@@ -471,23 +471,23 @@ public:
     { return !m_hEvents.empty(); }
 private:
 
-typedef std::unordered_map< OUString, Any, OUStringHash > EventSupplierHash;
+typedef std::unordered_map< OUString, Any > EventSupplierHash;
 
     EventSupplierHash m_hEvents;
 };
 
+}
+
 ReadOnlyEventsNameContainer::ReadOnlyEventsNameContainer( const Sequence< OUString >& eventMethods, const OUString& sCodeName )
 {
-    const OUString* pSrc = eventMethods.getConstArray();
-    sal_Int32 nLen = eventMethods.getLength();
-    for ( sal_Int32 index = 0; index < nLen; ++index, ++pSrc )
+    for ( const OUString& rSrc : eventMethods )
     {
         Any aDesc;
         ScriptEventDescriptor evtDesc;
-        if (  eventMethodToDescriptor( *pSrc, evtDesc, sCodeName ) )
+        if (  eventMethodToDescriptor( rSrc, evtDesc, sCodeName ) )
         {
             aDesc <<= evtDesc;
-            m_hEvents[ *pSrc ] = aDesc;
+            m_hEvents[ rSrc ] = aDesc;
         }
     }
 }
@@ -515,6 +515,8 @@ ReadOnlyEventsNameContainer::hasByName( const OUString& aName )
     return true;
 }
 
+namespace {
+
 class ReadOnlyEventsSupplier : public ::cppu::WeakImplHelper< XScriptEventsSupplier >
 {
 public:
@@ -527,10 +529,14 @@ private:
     Reference< container::XNameContainer > m_xNameContainer;
 };
 
+}
+
 typedef ::cppu::WeakImplHelper< XScriptListener, util::XCloseListener, lang::XInitialization, css::lang::XServiceInfo > EventListener_BASE;
 
 #define EVENTLSTNR_PROPERTY_ID_MODEL         1
 #define EVENTLSTNR_PROPERTY_MODEL            "Model"
+
+namespace {
 
 class EventListener : public EventListener_BASE
     ,public ::comphelper::OMutexAndBroadcastHelper
@@ -581,13 +587,13 @@ public:
             }
         }
         OPropertyContainer::setFastPropertyValue( nHandle, rValue );
-    if ( nHandle == EVENTLSTNR_PROPERTY_ID_MODEL )
+        if ( nHandle == EVENTLSTNR_PROPERTY_ID_MODEL )
             setShellFromModel();
     }
 
     OUString SAL_CALL getImplementationName() override
     {
-        return OUString( "ooo.vba.EventListener"  );
+        return "ooo.vba.EventListener";
     }
 
     sal_Bool SAL_CALL supportsService(OUString const & ServiceName) override
@@ -597,8 +603,7 @@ public:
 
     css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override
     {
-        const OUString strName( getImplementationName() );
-        return Sequence< OUString >( &strName, 1 );
+        return { getImplementationName() };
     }
 
 protected:
@@ -616,15 +621,15 @@ private:
     Reference< frame::XModel > m_xModel;
     bool m_bDocClosed;
     SfxObjectShell* mpShell;
-    OUString msProject;
 };
+
+}
 
 EventListener::EventListener() :
 OPropertyContainer(GetBroadcastHelper()), m_bDocClosed(false), mpShell( nullptr )
 {
     registerProperty( EVENTLSTNR_PROPERTY_MODEL, EVENTLSTNR_PROPERTY_ID_MODEL,
         beans::PropertyAttribute::TRANSIENT, &m_xModel, cppu::UnoType<decltype(m_xModel)>::get() );
-    msProject = "Standard";
 }
 
 void
@@ -642,14 +647,6 @@ EventListener::setShellFromModel()
         }
         pShell = SfxObjectShell::GetNext( *pShell );
     }
-    // set ProjectName from model
-    try
-    {
-        uno::Reference< beans::XPropertySet > xProps( m_xModel, UNO_QUERY_THROW );
-        uno::Reference< script::vba::XVBACompatibility > xVBAMode( xProps->getPropertyValue("BasicLibraries"), uno::UNO_QUERY_THROW );
-        msProject = xVBAMode->getProjectName();
-    }
-    catch ( uno::Exception& ) {}
 }
 
 //XEventListener
@@ -745,7 +742,7 @@ bool ApproveAll(SAL_UNUSED_PARAMETER const ScriptEvent&, SAL_UNUSED_PARAMETER vo
 }
 
 //for the given control type in evt.Arguments[0], look for if it appears in the type list in pPara
-bool FindControl(const ScriptEvent& evt, void const * pPara)
+static bool FindControl(const ScriptEvent& evt, void const * pPara)
 {
     lang::EventObject aEvent;
     evt.Arguments[ 0 ] >>= aEvent;
@@ -815,7 +812,7 @@ EventListener::firing_Impl(const ScriptEvent& evt, Any* pRet )
         if ( xCntrlShape.is() )
         {
             // for sheet controls ( that fire from the api ) we don't
-            // have the real control ( thats only available from the view )
+            // have the real control ( that's only available from the view )
             // api code creates just a control instance that is transferred
             // via aEvent.Arguments[ 0 ] that control though has no
             // info like name etc.
@@ -846,102 +843,95 @@ EventListener::firing_Impl(const ScriptEvent& evt, Any* pRet )
     {
         xScriptProvider =  xSPS->getScriptProvider();
     }
-    if ( xScriptProvider.is() && mpShell )
+    if ( !(xScriptProvider.is() && mpShell) )
+        return;
+
+    BasicManager* pBasicManager = mpShell->GetBasicManager();
+    OUString sProject;
+    OUString sScriptCode( evt.ScriptCode );
+    // dialogs pass their own library, presence of Dot determines that
+    if ( sScriptCode.indexOf( '.' ) == -1 )
     {
-        std::list< TranslateInfo >::const_iterator txInfo =
-            eventInfo_it->second.begin();
-        std::list< TranslateInfo >::const_iterator txInfo_end = eventInfo_it->second.end();
+        //'Project' is a better default but I want to force failures
+        //OUString sMacroLoc("Project");
+        sProject = "Standard";
 
-        BasicManager* pBasicManager = mpShell->GetBasicManager();
-        OUString sProject;
-        OUString sScriptCode( evt.ScriptCode );
-        // dialogs pass their own library, presence of Dot determines that
-        if ( sScriptCode.indexOf( '.' ) == -1 )
+        if (!pBasicManager->GetName().isEmpty())
         {
-            //'Project' is a better default but I want to force failures
-            //OUString sMacroLoc("Project");
-            sProject = "Standard";
-
-            if (!pBasicManager->GetName().isEmpty())
-            {
-                sProject =  pBasicManager->GetName();
-            }
+            sProject =  pBasicManager->GetName();
         }
-        else
-        {
-            sal_Int32 nIndex = sScriptCode.indexOf( '.' );
-            sProject = sScriptCode.copy( 0, nIndex );
-            sScriptCode = sScriptCode.copy( nIndex + 1 );
-        }
-        OUString sMacroLoc = sProject;
-        sMacroLoc = sMacroLoc.concat(  "." );
-        sMacroLoc = sMacroLoc.concat( sScriptCode ).concat( "." );
+    }
+    else
+    {
+        sal_Int32 nIndex = sScriptCode.indexOf( '.' );
+        sProject = sScriptCode.copy( 0, nIndex );
+        sScriptCode = sScriptCode.copy( nIndex + 1 );
+    }
+    OUString sMacroLoc = sProject + "." + sScriptCode + ".";
 
-        for ( ; txInfo != txInfo_end; ++txInfo )
+    for (const auto& rTxInfo : eventInfo_it->second)
+    {
+        // If the document is closed, we should not execute macro.
+        if (m_bDocClosed)
         {
-            // If the document is closed, we should not execute macro.
-            if (m_bDocClosed)
+            break;
+        }
+
+        OUString sTemp = sName.concat( rTxInfo.sVBAName );
+        // see if we have a match for the handlerextension
+        // where ScriptCode is methodname_handlerextension
+        OUString sToResolve = sMacroLoc.concat( sTemp );
+
+        ooo::vba::MacroResolvedInfo aMacroResolvedInfo = ooo::vba::resolveVBAMacro( mpShell, sToResolve );
+        if ( aMacroResolvedInfo.mbFound )
+        {
+
+            if (! rTxInfo.ApproveRule(evt, rTxInfo.pPara) )
             {
-                break;
+                continue;
             }
 
-            OUString sTemp = sName.concat( (*txInfo).sVBAName );
-            // see if we have a match for the handlerextension
-            // where ScriptCode is methodname_handlerextension
-            OUString sToResolve = sMacroLoc.concat( sTemp );
-
-            ooo::vba::MacroResolvedInfo aMacroResolvedInfo = ooo::vba::resolveVBAMacro( mpShell, sToResolve );
-            if ( aMacroResolvedInfo.mbFound )
+            // !! translate arguments & emulate events where necessary
+            Sequence< Any > aArguments;
+            if  ( rTxInfo.toVBA )
             {
+                aArguments = rTxInfo.toVBA( evt.Arguments );
+            }
+            else
+            {
+                aArguments = evt.Arguments;
+            }
+            if ( aArguments.hasElements() )
+            {
+                // call basic event handlers for event
 
-                if (! txInfo->ApproveRule(evt, txInfo->pPara) )
+                // create script url
+                OUString url = aMacroResolvedInfo.msResolvedMacro;
+                try
                 {
-                    continue;
-                }
-
-                // !! translate arguments & emulate events where necessary
-                Sequence< Any > aArguments;
-                if  ( (*txInfo).toVBA )
-                {
-                    aArguments = (*txInfo).toVBA( evt.Arguments );
-                }
-                else
-                {
-                    aArguments = evt.Arguments;
-                }
-                if ( aArguments.getLength() )
-                {
-                    // call basic event handlers for event
-
-                    // create script url
-                    OUString url = aMacroResolvedInfo.msResolvedMacro;
-                    try
+                    uno::Any aDummyCaller = uno::makeAny( OUString("Error") );
+                    if ( pRet )
                     {
-                        uno::Any aDummyCaller = uno::makeAny( OUString("Error") );
-                        if ( pRet )
-                        {
-                            ooo::vba::executeMacro( mpShell, url, aArguments, *pRet, aDummyCaller );
-                        }
-                        else
-                        {
-                            uno::Any aRet;
-                            ooo::vba::executeMacro( mpShell, url, aArguments, aRet, aDummyCaller );
-                        }
+                        ooo::vba::executeMacro( mpShell, url, aArguments, *pRet, aDummyCaller );
                     }
-                    catch ( uno::Exception& e )
+                    else
                     {
-                        SAL_WARN("scripting", "event script raised " << e.Message );
+                        uno::Any aRet;
+                        ooo::vba::executeMacro( mpShell, url, aArguments, aRet, aDummyCaller );
                     }
-               }
+                }
+                catch ( const uno::Exception& )
+                {
+                    TOOLS_WARN_EXCEPTION("scripting", "event script raised" );
+                }
            }
        }
-    }
+   }
 }
 
-typedef ::cppu::WeakImplHelper< XVBAToOOEventDescGen, css::lang::XServiceInfo > VBAToOOEventDescGen_BASE;
+namespace {
 
-
-class VBAToOOEventDescGen : public VBAToOOEventDescGen_BASE
+class VBAToOOEventDescGen : public ::cppu::WeakImplHelper< XVBAToOOEventDescGen, css::lang::XServiceInfo >
 {
 public:
     VBAToOOEventDescGen();
@@ -952,7 +942,7 @@ public:
 
     OUString SAL_CALL getImplementationName() override
     {
-        return OUString( "ooo.vba.VBAToOOEventDesc"  );
+        return "ooo.vba.VBAToOOEventDesc";
     }
 
     sal_Bool SAL_CALL supportsService(OUString const & ServiceName) override
@@ -962,11 +952,12 @@ public:
 
     css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override
     {
-        const OUString strName( getImplementationName() );
-        return Sequence< OUString >( &strName, 1 );
+        return { getImplementationName() };
     }
 
 };
+
+}
 
 VBAToOOEventDescGen::VBAToOOEventDescGen() {}
 
@@ -987,7 +978,7 @@ VBAToOOEventDescGen::getEventSupplier( const Reference< XInterface >& xControl, 
     return xSupplier;
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 ooo_vba_EventListener_get_implementation(css::uno::XComponentContext*,
                                          css::uno::Sequence<css::uno::Any> const &)
 {
@@ -995,7 +986,7 @@ ooo_vba_EventListener_get_implementation(css::uno::XComponentContext*,
 }
 
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 ooo_vba_VBAToOOEventDesc_get_implementation(css::uno::XComponentContext*,
                                             css::uno::Sequence<css::uno::Any> const &)
 {

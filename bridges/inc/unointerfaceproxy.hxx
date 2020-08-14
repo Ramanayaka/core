@@ -20,40 +20,38 @@
 #ifndef INCLUDED_BRIDGES_INC_UNOINTERFACEPROXY_HXX
 #define INCLUDED_BRIDGES_INC_UNOINTERFACEPROXY_HXX
 
-#include "osl/interlck.h"
-#include "rtl/ustring.hxx"
-#include "sal/types.h"
-#include "typelib/typedescription.h"
-#include "uno/dispatcher.h"
-#include "uno/environment.h"
+#include <sal/config.h>
 
-namespace com { namespace sun { namespace star { namespace uno {
-    class XInterface;
-} } } }
+#include <atomic>
+#include <cstddef>
 
-namespace bridges { namespace cpp_uno { namespace shared {
+#include <rtl/ustring.hxx>
+#include <sal/types.h>
+#include <typelib/typedescription.h>
+#include <uno/dispatcher.h>
+#include <uno/environment.h>
+
+namespace com::sun::star::uno { class XInterface; }
+
+namespace bridges::cpp_uno::shared {
 
 class Bridge;
 
-extern "C" typedef void SAL_CALL FreeUnoInterfaceProxy(
+extern "C" void freeUnoInterfaceProxy(
     uno_ExtEnvironment * pEnv, void * pProxy);
-FreeUnoInterfaceProxy freeUnoInterfaceProxy;
 
 // private:
-extern "C" typedef void SAL_CALL UnoInterfaceProxyDispatch(
+extern "C" void unoInterfaceProxyDispatch(
     uno_Interface * pUnoI, typelib_TypeDescription const * pMemberDescr,
     void * pReturn, void * pArgs[], uno_Any ** ppException);
-UnoInterfaceProxyDispatch unoInterfaceProxyDispatch;
     // this function is not defined in the generic part, but instead has to be
     // defined individually for each CPP--UNO bridge
 
 // private:
-extern "C" typedef void SAL_CALL AcquireProxy(uno_Interface *);
-AcquireProxy acquireProxy;
+extern "C" void acquireProxy(uno_Interface *);
 
 // private:
-extern "C" typedef void SAL_CALL ReleaseProxy(uno_Interface *);
-ReleaseProxy releaseProxy;
+extern "C" void releaseProxy(uno_Interface *);
 
 /**
  * A uno proxy wrapping a cpp interface.
@@ -73,8 +71,8 @@ public:
     com::sun::star::uno::XInterface * getCppI() { return pCppI; }
 
 private:
-    UnoInterfaceProxy(UnoInterfaceProxy &) = delete;
-    void operator =(const UnoInterfaceProxy&) = delete;
+    UnoInterfaceProxy(UnoInterfaceProxy const &) = delete;
+    UnoInterfaceProxy& operator =(const UnoInterfaceProxy&) = delete;
 
     UnoInterfaceProxy(
         Bridge * pBridge_, com::sun::star::uno::XInterface * pCppI_,
@@ -83,7 +81,7 @@ private:
 
     ~UnoInterfaceProxy();
 
-    oslInterlockedCount nRef;
+    std::atomic<std::size_t> nRef;
     Bridge * pBridge;
 
     // mapping information
@@ -91,19 +89,19 @@ private:
     typelib_InterfaceTypeDescription * pTypeDescr;
     OUString oid;
 
-    friend void SAL_CALL freeUnoInterfaceProxy(
+    friend void freeUnoInterfaceProxy(
         uno_ExtEnvironment * pEnv, void * pProxy);
 
-    friend void SAL_CALL unoInterfaceProxyDispatch(
+    friend void unoInterfaceProxyDispatch(
         uno_Interface * pUnoI, typelib_TypeDescription const * pMemberDescr,
         void * pReturn, void * pArgs[], uno_Any ** ppException);
 
-    friend void SAL_CALL acquireProxy(uno_Interface * pUnoI);
+    friend void acquireProxy(uno_Interface * pUnoI);
 
-    friend void SAL_CALL releaseProxy(uno_Interface * pUnoI);
+    friend void releaseProxy(uno_Interface * pUnoI);
 };
 
-} } }
+}
 
 #endif
 

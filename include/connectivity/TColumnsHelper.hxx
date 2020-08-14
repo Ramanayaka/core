@@ -22,15 +22,13 @@
 
 #include <memory>
 #include <connectivity/sdbcx/VCollection.hxx>
-#include <com/sun/star/sdbc/XDatabaseMetaData.hpp>
-#include <connectivity/sdbcx/IRefreshable.hxx>
 #include <connectivity/dbtoolsdllapi.hxx>
 
 namespace connectivity
 {
     class OTableHelper;
     class OColumnsHelperImpl;
-    /** contains generell column handling to create default columns and default sql statements.
+    /** contains general column handling to create default columns and default sql statements.
     */
     class OOO_DLLPUBLIC_DBTOOLS OColumnsHelper : public sdbcx::OCollection
     {
@@ -47,8 +45,8 @@ namespace connectivity
         OColumnsHelper( ::cppu::OWeakObject& _rParent
                         ,bool _bCase
                         ,::osl::Mutex& _rMutex
-                        ,const TStringVector &_rVector
-                        ,bool _bUseHardRef = true
+                        ,const ::std::vector< OUString> &_rVector
+                        ,bool _bUseHardRef
                     );
         virtual ~OColumnsHelper() override;
 

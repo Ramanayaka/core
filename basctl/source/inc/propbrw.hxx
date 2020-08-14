@@ -40,23 +40,20 @@ namespace basctl
 
 class DialogWindowLayout;
 
-class PropBrw : public DockingWindow, public SfxListener, public SfxBroadcaster
+class PropBrw final : public DockingWindow, public SfxListener, public SfxBroadcaster
 {
 private:
+    VclPtr<vcl::Window> m_xContentArea;
     bool        m_bInitialStateChange;
 
     css::uno::Reference< css::frame::XFrame2 >
                     m_xMeAsFrame;
     css::uno::Reference< css::beans::XPropertySet >
                     m_xBrowserController;
-    css::uno::Reference< css::awt::XWindow >
-                    m_xBrowserComponentWindow;
     css::uno::Reference< css::frame::XModel >
                     m_xContextDocument;
 
-protected:
     SdrView*        pView;
-    virtual void Resize() override;
     virtual bool Close() override;
 
     typedef std::vector< css::uno::Reference< css::uno::XInterface> > InterfaceArray;
@@ -74,7 +71,6 @@ public:
     explicit PropBrw (DialogWindowLayout&);
     virtual ~PropBrw() override;
     virtual void dispose() override;
-    using Window::Update;
     // note: changing the Context document to an instance other than the one given in the ctor is not supported
     // currently
     void    Update( const SfxViewShell* pShell );

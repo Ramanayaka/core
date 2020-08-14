@@ -17,14 +17,17 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "TitleHelper.hxx"
-#include "ChartModelHelper.hxx"
-#include "macros.hxx"
-#include "AxisHelper.hxx"
-#include "DiagramHelper.hxx"
+#include <TitleHelper.hxx>
+#include <ChartModel.hxx>
+#include <ChartModelHelper.hxx>
+#include <AxisHelper.hxx>
+#include <DiagramHelper.hxx>
+#include <ReferenceSizeProvider.hxx>
 #include <com/sun/star/chart2/FormattedString.hpp>
 #include <com/sun/star/chart2/XChartDocument.hpp>
 #include <rtl/ustrbuf.hxx>
+#include <tools/diagnose_ex.h>
+#include <sal/log.hxx>
 
 namespace chart
 {
@@ -142,7 +145,7 @@ uno::Reference< XTitle > TitleHelper::getTitle( TitleHelper::eTitleType nTitleIn
     if(nTitleIndex == TitleHelper::MAIN_TITLE)
         return rModel.getTitleObject();
 
-    uno::Reference< XDiagram > xDiagram( rModel.getFirstDiagram(), uno::UNO_QUERY );
+    uno::Reference< XDiagram > xDiagram = rModel.getFirstDiagram();
     uno::Reference< XTitled > xTitled( lcl_getTitleParent( nTitleIndex, xDiagram ) );
     if( xTitled.is())
         return xTitled->getTitleObject();
@@ -174,8 +177,7 @@ uno::Reference< XTitle > TitleHelper::createOrShowTitle(
       TitleHelper::eTitleType eTitleType
     , const OUString& rTitleText
     , const uno::Reference< frame::XModel >& xModel
-    , const uno::Reference< uno::XComponentContext > & xContext
-    , ReferenceSizeProvider * pRefSizeProvider )
+    , const uno::Reference< uno::XComponentContext > & xContext )
 {
     uno::Reference< chart2::XTitle > xTitled( TitleHelper::getTitle( eTitleType, xModel ) );
     if( xTitled.is())
@@ -186,7 +188,7 @@ uno::Reference< XTitle > TitleHelper::createOrShowTitle(
     }
     else
     {
-        return createTitle(eTitleType, rTitleText, xModel, xContext, pRefSizeProvider);
+        return createTitle(eTitleType, rTitleText, xModel, xContext, nullptr/*pRefSizeProvider*/);
     }
 }
 
@@ -287,9 +289,9 @@ uno::Reference< XTitle > TitleHelper::createTitle(
                         }
                     }
                 }
-                catch( const uno::Exception & ex )
+                catch( const uno::Exception & )
                 {
-                    ASSERT_EXCEPTION( ex );
+                    DBG_UNHANDLED_EXCEPTION("chart2");
                 }
             }
         }
@@ -300,13 +302,13 @@ uno::Reference< XTitle > TitleHelper::createTitle(
 
 OUString TitleHelper::getCompleteString( const uno::Reference< XTitle >& xTitle )
 {
-    OUString aRet;
     if(!xTitle.is())
-        return aRet;
-    uno::Sequence< uno::Reference< XFormattedString > > aStringList = xTitle->getText();
-    for( sal_Int32 nN=0; nN<aStringList.getLength();nN++ )
-        aRet += aStringList[nN]->getString();
-    return aRet;
+        return OUString();
+    OUStringBuffer aRet;
+    const uno::Sequence< uno::Reference< XFormattedString > > aStringList = xTitle->getText();
+    for( uno::Reference< XFormattedString > const & formattedStr : aStringList )
+        aRet.append( formattedStr->getString() );
+    return aRet.makeStringAndClear();
 }
 
 void TitleHelper::setCompleteString( const OUString& rNewText
@@ -352,7 +354,7 @@ void TitleHelper::setCompleteString( const OUString& rNewText
     uno::Sequence< uno::Reference< XFormattedString > > aNewStringList(1);
 
     uno::Sequence< uno::Reference< XFormattedString > >  aOldStringList = xTitle->getText();
-    if( aOldStringList.getLength() )
+    if( aOldStringList.hasElements() )
     {
         aNewStringList[0].set( aOldStringList[0] );
         aNewStringList[0]->setString( aNewText );
@@ -373,9 +375,9 @@ void TitleHelper::setCompleteString( const OUString& rNewText
                 xFormattedString->setPropertyValue( "CharHeightAsian", aFontSize );
                 xFormattedString->setPropertyValue( "CharHeightComplex", aFontSize );
             }
-            catch( const uno::Exception & ex )
+            catch( const uno::Exception & )
             {
-                ASSERT_EXCEPTION( ex );
+                DBG_UNHANDLED_EXCEPTION("chart2");
             }
         }
     }

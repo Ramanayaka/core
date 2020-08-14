@@ -17,11 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_BASEGFX_RANGE_B1DRANGE_HXX
-#define INCLUDED_BASEGFX_RANGE_B1DRANGE_HXX
+#pragma once
 
 #include <basegfx/range/basicrange.hxx>
-#include <basegfx/basegfxdllapi.h>
 
 
 namespace basegfx
@@ -141,11 +139,13 @@ namespace basegfx
             maRange.intersect(rRange.maRange);
         }
 
+        /// clamp value on range
+        double clamp(double fValue) const
+        {
+            return maRange.clamp(fValue);
+        }
     };
 
 } // end of namespace basegfx
-
-
-#endif // INCLUDED_BASEGFX_RANGE_B1DRANGE_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

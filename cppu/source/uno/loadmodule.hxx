@@ -20,12 +20,12 @@
 #ifndef INCLUDED_CPPU_SOURCE_UNO_LOADMODULE_HXX
 #define INCLUDED_CPPU_SOURCE_UNO_LOADMODULE_HXX
 
-#include "sal/config.h"
-#include <osl/module.hxx>
+#include <sal/config.h>
+#include <rtl/ustring.hxx>
 
-namespace rtl { class OUString; }
+namespace osl { class Module; }
 
-namespace cppu { namespace detail {
+namespace cppu::detail {
 
 #ifndef DISABLE_DYNLOADING
 
@@ -37,11 +37,11 @@ namespace cppu { namespace detail {
 
     @return false if the module could not be loaded, otherwise true
 */
-bool loadModule(osl::Module & rModule, ::rtl::OUString const & name);
+bool loadModule(osl::Module & rModule, OUString const & name);
 
 #endif
 
-} }
+}
 
 #endif
 

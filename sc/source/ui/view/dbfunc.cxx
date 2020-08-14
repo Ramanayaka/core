@@ -17,26 +17,27 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "scitems.hxx"
-#include <sfx2/app.hxx>
+#include <scitems.hxx>
 #include <sfx2/bindings.hxx>
-#include <vcl/msgbox.hxx>
+#include <vcl/svapp.hxx>
+#include <vcl/weld.hxx>
+#include <unotools/charclass.hxx>
 
-#include <com/sun/star/sdbc/XResultSet.hpp>
-
-#include "dbfunc.hxx"
-#include "docsh.hxx"
-#include "attrib.hxx"
-#include "sc.hrc"
-#include "undodat.hxx"
-#include "dbdata.hxx"
-#include "globstr.hrc"
-#include "global.hxx"
-#include "dbdocfun.hxx"
-#include "editable.hxx"
-#include "queryentry.hxx"
-#include "markdata.hxx"
-#include "tabvwsh.hxx"
+#include <dbfunc.hxx>
+#include <docsh.hxx>
+#include <attrib.hxx>
+#include <sc.hrc>
+#include <undodat.hxx>
+#include <dbdata.hxx>
+#include <globstr.hrc>
+#include <scresid.hxx>
+#include <global.hxx>
+#include <dbdocfun.hxx>
+#include <editable.hxx>
+#include <queryentry.hxx>
+#include <markdata.hxx>
+#include <tabvwsh.hxx>
+#include <sortparam.hxx>
 
 ScDBFunc::ScDBFunc( vcl::Window* pParent, ScDocShell& rDocSh, ScTabViewShell* pViewShell ) :
     ScViewFunc( pParent, rDocSh, pViewShell )
@@ -53,25 +54,25 @@ void ScDBFunc::GotoDBArea( const OUString& rDBName )
 {
     ScDocument* pDoc = GetViewData().GetDocument();
     ScDBCollection* pDBCol = pDoc->GetDBCollection();
-    ScDBData* pData = pDBCol->getNamedDBs().findByUpperName(ScGlobal::pCharClass->uppercase(rDBName));
-    if (pData)
-    {
-        SCTAB nTab = 0;
-        SCCOL nStartCol = 0;
-        SCROW nStartRow = 0;
-        SCCOL nEndCol = 0;
-        SCROW nEndRow = 0;
+    ScDBData* pData = pDBCol->getNamedDBs().findByUpperName(ScGlobal::getCharClassPtr()->uppercase(rDBName));
+    if (!pData)
+        return;
 
-        pData->GetArea( nTab, nStartCol, nStartRow, nEndCol, nEndRow );
-        SetTabNo( nTab );
+    SCTAB nTab = 0;
+    SCCOL nStartCol = 0;
+    SCROW nStartRow = 0;
+    SCCOL nEndCol = 0;
+    SCROW nEndRow = 0;
 
-        MoveCursorAbs( nStartCol, nStartRow, SC_FOLLOW_JUMP,
-                       false, false );  // bShift,bControl
-        DoneBlockMode();
-        InitBlockMode( nStartCol, nStartRow, nTab );
-        MarkCursor( nEndCol, nEndRow, nTab );
-        SelectionChanged();
-    }
+    pData->GetArea( nTab, nStartCol, nStartRow, nEndCol, nEndRow );
+    SetTabNo( nTab );
+
+    MoveCursorAbs( nStartCol, nStartRow, SC_FOLLOW_JUMP,
+                   false, false );  // bShift,bControl
+    DoneBlockMode();
+    InitBlockMode( nStartCol, nStartRow, nTab );
+    MarkCursor( nEndCol, nEndRow, nTab );
+    SelectionChanged();
 }
 
 //  search current datarange for sort / filter
@@ -236,32 +237,37 @@ void ScDBFunc::Query( const ScQueryParam& rQueryParam, const ScRange* pAdvSource
     ScDBDocFunc aDBDocFunc( *pDocSh );
     bool bSuccess = aDBDocFunc.Query( nTab, rQueryParam, pAdvSource, bRecord, false );
 
-    if (bSuccess)
+    if (!bSuccess)
+        return;
+
+    bool bCopy = !rQueryParam.bInplace;
+    if (bCopy)
     {
-        bool bCopy = !rQueryParam.bInplace;
-        if (bCopy)
+        //  mark target range (data base range has been set up if applicable)
+        ScDocument& rDoc = pDocSh->GetDocument();
+        ScDBData* pDestData = rDoc.GetDBAtCursor(
+                                        rQueryParam.nDestCol, rQueryParam.nDestRow,
+                                        rQueryParam.nDestTab, ScDBDataPortion::TOP_LEFT );
+        if (pDestData)
         {
-            //  mark target range (data base range has been set up if applicable)
-            ScDocument& rDoc = pDocSh->GetDocument();
-            ScDBData* pDestData = rDoc.GetDBAtCursor(
-                                            rQueryParam.nDestCol, rQueryParam.nDestRow,
-                                            rQueryParam.nDestTab, ScDBDataPortion::TOP_LEFT );
-            if (pDestData)
-            {
-                ScRange aDestRange;
-                pDestData->GetArea(aDestRange);
-                MarkRange( aDestRange );
-            }
+            ScRange aDestRange;
+            pDestData->GetArea(aDestRange);
+            MarkRange( aDestRange );
         }
-
-        if (!bCopy)
-        {
-            UpdateScrollBars();
-            SelectionChanged();     // for attribute states (filtered rows are ignored)
-        }
-
-        GetViewData().GetBindings().Invalidate( SID_UNFILTER );
     }
+
+    if (!bCopy)
+    {
+        ScTabViewShell::notifyAllViewsSheetGeomInvalidation(
+            GetViewData().GetViewShell(),
+            false /* bColumns */, true /* bRows */,
+            false /* bSizes*/, true /* bHidden */, true /* bFiltered */,
+            false /* bGroups */, nTab);
+        UpdateScrollBars(ROW_HEADER);
+        SelectionChanged();     // for attribute states (filtered rows are ignored)
+    }
+
+    GetViewData().GetBindings().Invalidate( SID_UNFILTER );
 }
 
 //  autofilter-buttons show / hide
@@ -290,8 +296,7 @@ void ScDBFunc::ToggleAutoFilter()
 
     for (nCol=aParam.nCol1; nCol<=aParam.nCol2 && bHasAuto; nCol++)
     {
-        nFlag = static_cast<const ScMergeFlagAttr*>( pDoc->
-                GetAttr( nCol, nRow, nTab, ATTR_MERGE_FLAG ))->GetValue();
+        nFlag = pDoc->GetAttr( nCol, nRow, nTab, ATTR_MERGE_FLAG )->GetValue();
 
         if ( !(nFlag & ScMF::Auto) )
             bHasAuto = false;
@@ -303,20 +308,19 @@ void ScDBFunc::ToggleAutoFilter()
 
         for (nCol=aParam.nCol1; nCol<=aParam.nCol2; nCol++)
         {
-            nFlag = static_cast<const ScMergeFlagAttr*>( pDoc->
-                    GetAttr( nCol, nRow, nTab, ATTR_MERGE_FLAG ))->GetValue();
+            nFlag = pDoc->GetAttr( nCol, nRow, nTab, ATTR_MERGE_FLAG )->GetValue();
             pDoc->ApplyAttr( nCol, nRow, nTab, ScMergeFlagAttr( nFlag & ~ScMF::Auto ) );
         }
 
         // use a list action for the AutoFilter buttons (ScUndoAutoFilter) and the filter operation
 
-        OUString aUndo = ScGlobal::GetRscString( STR_UNDO_QUERY );
+        OUString aUndo = ScResId( STR_UNDO_QUERY );
         pDocSh->GetUndoManager()->EnterListAction( aUndo, aUndo, 0, GetViewData().GetViewShell()->GetViewShellId() );
 
         ScRange aRange;
         pDBData->GetArea( aRange );
         pDocSh->GetUndoManager()->AddUndoAction(
-            new ScUndoAutoFilter( pDocSh, aRange, pDBData->GetName(), false ) );
+            std::make_unique<ScUndoAutoFilter>( pDocSh, aRange, pDBData->GetName(), false ) );
 
         pDBData->SetAutoFilter(false);
 
@@ -340,10 +344,12 @@ void ScDBFunc::ToggleAutoFilter()
         {
             if (!bHeader)
             {
-                if ( ScopedVclPtrInstance<MessBox>( GetViewData().GetDialogParent(), WinBits(WB_YES_NO | WB_DEF_YES),
-                        ScGlobal::GetRscString( STR_MSSG_DOSUBTOTALS_0 ),       // "StarCalc"
-                        ScGlobal::GetRscString( STR_MSSG_MAKEAUTOFILTER_0 )     // header from first row?
-                    )->Execute() == RET_YES )
+                std::unique_ptr<weld::MessageDialog> xBox(Application::CreateMessageDialog(GetViewData().GetDialogParent(),
+                                                          VclMessageType::Question,
+                                                          VclButtonsType::YesNo, ScResId(STR_MSSG_MAKEAUTOFILTER_0))); // header from first row?
+                xBox->set_title(ScResId(STR_MSSG_DOSUBTOTALS_0)); // "StarCalc"
+                xBox->set_default_response(RET_YES);
+                if (xBox->run() == RET_YES)
                 {
                     pDBData->SetHeader( true );     //! Undo ??
                 }
@@ -352,14 +358,13 @@ void ScDBFunc::ToggleAutoFilter()
             ScRange aRange;
             pDBData->GetArea( aRange );
             pDocSh->GetUndoManager()->AddUndoAction(
-                new ScUndoAutoFilter( pDocSh, aRange, pDBData->GetName(), true ) );
+                std::make_unique<ScUndoAutoFilter>( pDocSh, aRange, pDBData->GetName(), true ) );
 
             pDBData->SetAutoFilter(true);
 
             for (nCol=aParam.nCol1; nCol<=aParam.nCol2; nCol++)
             {
-                nFlag = static_cast<const ScMergeFlagAttr*>( pDoc->
-                        GetAttr( nCol, nRow, nTab, ATTR_MERGE_FLAG ))->GetValue();
+                nFlag = pDoc->GetAttr( nCol, nRow, nTab, ATTR_MERGE_FLAG )->GetValue();
                 pDoc->ApplyAttr( nCol, nRow, nTab, ScMergeFlagAttr( nFlag | ScMF::Auto ) );
             }
             pDocSh->PostPaint(ScRange(aParam.nCol1, nRow, nTab, aParam.nCol2, nRow, nTab),
@@ -368,9 +373,10 @@ void ScDBFunc::ToggleAutoFilter()
         }
         else
         {
-            ScopedVclPtrInstance<MessageDialog> aErrorBox(GetViewData().GetDialogParent(),
-                                ScGlobal::GetRscString(STR_ERR_AUTOFILTER));
-            aErrorBox->Execute();
+            std::unique_ptr<weld::MessageDialog> xErrorBox(Application::CreateMessageDialog(GetViewData().GetDialogParent(),
+                                                           VclMessageType::Warning, VclButtonsType::Ok,
+                                                           ScResId(STR_ERR_AUTOFILTER)));
+            xErrorBox->run();
         }
     }
 
@@ -393,7 +399,6 @@ void ScDBFunc::HideAutoFilter()
 
     ScDocument& rDoc = pDocSh->GetDocument();
 
-    ScQueryParam aParam;
     ScDBData* pDBData = GetDBData( false );
 
     SCTAB nTab;
@@ -403,15 +408,14 @@ void ScDBFunc::HideAutoFilter()
 
     for (SCCOL nCol=nCol1; nCol<=nCol2; nCol++)
     {
-        ScMF nFlag = static_cast<const ScMergeFlagAttr*>( rDoc.
-                                GetAttr( nCol, nRow1, nTab, ATTR_MERGE_FLAG ))->GetValue();
+        ScMF nFlag = rDoc.GetAttr( nCol, nRow1, nTab, ATTR_MERGE_FLAG )->GetValue();
         rDoc.ApplyAttr( nCol, nRow1, nTab, ScMergeFlagAttr( nFlag & ~ScMF::Auto ) );
     }
 
     ScRange aRange;
     pDBData->GetArea( aRange );
     pDocSh->GetUndoManager()->AddUndoAction(
-        new ScUndoAutoFilter( pDocSh, aRange, pDBData->GetName(), false ) );
+        std::make_unique<ScUndoAutoFilter>( pDocSh, aRange, pDBData->GetName(), false ) );
 
     pDBData->SetAutoFilter(false);
 

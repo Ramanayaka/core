@@ -21,9 +21,12 @@
 #include <rtl/math.hxx>
 #include <com/sun/star/form/binding/IncompatibleTypesException.hpp>
 #include <com/sun/star/lang/NotInitializedException.hpp>
+#include <com/sun/star/text/XTextRange.hpp>
 #include <com/sun/star/table/XCellRange.hpp>
+#include <com/sun/star/sheet/FormulaResult.hpp>
 #include <com/sun/star/sheet/XCellAddressable.hpp>
 #include <com/sun/star/sheet/XCellRangeData.hpp>
+#include <com/sun/star/sheet/XSpreadsheetDocument.hpp>
 #include <com/sun/star/container/XIndexAccess.hpp>
 #include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <com/sun/star/beans/NamedValue.hpp>
@@ -31,6 +34,7 @@
 #include <com/sun/star/util/XNumberFormatTypes.hpp>
 #include <com/sun/star/util/NumberFormat.hpp>
 #include <cppuhelper/supportsservice.hxx>
+#include <comphelper/types.hxx>
 
 namespace calc
 {
@@ -116,7 +120,7 @@ namespace calc
     void SAL_CALL OCellValueBinding::getFastPropertyValue( Any& _rValue, sal_Int32 _nHandle ) const
     {
         OSL_ENSURE( _nHandle == PROP_HANDLE_BOUND_CELL, "OCellValueBinding::getFastPropertyValue: invalid handle!" );
-            // we only have this one property ....
+            // we only have this one property...
 
         _rValue.clear();
         Reference< XCellAddressable > xCellAddress( m_xCell, UNO_QUERY );
@@ -160,11 +164,9 @@ namespace calc
         checkInitialized( );
 
         // look up in our sequence
-        Sequence< Type > aSupportedTypes( getSupportedValueTypes() );
-        const Type* pTypes = aSupportedTypes.getConstArray();
-        const Type* pTypesEnd = aSupportedTypes.getConstArray() + aSupportedTypes.getLength();
-        while ( pTypes != pTypesEnd )
-            if ( aType.equals( *pTypes++ ) )
+        const Sequence< Type > aSupportedTypes( getSupportedValueTypes() );
+        for ( auto const & i : aSupportedTypes )
+            if ( aType == i )
                 return true;
 
         return false;
@@ -205,8 +207,9 @@ namespace calc
                         Reference<XPropertySet> xProp( m_xCell, UNO_QUERY );
                         if ( xProp.is() )
                         {
-                            CellContentType eResultType;
-                            if ( (xProp->getPropertyValue("FormulaResultType") >>= eResultType) && eResultType == CellContentType_VALUE )
+                            sal_Int32 nResultType;
+                            if ( (xProp->getPropertyValue("FormulaResultType2") >>= nResultType)
+                                    && nResultType == FormulaResult::VALUE )
                                 bHasValue = true;
                         }
                     }
@@ -228,7 +231,7 @@ namespace calc
             if ( m_xCell.is() )
                 aReturn <<= m_xCell->getValue();
             else
-                aReturn <<= (double)0;
+                aReturn <<= double(0);
             break;
 
         case TypeClass_LONG:
@@ -238,13 +241,13 @@ namespace calc
                 // The list position value in the cell is 1-based.
                 // We subtract 1 from any cell value (no special handling for 0 or negative values).
 
-                sal_Int32 nValue = (sal_Int32) rtl::math::approxFloor( m_xCell->getValue() );
+                sal_Int32 nValue = static_cast<sal_Int32>(rtl::math::approxFloor( m_xCell->getValue() ));
                 --nValue;
 
                 aReturn <<= nValue;
             }
             else
-                aReturn <<= (sal_Int32)0;
+                aReturn <<= sal_Int32(0);
             break;
 
         default:
@@ -345,42 +348,42 @@ namespace calc
         OUString sPropName( "NumberFormat" );
         Reference<XPropertySet> xCellProp( m_xCell, UNO_QUERY );
         Reference<XNumberFormatsSupplier> xSupplier( m_xDocument, UNO_QUERY );
-        if ( xSupplier.is() && xCellProp.is() )
+        if ( !(xSupplier.is() && xCellProp.is()) )
+            return;
+
+        Reference<XNumberFormats> xFormats(xSupplier->getNumberFormats());
+        Reference<XNumberFormatTypes> xTypes( xFormats, UNO_QUERY );
+        if ( !xTypes.is() )
+            return;
+
+        lang::Locale aLocale;
+        bool bWasBoolean = false;
+
+        sal_Int32 nOldIndex = ::comphelper::getINT32( xCellProp->getPropertyValue( sPropName ) );
+        Reference<XPropertySet> xOldFormat;
+        try
         {
-            Reference<XNumberFormats> xFormats(xSupplier->getNumberFormats());
-            Reference<XNumberFormatTypes> xTypes( xFormats, UNO_QUERY );
-            if ( xTypes.is() )
-            {
-                lang::Locale aLocale;
-                bool bWasBoolean = false;
+            xOldFormat.set(xFormats->getByKey( nOldIndex ));
+        }
+        catch ( Exception& )
+        {
+            // non-existing format - can happen, use defaults
+        }
+        if ( xOldFormat.is() )
+        {
+            // use the locale of the existing format
+            xOldFormat->getPropertyValue("Locale") >>= aLocale;
 
-                sal_Int32 nOldIndex = ::comphelper::getINT32( xCellProp->getPropertyValue( sPropName ) );
-                Reference<XPropertySet> xOldFormat;
-                try
-                {
-                    xOldFormat.set(xFormats->getByKey( nOldIndex ));
-                }
-                catch ( Exception& )
-                {
-                    // non-existing format - can happen, use defaults
-                }
-                if ( xOldFormat.is() )
-                {
-                    // use the locale of the existing format
-                    xOldFormat->getPropertyValue("Locale") >>= aLocale;
+            sal_Int16 nOldType = ::comphelper::getINT16(
+                xOldFormat->getPropertyValue("Type") );
+            if ( nOldType & NumberFormat::LOGICAL )
+                bWasBoolean = true;
+        }
 
-                    sal_Int16 nOldType = ::comphelper::getINT16(
-                        xOldFormat->getPropertyValue("Type") );
-                    if ( nOldType & NumberFormat::LOGICAL )
-                        bWasBoolean = true;
-                }
-
-                if ( !bWasBoolean )
-                {
-                    sal_Int32 nNewIndex = xTypes->getStandardFormat( NumberFormat::LOGICAL, aLocale );
-                    xCellProp->setPropertyValue( sPropName, makeAny( nNewIndex ) );
-                }
-            }
+        if ( !bWasBoolean )
+        {
+            sal_Int32 nNewIndex = xTypes->getStandardFormat( NumberFormat::LOGICAL, aLocale );
+            xCellProp->setPropertyValue( sPropName, makeAny( nNewIndex ) );
         }
     }
 
@@ -402,9 +405,9 @@ namespace calc
         OCellValueBinding* pNonConstThis = const_cast< OCellValueBinding* >( this );
         if ( !pNonConstThis->supportsType( _rType ) )
         {
-            OUString sMessage( "The given type (" );
-            sMessage += _rType.getTypeName();
-            sMessage += ") is not supported by this binding.";
+            OUString sMessage = "The given type (" +
+                _rType.getTypeName() +
+                ") is not supported by this binding.";
                 // TODO: localize this error message
 
             throw IncompatibleTypesException( sMessage, *pNonConstThis );
@@ -414,7 +417,7 @@ namespace calc
 
     OUString SAL_CALL OCellValueBinding::getImplementationName(  )
     {
-        return OUString( "com.sun.star.comp.sheet.OCellValueBinding" );
+        return "com.sun.star.comp.sheet.OCellValueBinding";
     }
 
     sal_Bool SAL_CALL OCellValueBinding::supportsService( const OUString& _rServiceName )
@@ -492,17 +495,18 @@ namespace calc
         CellAddress aAddress;
         bool bFoundAddress = false;
 
-        const Any* pLoop = _rArguments.getConstArray();
-        const Any* pLoopEnd = _rArguments.getConstArray() + _rArguments.getLength();
-        for ( ; ( pLoop != pLoopEnd ) && !bFoundAddress; ++pLoop )
+        for ( const Any& rArg : _rArguments )
         {
             NamedValue aValue;
-            if ( *pLoop >>= aValue )
+            if ( rArg >>= aValue )
             {
                 if ( aValue.Name == "BoundCell" )
                 {
                     if ( aValue.Value >>= aAddress )
+                    {
                         bFoundAddress = true;
+                        break;
+                    }
                 }
             }
         }

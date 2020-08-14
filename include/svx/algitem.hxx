@@ -19,7 +19,6 @@
 #ifndef INCLUDED_SVX_ALGITEM_HXX
 #define INCLUDED_SVX_ALGITEM_HXX
 
-#include <com/sun/star/uno/Any.hxx>
 #include <editeng/svxenum.hxx>
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
@@ -29,13 +28,12 @@
 
 class IntlWrapper;
 class SfxItemPool;
-class SvStream;
 
-class SAL_WARN_UNUSED SVX_DLLPUBLIC SvxOrientationItem: public SfxEnumItem<SvxCellOrientation>
+class SAL_WARN_UNUSED SVX_DLLPUBLIC SvxOrientationItem final : public SfxEnumItem<SvxCellOrientation>
 {
 public:
     SvxOrientationItem(
-        const SvxCellOrientation eOrientation /*= SVX_ORIENTATION_STANDARD*/,
+        const SvxCellOrientation eOrientation,
         const sal_uInt16 nId );
 
     SvxOrientationItem(
@@ -45,21 +43,14 @@ public:
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
-                                  OUString &rText, const IntlWrapper * = nullptr ) const override;
+                                  OUString &rText, const IntlWrapper& ) const override;
 
     virtual bool            QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool            PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
 
     virtual sal_uInt16      GetValueCount() const override;
-    static OUString         GetValueText( sal_uInt16 nVal );
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
-    virtual SfxPoolItem*    Create( SvStream& rStream, sal_uInt16 nVer ) const override;
-
-    SvxOrientationItem& operator=(const SvxOrientationItem& rOrientation)
-            {
-                SetValue( rOrientation.GetValue() );
-                return *this;
-            }
+    static OUString         GetValueText( SvxCellOrientation nVal );
+    virtual SvxOrientationItem* Clone( SfxItemPool *pPool = nullptr ) const override;
 
     /** Returns sal_True, if the item represents STACKED state. */
     bool                    IsStacked() const;
@@ -67,7 +58,7 @@ public:
     sal_Int32               GetRotation( sal_Int32 nStdAngle ) const;
 };
 
-class SAL_WARN_UNUSED SVX_DLLPUBLIC SvxMarginItem: public SfxPoolItem
+class SAL_WARN_UNUSED SVX_DLLPUBLIC SvxMarginItem final : public SfxPoolItem
 {
     sal_Int16       nLeftMargin;
     sal_Int16       nTopMargin;
@@ -79,17 +70,14 @@ public:
     SvxMarginItem( sal_Int16 nLeft, sal_Int16 nTop /*= 0*/,
                    sal_Int16 nRight /*= 0*/, sal_Int16 nBottom /*= 0*/,
                    const sal_uInt16 nId  );
-    SvxMarginItem( const SvxMarginItem& );
 
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
-                                  OUString &rText, const IntlWrapper * = nullptr ) const override;
+                                  OUString &rText, const IntlWrapper& ) const override;
 
     virtual bool             operator==( const SfxPoolItem& ) const override;
-    virtual SfxPoolItem*     Clone( SfxItemPool *pPool = nullptr ) const override;
-    virtual SfxPoolItem*     Create( SvStream& rStream, sal_uInt16 nVer ) const override;
-    virtual SvStream&        Store( SvStream&, sal_uInt16 nItemVersion ) const override;
+    virtual SvxMarginItem*  Clone( SfxItemPool *pPool = nullptr ) const override;
 
     virtual bool            QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool            PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
@@ -102,15 +90,6 @@ public:
             void            SetRightMargin(sal_Int16 nRight);
             sal_Int16       GetBottomMargin() const {return nBottomMargin; }
             void            SetBottomMargin(sal_Int16 nBottom);
-
-    SvxMarginItem& operator=(const SvxMarginItem& rMargin)
-            {
-                nLeftMargin = rMargin.nLeftMargin;
-                nTopMargin = rMargin.nTopMargin;
-                nRightMargin = rMargin.nRightMargin;
-                nBottomMargin = rMargin.nBottomMargin;
-                return *this;
-            }
 };
 
 #endif

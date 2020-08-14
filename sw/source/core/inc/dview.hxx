@@ -21,6 +21,7 @@
 
 #include <svx/fmview.hxx>
 
+class FmFormModel;
 class OutputDevice;
 class SwViewShellImp;
 class SwFrame;
@@ -30,8 +31,8 @@ class SdrUndoManager;
 
 class SwDrawView : public FmFormView
 {
-    Point           aAnchorPoint;       // anchor position
-    SwViewShellImp      &rImp;               // a view is always part of a shell
+    Point           m_aAnchorPoint;       // anchor position
+    SwViewShellImp      &m_rImp;               // a view is always part of a shell
 
     const SwFrame *CalcAnchor();
 
@@ -79,7 +80,10 @@ protected:
     virtual SdrUndoManager* getSdrUndoManagerForEnhancedTextEdit() const override;
 
 public:
-    SwDrawView( SwViewShellImp &rI, SdrModel *pMd, OutputDevice* pOutDev );
+    SwDrawView(
+        SwViewShellImp &rI,
+        FmFormModel& rFmFormModel,
+        OutputDevice* pOutDev);
 
     // from base class
     virtual SdrObject*   GetMaxToTopObj(SdrObject* pObj) const override;
@@ -90,14 +94,14 @@ public:
     // Override to reuse edit background color in active text edit view (OutlinerView)
     virtual void ModelHasChanged() override;
 
-    virtual void         ObjOrderChanged( SdrObject* pObj, sal_uLong nOldPos,
-                                            sal_uLong nNewPos ) override;
+    virtual void         ObjOrderChanged( SdrObject* pObj, size_t nOldPos,
+                                            size_t nNewPos ) override;
     virtual bool TakeDragLimit(SdrDragMode eMode, tools::Rectangle& rRect) const override;
     virtual void MakeVisible( const tools::Rectangle&, vcl::Window &rWin ) override;
     virtual void CheckPossibilities() override;
 
-    const SwViewShellImp &Imp() const { return rImp; }
-          SwViewShellImp &Imp()       { return rImp; }
+    const SwViewShellImp &Imp() const { return m_rImp; }
+          SwViewShellImp &Imp()       { return m_rImp; }
 
     // anchor and Xor for dragging
     void ShowDragAnchor();

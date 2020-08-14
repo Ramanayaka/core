@@ -20,23 +20,19 @@
 #ifndef INCLUDED_FRAMEWORK_SOURCE_INC_LOADENV_TARGETHELPER_HXX
 #define INCLUDED_FRAMEWORK_SOURCE_INC_LOADENV_TARGETHELPER_HXX
 
-#include <sal/types.h>
 #include <rtl/ustring.hxx>
-#include <targets.h>
 
 namespace framework{
 
 /** @short  can be used to detect, if a target name (used e.g. for XFrame.findFrame())
             has a special meaning or can be used as normal frame name (e.g. for XFrame.setName()).
-
-    @author as96863
  */
 class TargetHelper
 {
 
     public:
 
-        /** @short  its used at the following interfaces to classify
+        /** @short  it's used at the following interfaces to classify
                     target names.
          */
         enum class ESpecialTarget

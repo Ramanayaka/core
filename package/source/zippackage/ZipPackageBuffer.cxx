@@ -20,6 +20,7 @@
 #include <ZipPackageBuffer.hxx>
 #include <PackageConstants.hxx>
 #include <string.h>
+#include <sal/log.hxx>
 
 #include <com/sun/star/io/BufferSizeExceededException.hpp>
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
@@ -76,7 +77,7 @@ void SAL_CALL ZipPackageBuffer::skipBytes( sal_Int32 nBytesToSkip )
 }
 sal_Int32 SAL_CALL ZipPackageBuffer::available(  )
 {
-    return static_cast < sal_Int32 > (m_nEnd - m_nCurrent);
+    return std::min<sal_Int64>(SAL_MAX_INT32, m_nEnd - m_nCurrent);
 }
 void SAL_CALL ZipPackageBuffer::closeInput(  )
 {
@@ -95,7 +96,7 @@ void SAL_CALL ZipPackageBuffer::writeBytes( const Sequence< sal_Int8 >& aData )
     }
     else if (m_bMustInitBuffer)
     {
-         m_aBuffer.realloc ( static_cast < sal_Int32 > ( m_nBufferSize ) );
+        m_aBuffer.realloc ( static_cast < sal_Int32 > ( m_nBufferSize ) );
         m_bMustInitBuffer = false;
     }
     memcpy( m_aBuffer.getArray() + m_nCurrent, aData.getConstArray(), static_cast < sal_Int32 > (nDataLen));

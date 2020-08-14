@@ -18,25 +18,9 @@
  */
 
 #include <standard/vclxaccessibledropdowncombobox.hxx>
-#include <standard/vclxaccessiblecombobox.hxx>
-#include <standard/vclxaccessibletextfield.hxx>
-#include <standard/vclxaccessiblelist.hxx>
-#include <helper/accresmgr.hxx>
-#include <helper/accessiblestrings.hrc>
-
-#include <com/sun/star/accessibility/AccessibleEventId.hpp>
-#include <com/sun/star/accessibility/AccessibleRole.hpp>
-#include <com/sun/star/accessibility/AccessibleStateType.hpp>
-#include <vcl/svapp.hxx>
-#include <vcl/combobox.hxx>
-#include <vcl/unohelp.hxx>
 
 #include <toolkit/awt/vclxwindow.hxx>
-#include <toolkit/helper/convert.hxx>
-
-#include <comphelper/sequence.hxx>
-#include <cppuhelper/typeprovider.hxx>
-#include <unotools/accessiblestatesethelper.hxx>
+#include <vcl/vclevent.hxx>
 
 
 using namespace ::com::sun::star;
@@ -51,13 +35,9 @@ VCLXAccessibleDropDownComboBox::VCLXAccessibleDropDownComboBox (VCLXWindow* pVCL
 }
 
 
-VCLXAccessibleDropDownComboBox::~VCLXAccessibleDropDownComboBox()
-{
-}
-
 bool VCLXAccessibleDropDownComboBox::IsValid() const
 {
-    return GetWindow().get() != nullptr;
+    return GetWindow();
 }
 
 void VCLXAccessibleDropDownComboBox::ProcessWindowEvent (const VclWindowEvent& rVclWindowEvent)
@@ -80,17 +60,14 @@ void VCLXAccessibleDropDownComboBox::ProcessWindowEvent (const VclWindowEvent& r
 
 OUString VCLXAccessibleDropDownComboBox::getImplementationName()
 {
-    return OUString( "com.sun.star.comp.toolkit.AccessibleDropDownComboBox" );
+    return "com.sun.star.comp.toolkit.AccessibleDropDownComboBox";
 }
 
 
 Sequence< OUString > VCLXAccessibleDropDownComboBox::getSupportedServiceNames()
 {
-    Sequence< OUString > aNames = VCLXAccessibleBox::getSupportedServiceNames();
-    sal_Int32 nLength = aNames.getLength();
-    aNames.realloc( nLength + 1 );
-    aNames[nLength] = "com.sun.star.accessibility.AccessibleDropDownComboBox";
-    return aNames;
+    return comphelper::concatSequences(VCLXAccessibleBox::getSupportedServiceNames(),
+                                       Sequence<OUString>{"com.sun.star.accessibility.AccessibleDropDownComboBox"});
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

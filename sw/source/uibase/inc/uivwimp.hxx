@@ -19,8 +19,6 @@
 #ifndef INCLUDED_SW_SOURCE_UIBASE_INC_UIVWIMP_HXX
 #define INCLUDED_SW_SOURCE_UIBASE_INC_UIVWIMP_HXX
 
-#include <config_features.h>
-
 #include <view.hxx>
 
 #include <sfx2/objsh.hxx>
@@ -35,14 +33,14 @@ class SwTransferable;
 class SfxRequest;
 
 namespace sfx2 { class DocumentInserter; }
-namespace com{ namespace sun{ namespace star {
+namespace com::sun::star {
     namespace frame {
         class XDispatchProviderInterceptor;
     }
     namespace lang {
         class XUnoTunnel;
     }
-}}}
+}
 
 class SwScannerEventListener : public ::cppu::WeakImplHelper<
     css::lang::XEventListener >
@@ -104,8 +102,8 @@ class SwView_Impl
     std::shared_ptr<SwMailMergeConfigItem>
                                 xConfigItem;
 
-    sfx2::DocumentInserter*     m_pDocInserter;
-    SfxRequest*                 m_pRequest;
+    std::unique_ptr<sfx2::DocumentInserter> m_pDocInserter;
+    std::unique_ptr<SfxRequest>             m_pRequest;
     sal_Int16                   m_nParam;
 
     Point                       m_aEditingPosition;
@@ -125,7 +123,7 @@ public:
     SwXTextView*                    GetUNOObject_Impl();
     void                            Invalidate();
 
-    ShellMode                       GetShellMode() {return eShellMode;}
+    ShellMode                       GetShellMode() const {return eShellMode;}
 
     void                            ExecuteScan(SfxRequest& rReq);
     SwScannerEventListener&         GetScannerEventListener();
@@ -134,11 +132,11 @@ public:
 
     void                            AddTransferable(SwTransferable& rTransferable);
 
-    void SetMailMergeConfigItem(std::shared_ptr<SwMailMergeConfigItem>& rItem)
+    void SetMailMergeConfigItem(std::shared_ptr<SwMailMergeConfigItem> const & rItem)
     {
         xConfigItem = rItem;
     }
-    std::shared_ptr<SwMailMergeConfigItem>  GetMailMergeConfigItem() {return xConfigItem;}
+    std::shared_ptr<SwMailMergeConfigItem> const & GetMailMergeConfigItem() const {return xConfigItem;}
 
     //#i33307# restore editing position
     void                    SetRestorePosition(const Point& rCursorPos, bool bSelectObj)
@@ -159,10 +157,10 @@ public:
                                 const Link<sfx2::FileDialogHelper*,void>& rEndDialogHdl,
                                 const sal_uInt16 nSlotId
                             );
-    SfxMedium*              CreateMedium();
+    std::unique_ptr<SfxMedium> CreateMedium();
     void                    InitRequest( const SfxRequest& rRequest );
 
-    SfxRequest*      GetRequest() const { return m_pRequest; }
+    SfxRequest*      GetRequest() const { return m_pRequest.get(); }
     sal_Int16        GetParam() const { return m_nParam; }
     void             SetParam( sal_Int16 nParam ) { m_nParam = nParam; }
 };

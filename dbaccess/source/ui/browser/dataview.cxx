@@ -20,16 +20,11 @@
 #include <com/sun/star/frame/XController.hpp>
 #include <com/sun/star/frame/XModel.hpp>
 #include <dbaccess/dataview.hxx>
-#include <toolkit/helper/vclunohelper.hxx>
-#include <comphelper/types.hxx>
 #include <comphelper/namedvaluecollection.hxx>
-#include <sfx2/app.hxx>
 #include <dbaccess/IController.hxx>
-#include "UITools.hxx"
-#include <sfx2/sfx.hrc>
 #include <svtools/acceleratorexecute.hxx>
-#include <svtools/imgdef.hxx>
 #include <tools/diagnose_ex.h>
+#include <vcl/event.hxx>
 #include <vcl/fixed.hxx>
 #include <vcl/settings.hxx>
 
@@ -97,7 +92,7 @@ namespace dbaui
         // position the separator
         const Size aSeparatorSize( aPlayground.GetWidth(), 2 );
         m_aSeparator->SetPosSizePixel( aPlayground.TopLeft(), aSeparatorSize );
-        aPlayground.Top() += aSeparatorSize.Height() + 1;
+        aPlayground.AdjustTop(aSeparatorSize.Height() + 1 );
 
         // position the controls of the document's view
         resizeDocumentView( aPlayground );
@@ -117,10 +112,10 @@ namespace dbaui
             {
                 const KeyEvent* pKeyEvent = _rNEvt.GetKeyEvent();
                 const vcl::KeyCode& aKeyCode = pKeyEvent->GetKeyCode();
-                if ( m_pAccel.get() && m_pAccel->execute( aKeyCode ) )
+                if ( m_pAccel && m_pAccel->execute( aKeyCode ) )
                     // the accelerator consumed the event
                     return true;
-                SAL_FALLTHROUGH;
+                [[fallthrough]];
             }
             case MouseNotifyEvent::KEYUP:
             case MouseNotifyEvent::MOUSEBUTTONDOWN:
@@ -136,47 +131,28 @@ namespace dbaui
     {
         Window::StateChanged( nType );
 
-        if ( nType == StateChangedType::ControlBackground )
-        {
-            // Check if we need to get new images for normal/high contrast mode
-            m_xController->notifyHiContrastChanged();
-        }
+        if ( nType != StateChangedType::InitShow )
+            return;
 
-        if ( nType == StateChangedType::InitShow )
+        // now that there's a view which is finally visible, remove the "Hidden" value from the
+        // model's arguments.
+        try
         {
-            // now that there's a view which is finally visible, remove the "Hidden" value from the
-            // model's arguments.
-            try
+            Reference< XController > xController( m_xController->getXController(), UNO_SET_THROW );
+            Reference< XModel > xModel = xController->getModel();
+            if ( xModel.is() )
             {
-                Reference< XController > xController( m_xController->getXController(), UNO_SET_THROW );
-                Reference< XModel > xModel( xController->getModel(), UNO_QUERY );
-                if ( xModel.is() )
-                {
-                    ::comphelper::NamedValueCollection aArgs( xModel->getArgs() );
-                    aArgs.remove( "Hidden" );
-                    xModel->attachResource( xModel->getURL(), aArgs.getPropertyValues() );
-                }
-            }
-            catch( const Exception& )
-            {
-                DBG_UNHANDLED_EXCEPTION();
+                ::comphelper::NamedValueCollection aArgs( xModel->getArgs() );
+                aArgs.remove( "Hidden" );
+                xModel->attachResource( xModel->getURL(), aArgs.getPropertyValues() );
             }
         }
-    }
-    void ODataView::DataChanged( const DataChangedEvent& rDCEvt )
-    {
-        Window::DataChanged( rDCEvt );
-
-        if ( (rDCEvt.GetType() == DataChangedEventType::FONTS) ||
-            (rDCEvt.GetType() == DataChangedEventType::DISPLAY) ||
-            (rDCEvt.GetType() == DataChangedEventType::FONTSUBSTITUTION) ||
-            ((rDCEvt.GetType() == DataChangedEventType::SETTINGS) &&
-            (rDCEvt.GetFlags() & AllSettingsFlags::STYLE)) )
+        catch( const Exception& )
         {
-            // Check if we need to get new images for normal/high contrast mode
-            m_xController->notifyHiContrastChanged();
+            DBG_UNHANDLED_EXCEPTION("dbaccess");
         }
     }
+
     void ODataView::attachFrame(const Reference< XFrame >& _xFrame)
     {
         m_pAccel->init(m_xContext, _xFrame);

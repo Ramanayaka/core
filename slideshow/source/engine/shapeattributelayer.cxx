@@ -22,24 +22,18 @@
 #include <tools/diagnose_ex.h>
 #include <shapeattributelayer.hxx>
 
-#include <com/sun/star/awt/Rectangle.hpp>
 #include <com/sun/star/awt/FontUnderline.hpp>
 #include <com/sun/star/awt/FontWeight.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/animations/AnimationAdditiveMode.hpp>
 
-#include <basegfx/numeric/ftools.hxx>
-#include <basegfx/polygon/b2dpolygon.hxx>
 #include <rtl/math.hxx>
 
 
 using namespace ::com::sun::star;
 
 
-namespace slideshow
+namespace slideshow::internal
 {
-    namespace internal
-    {
         /** Update state ids
 
             This method updates all state IDs from possible
@@ -48,21 +42,21 @@ namespace slideshow
         */
         void ShapeAttributeLayer::updateStateIds()
         {
-            if( haveChild() )
-            {
-                if( mnTransformationState != mpChild->getTransformationState() )
-                    ++mnTransformationState;
-                if( mnClipState != mpChild->getClipState() )
-                    ++mnClipState;
-                if( mnAlphaState != mpChild->getAlphaState() )
-                    ++mnAlphaState;
-                if( mnPositionState != mpChild->getPositionState() )
-                    ++mnPositionState;
-                if( mnContentState != mpChild->getContentState() )
-                    ++mnContentState;
-                if( mnVisibilityState != mpChild->getVisibilityState() )
-                    ++mnVisibilityState;
-            }
+            if( !haveChild() )
+                return;
+
+            if( mnTransformationState != mpChild->getTransformationState() )
+                ++mnTransformationState;
+            if( mnClipState != mpChild->getClipState() )
+                ++mnClipState;
+            if( mnAlphaState != mpChild->getAlphaState() )
+                ++mnAlphaState;
+            if( mnPositionState != mpChild->getPositionState() )
+                ++mnPositionState;
+            if( mnContentState != mpChild->getContentState() )
+                ++mnContentState;
+            if( mnVisibilityState != mpChild->getVisibilityState() )
+                ++mnVisibilityState;
         }
 
         /** Calc attribute value.
@@ -139,7 +133,6 @@ namespace slideshow
             mnShearXAngle(),
             mnShearYAngle(),
             mnAlpha(),
-            mnCharRotationAngle(),
             mnCharScale(),
             mnCharWeight(),
 
@@ -178,7 +171,6 @@ namespace slideshow
 
             mbAlphaValid( false ),
 
-            mbCharRotationAngleValid( false ),
             mbCharScaleValid( false ),
 
             mbDimColorValid( false ),
@@ -277,7 +269,7 @@ namespace slideshow
 
         void ShapeAttributeLayer::setWidth( const double& rNewWidth )
         {
-            ENSURE_OR_THROW( ::rtl::math::isFinite(rNewWidth),
+            ENSURE_OR_THROW( std::isfinite(rNewWidth),
                               "ShapeAttributeLayer::setWidth(): Invalid width" );
 
             maSize.setX( rNewWidth );
@@ -301,7 +293,7 @@ namespace slideshow
 
         void ShapeAttributeLayer::setHeight( const double& rNewHeight )
         {
-            ENSURE_OR_THROW( ::rtl::math::isFinite(rNewHeight),
+            ENSURE_OR_THROW( std::isfinite(rNewHeight),
                               "ShapeAttributeLayer::setHeight(): Invalid height" );
 
             maSize.setY( rNewHeight );
@@ -311,8 +303,8 @@ namespace slideshow
 
         void ShapeAttributeLayer::setSize( const ::basegfx::B2DSize& rNewSize )
         {
-            ENSURE_OR_THROW( ::rtl::math::isFinite(rNewSize.getX()) &&
-                              ::rtl::math::isFinite(rNewSize.getY()),
+            ENSURE_OR_THROW( std::isfinite(rNewSize.getX()) &&
+                              std::isfinite(rNewSize.getY()),
                               "ShapeAttributeLayer::setSize(): Invalid size" );
 
             maSize = rNewSize;
@@ -336,7 +328,7 @@ namespace slideshow
 
         void ShapeAttributeLayer::setPosX( const double& rNewX )
         {
-            ENSURE_OR_THROW( ::rtl::math::isFinite(rNewX),
+            ENSURE_OR_THROW( std::isfinite(rNewX),
                               "ShapeAttributeLayer::setPosX(): Invalid position" );
 
             maPosition.setX( rNewX );
@@ -360,7 +352,7 @@ namespace slideshow
 
         void ShapeAttributeLayer::setPosY( const double& rNewY )
         {
-            ENSURE_OR_THROW( ::rtl::math::isFinite(rNewY),
+            ENSURE_OR_THROW( std::isfinite(rNewY),
                               "ShapeAttributeLayer::setPosY(): Invalid position" );
 
             maPosition.setY( rNewY );
@@ -391,7 +383,7 @@ namespace slideshow
 
         void ShapeAttributeLayer::setRotationAngle( const double& rNewAngle )
         {
-            ENSURE_OR_THROW( ::rtl::math::isFinite(rNewAngle),
+            ENSURE_OR_THROW( std::isfinite(rNewAngle),
                               "ShapeAttributeLayer::setRotationAngle(): Invalid angle" );
 
             mnRotationAngle = rNewAngle;
@@ -414,7 +406,7 @@ namespace slideshow
 
         void ShapeAttributeLayer::setShearXAngle( const double& rNewAngle )
         {
-            ENSURE_OR_THROW( ::rtl::math::isFinite(rNewAngle),
+            ENSURE_OR_THROW( std::isfinite(rNewAngle),
                               "ShapeAttributeLayer::setShearXAngle(): Invalid angle" );
 
             mnShearXAngle = rNewAngle;
@@ -437,7 +429,7 @@ namespace slideshow
 
         void ShapeAttributeLayer::setShearYAngle( const double& rNewAngle )
         {
-            ENSURE_OR_THROW( ::rtl::math::isFinite(rNewAngle),
+            ENSURE_OR_THROW( std::isfinite(rNewAngle),
                               "ShapeAttributeLayer::setShearYAngle(): Invalid angle" );
 
             mnShearYAngle = rNewAngle;
@@ -460,7 +452,7 @@ namespace slideshow
 
         void ShapeAttributeLayer::setAlpha( const double& rNewValue )
         {
-            ENSURE_OR_THROW( ::rtl::math::isFinite(rNewValue),
+            ENSURE_OR_THROW( std::isfinite(rNewValue),
                               "ShapeAttributeLayer::setAlpha(): Invalid alpha" );
 
             mnAlpha = rNewValue;
@@ -571,7 +563,7 @@ namespace slideshow
         void ShapeAttributeLayer::setFillStyle( const sal_Int16& rStyle )
         {
             // TODO(Q1): Check range here.
-            meFillStyle = (drawing::FillStyle)rStyle;
+            meFillStyle = static_cast<drawing::FillStyle>(rStyle);
             mbFillStyleValid = true;
             ++mnContentState;
         }
@@ -596,7 +588,7 @@ namespace slideshow
         void ShapeAttributeLayer::setLineStyle( const sal_Int16& rStyle )
         {
             // TODO(Q1): Check range here.
-            meLineStyle = (drawing::LineStyle)rStyle;
+            meLineStyle = static_cast<drawing::LineStyle>(rStyle);
             mbLineStyleValid = true;
             ++mnContentState;
         }
@@ -642,29 +634,6 @@ namespace slideshow
         {
             maCharColor = nNewColor;
             mbCharColorValid = true;
-            ++mnContentState;
-        }
-
-        bool ShapeAttributeLayer::isCharRotationAngleValid() const
-        {
-            return mbCharRotationAngleValid || ( haveChild() && mpChild->isCharRotationAngleValid() );
-        }
-
-        double ShapeAttributeLayer::getCharRotationAngle() const
-        {
-            return calcValue( mnCharRotationAngle,
-                              mbCharRotationAngleValid,
-                              &ShapeAttributeLayer::isCharRotationAngleValid,
-                              &ShapeAttributeLayer::getCharRotationAngle );
-        }
-
-        void ShapeAttributeLayer::setCharRotationAngle( const double& rNewAngle )
-        {
-            ENSURE_OR_THROW( ::rtl::math::isFinite(rNewAngle),
-                              "ShapeAttributeLayer::setCharRotationAngle(): Invalid angle" );
-
-            mnCharRotationAngle = rNewAngle;
-            mbCharRotationAngleValid = true;
             ++mnContentState;
         }
 
@@ -762,7 +731,7 @@ namespace slideshow
         void ShapeAttributeLayer::setCharPosture( const sal_Int16& rStyle )
         {
             // TODO(Q1): Check range here.
-            meCharPosture = (awt::FontSlant)rStyle;
+            meCharPosture = static_cast<awt::FontSlant>(rStyle);
             mbCharPostureValid = true;
             ++mnContentState;
         }
@@ -782,7 +751,7 @@ namespace slideshow
 
         void ShapeAttributeLayer::setCharScale( const double& rNewHeight )
         {
-            ENSURE_OR_THROW( ::rtl::math::isFinite(rNewHeight),
+            ENSURE_OR_THROW( std::isfinite(rNewHeight),
                               "ShapeAttributeLayer::setCharScale(): Invalid height" );
 
             mnCharScale = rNewHeight;
@@ -838,7 +807,6 @@ namespace slideshow
                 mnVisibilityState;
         }
 
-    }
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

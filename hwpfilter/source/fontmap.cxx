@@ -25,7 +25,9 @@
 #endif
 
 #include <sal/types.h>
-#include <fontmap.hxx>
+#include "fontmap.hxx"
+
+namespace {
 
 struct FontEntry
 {
@@ -33,6 +35,9 @@ struct FontEntry
     int key;
      double ratio;
 };
+
+}
+
 /**
  * ratio\xb4\xc2 \xc7\xd1\xb1\xdb 70%, \xbc\xfd\xc0\xda 10% \xbf\xb5\xb9\xae 20%\xc0\xc7 \xba\xf1\xc0\xb2\xb7\xce \xb1\xb8\xbc\xba\xb5\xc7\xbe\xfa\xb4\xd9\xb4\xc2 \xb0\xa1\xc1\xa4\xc7\xcf\xbf\xa1 \xc1\xa4\xc7\xd8\xc1\xf8\xb4\xd9.
  */
@@ -149,9 +154,9 @@ int getRepFamilyName(const char* orig, char *buf, double &ratio)
     for( int i = 0 ; i < int(SAL_N_ELEMENTS(FontMapTab)); i++)
     {
         if( !strcmp(orig, FontMapTab[i].familyname) ){
-                ratio = FontMapTab[i].ratio;
+            ratio = FontMapTab[i].ratio;
             return strlen( strcpy(buf,RepFontTab[FontMapTab[i].key]) );
-          }
+        }
     }
     ratio = FontMapTab[0].ratio;
     return strlen( strcpy(buf, RepFontTab[0] ) );

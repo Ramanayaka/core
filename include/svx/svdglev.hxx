@@ -29,7 +29,7 @@ class SdrGluePoint;
 //  Edit GluePoints at the objects (GluePoints for connector)
 
 
-class SVX_DLLPUBLIC SdrGlueEditView: public SdrPolyEditView
+class SVXCORE_DLLPUBLIC SdrGlueEditView : public SdrPolyEditView
 {
     // copy marked GluePoints and mark instead of the old ones
     void ImpCopyMarkedGluePoints();
@@ -40,7 +40,10 @@ class SVX_DLLPUBLIC SdrGlueEditView: public SdrPolyEditView
 
 protected:
     // #i71538# make constructors of SdrView sub-components protected to avoid incomplete incarnations which may get casted to SdrView
-    SdrGlueEditView(SdrModel* pModel1, OutputDevice* pOut);
+    SdrGlueEditView(
+        SdrModel& rSdrModel,
+        OutputDevice* pOut);
+
     virtual ~SdrGlueEditView() override;
 
 public:
@@ -48,15 +51,15 @@ public:
     // which one wished to check,set or delete
     // possible values for nThisEsc are:
     // SdrEscapeDirection::LEFT, SdrEscapeDirection::RIGHT, SdrEscapeDirection::TOP and SdrEscapeDirection::BOTTOM
-    SDR_TRISTATE IsMarkedGluePointsEscDir(SdrEscapeDirection nThisEsc) const;
+    TriState IsMarkedGluePointsEscDir(SdrEscapeDirection nThisEsc) const;
     void SetMarkedGluePointsEscDir(SdrEscapeDirection nThisEsc, bool bOn);
 
     // check/set, if the GluePoints are relative to the
     // object size (Percent=sal_True) or not (Percent=sal_False)
-    SDR_TRISTATE IsMarkedGluePointsPercent() const;
+    TriState IsMarkedGluePointsPercent() const;
     void SetMarkedGluePointsPercent(bool bOn);
 
-    // bVert=FALSE: check/set hotizontal alignment
+    // bVert=FALSE: check/set horizontal alignment
     //      SdrAlign::HORZ_CENTER
     //      SdrAlign::HORZ_LEFT
     //      SdrAlign::HORZ_RIGHT

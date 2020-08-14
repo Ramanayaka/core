@@ -17,26 +17,20 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <hintids.hxx>
 #include <editeng/brushitem.hxx>
 #include <flyfrm.hxx>
-#include <rootfrm.hxx>
-#include <txtfrm.hxx>
 #include <sectfrm.hxx>
 #include <section.hxx>
 #include <viewsh.hxx>
 #include <viewopt.hxx>
-#include <doc.hxx>
 #include <frmatr.hxx>
 #include <pagefrm.hxx>
 #include <pagedesc.hxx>
-#include <fmtanchr.hxx>
 #include <fldbas.hxx>
-#include <dcontact.hxx>
 #include <accmap.hxx>
-#include <accfrmobjslist.hxx>
-#include <accfrmobjmap.hxx>
-#include <accframe.hxx>
+#include "accfrmobjslist.hxx"
+#include "accfrmobjmap.hxx"
+#include "accframe.hxx"
 
 using namespace sw::access;
 
@@ -342,7 +336,7 @@ SwRect SwAccessibleFrame::GetBounds( const SwAccessibleMap& rAccMap,
     return aBounds;
 }
 
-bool SwAccessibleFrame::IsEditable( SwViewShell *pVSh ) const
+bool SwAccessibleFrame::IsEditable( SwViewShell const *pVSh ) const
 {
     const SwFrame *pFrame = GetFrame();
     if( !pFrame )
@@ -359,7 +353,7 @@ bool SwAccessibleFrame::IsEditable( SwViewShell *pVSh ) const
     return true;
 }
 
-bool SwAccessibleFrame::IsOpaque( SwViewShell *pVSh ) const
+bool SwAccessibleFrame::IsOpaque( SwViewShell const *pVSh ) const
 {
     SwAccessibleChild aFrame( GetFrame() );
     if( !aFrame.GetSwFrame() )
@@ -395,8 +389,8 @@ bool SwAccessibleFrame::IsOpaque( SwViewShell *pVSh ) const
         if( pFrame->IsSctFrame() )
         {
             const SwSection* pSection = static_cast<const SwSectionFrame*>(pFrame)->GetSection();
-            if( pSection && ( TOX_HEADER_SECTION == pSection->GetType() ||
-                TOX_CONTENT_SECTION == pSection->GetType() ) &&
+            if( pSection && ( SectionType::ToxHeader == pSection->GetType() ||
+                SectionType::ToxContent == pSection->GetType() ) &&
                 !pVOpt->IsReadonly() &&
                 SwViewOption::IsIndexShadings() )
                 return true;
@@ -460,7 +454,7 @@ sal_Int32 SwAccessibleFrame::GetChildIndex( SwAccessibleMap& rAccMap,
     sal_Int32 nPos = 0;
     return GetChildIndex( rAccMap, maVisArea, *mpFrame, rChild, nPos, IsInPagePreview() )
            ? nPos
-           : -1L;
+           : -1;
 }
 
 sw::access::SwAccessibleChild SwAccessibleFrame::GetChildAtPixel(

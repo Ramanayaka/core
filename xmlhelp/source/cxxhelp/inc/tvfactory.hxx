@@ -20,20 +20,18 @@
 #ifndef INCLUDED_XMLHELP_SOURCE_CXXHELP_INC_TVFACTORY_HXX
 #define INCLUDED_XMLHELP_SOURCE_CXXHELP_INC_TVFACTORY_HXX
 
-#include <rtl/ref.hxx>
 #include <rtl/ustring.hxx>
-#include <cppuhelper/weak.hxx>
-#include <ucbhelper/macros.hxx>
 #include <com/sun/star/uno/XInterface.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/lang/XTypeProvider.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
+#include <com/sun/star/lang/XSingleServiceFactory.hpp>
 #include <cppuhelper/implbase.hxx>
 
 
 namespace treeview {
 
-class TVFactory: public cppu::WeakImplHelper <
+class TVFactory final : public cppu::WeakImplHelper <
     css::lang::XServiceInfo,
     css::lang::XMultiServiceFactory >
     {
@@ -66,21 +64,6 @@ class TVFactory: public cppu::WeakImplHelper <
 
         virtual css::uno::Sequence< OUString > SAL_CALL
         getAvailableServiceNames( ) override;
-
-        // Other
-
-        static OUString SAL_CALL getImplementationName_static();
-
-        static css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames_static();
-
-        static css::uno::Reference< css::lang::XSingleServiceFactory > SAL_CALL
-        createServiceFactory(
-            const css::uno::Reference< css::lang::XMultiServiceFactory >& rxServiceMgr );
-
-        static css::uno::Reference< css::uno::XInterface > SAL_CALL
-        CreateInstance(
-            const css::uno::Reference< css::lang::XMultiServiceFactory >& xMultiServiceFactory );
-
 
     private:
 

@@ -21,7 +21,6 @@
 #define INCLUDED_SDEXT_SOURCE_PRESENTER_PRESENTERSCROLLBAR_HXX
 
 #include "PresenterBitmapContainer.hxx"
-#include <com/sun/star/awt/Point.hpp>
 #include <com/sun/star/awt/XWindow.hpp>
 #include <com/sun/star/drawing/XPresenterHelper.hpp>
 #include <com/sun/star/rendering/XCanvas.hpp>
@@ -32,7 +31,7 @@
 #include <functional>
 #include <memory>
 
-namespace sdext { namespace presenter {
+namespace sdext::presenter {
 
 class PresenterCanvasHelper;
 class PresenterPaintManager;
@@ -51,7 +50,6 @@ class PresenterScrollBar
       public PresenterScrollBarInterfaceBase
 {
 public:
-    typedef ::std::function<void (double)> ThumbMotionListener;
     virtual ~PresenterScrollBar() override;
     PresenterScrollBar(const PresenterScrollBar&) = delete;
     PresenterScrollBar& operator=(const PresenterScrollBar&) = delete;
@@ -59,7 +57,7 @@ public:
     virtual void SAL_CALL disposing() override;
 
     css::uno::Reference<css::uno::XComponentContext> const&
-        GetComponentContext() { return mxComponentContext; }
+        GetComponentContext() const { return mxComponentContext; }
 
     void SetVisible (const bool bIsVisible);
 
@@ -252,7 +250,7 @@ private:
     sal_Int32 mnScrollBarWidth;
 };
 
-} } // end of namespace ::sdext::presenter
+} // end of namespace ::sdext::presenter
 
 #endif
 

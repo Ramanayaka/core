@@ -19,7 +19,7 @@
 #ifndef INCLUDED_XMLOFF_SOURCE_CHART_XMLLABELSEPARATORCONTEXT_HXX
 #define INCLUDED_XMLOFF_SOURCE_CHART_XMLLABELSEPARATORCONTEXT_HXX
 
-#include "XMLElementPropertyContext.hxx"
+#include <XMLElementPropertyContext.hxx>
 
 class XMLLabelSeparatorContext : public XMLElementPropertyContext
 {
@@ -32,7 +32,7 @@ public:
     virtual ~XMLLabelSeparatorContext() override;
 
     virtual void StartElement( const css::uno::Reference< css::xml::sax::XAttributeList >& xAttrList ) override;
-    virtual SvXMLImportContext *CreateChildContext(
+    virtual SvXMLImportContextRef CreateChildContext(
         sal_uInt16 nPrefix,
         const OUString& rLocalName,
         const css::uno::Reference< css::xml::sax::XAttributeList >& xAttrList ) override;

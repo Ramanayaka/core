@@ -21,10 +21,12 @@
 #define INCLUDED_SVTOOLS_SCRWIN_HXX
 
 #include <svtools/svtdllapi.h>
-#include <vcl/scrbar.hxx>
+#include <vcl/window.hxx>
 #include <vcl/vclptr.hxx>
 
 class DataChangedEvent;
+class ScrollBar;
+class ScrollBarBox;
 
 class SVT_DLLPUBLIC ScrollableWindow: public vcl::Window
 {
@@ -37,10 +39,7 @@ private:
     VclPtr<ScrollBar>    aVScroll;      // the scrollbars
     VclPtr<ScrollBar>    aHScroll;
     VclPtr<ScrollBarBox> aCornerWin;    // window in the bottom right corner
-    bool            bScrolling:1,       // user controlled scrolling
-                    bHandleDragging:1,  // scroll window while dragging
-                    bHCenter:1,
-                    bVCenter:1;
+    bool            bScrolling:1;       // user controlled scrolling
 
     DECL_DLLPRIVATE_LINK( ScrollHdl, ScrollBar *, void );
     DECL_DLLPRIVATE_LINK( EndScrollHdl, ScrollBar *, void );
@@ -59,7 +58,7 @@ public:
     MapMode GetMapMode() const;
 
     void            SetTotalSize( const Size& rNewSize );
-    Size            GetTotalSize() { return PixelToLogic( aTotPixSz ); }
+    Size            GetTotalSize() const { return PixelToLogic( aTotPixSz ); }
 
     using Window::Scroll;
     virtual void    Scroll( long nDeltaX, long nDeltaY, ScrollFlags nFlags = ScrollFlags::NONE ) override;

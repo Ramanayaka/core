@@ -12,14 +12,14 @@
 
 #include <vcl/dllapi.h>
 
-#include "unx/salgdi.h"
-#include "unx/x11/x11gdiimpl.h"
-#include "openglgdiimpl.hxx"
-#include "ControlCacheKey.hxx"
+#include <unx/salgdi.h>
+#include <unx/x11/x11gdiimpl.h>
+#include <opengl/gdiimpl.hxx>
+#include <ControlCacheKey.hxx>
 
 struct TextureCombo;
 
-class VCL_PLUGIN_PUBLIC X11OpenGLSalGraphicsImpl : public OpenGLSalGraphicsImpl, public X11GraphicsImpl
+class X11OpenGLSalGraphicsImpl : public OpenGLSalGraphicsImpl, public X11GraphicsImpl
 {
 private:
     X11SalGraphics&     mrX11Parent;
@@ -31,22 +31,10 @@ public:
 protected:
     virtual rtl::Reference<OpenGLContext> CreateWinContext() override;
 
-    bool RenderPixmap(X11Pixmap* pPixmap, X11Pixmap* pMask, int nX, int nY, TextureCombo& rCombo);
-
 public:
-    // implementation of X11GraphicsImpl
-
     virtual void copyBits( const SalTwoRect& rPosAry, SalGraphics* pSrcGraphics ) override;
 
     virtual void Init() override;
-
-    bool FillPixmapFromScreen( X11Pixmap* pPixmap, int nX, int nY ) override;
-    bool RenderPixmapToScreen(X11Pixmap* pPixmap, X11Pixmap* pMask, int nX, int nY) override;
-
-    bool RenderAndCacheNativeControl(X11Pixmap* pPixmap, X11Pixmap* pMask, int nX, int nY,
-                                     ControlCacheKey& aControlCacheKey) override;
-    bool TryRenderCachedNativeControl(ControlCacheKey& rControlCacheKey,
-                                      int nX, int nY) override;
 };
 
 #endif // INCLUDED_VCL_INC_OPENGL_X11_GDIIMPL_HXX

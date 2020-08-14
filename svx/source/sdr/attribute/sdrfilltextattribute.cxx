@@ -21,10 +21,8 @@
 #include <sdr/attribute/sdrfilltextattribute.hxx>
 
 
-namespace drawinglayer
+namespace drawinglayer::attribute
 {
-    namespace attribute
-    {
         SdrFillTextAttribute::SdrFillTextAttribute(
             const SdrFillAttribute& rFill,
             const FillGradientAttribute& rFillFloatTransGradient,
@@ -64,7 +62,7 @@ namespace drawinglayer
                 && getFillFloatTransGradient() == rCandidate.getFillFloatTransGradient()
                 && getText() == rCandidate.getText());
         }
-    } // end of namespace attribute
-} // end of namespace drawinglayer
+
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

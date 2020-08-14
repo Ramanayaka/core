@@ -18,12 +18,10 @@
  */
 
 
-#include "odfemitter.hxx"
+#include <odfemitter.hxx>
 
 #include <rtl/ustrbuf.hxx>
 #include <osl/diagnose.h>
-#include <cppuhelper/exc_hlp.hxx>
-#include <com/sun/star/io/XInputStream.hpp>
 #include <com/sun/star/io/XOutputStream.hpp>
 
 #include <comphelper/stl_types.hxx>
@@ -32,6 +30,8 @@ using namespace com::sun::star;
 
 namespace pdfi
 {
+
+namespace {
 
 class OdfEmitter : public XmlEmitter
 {
@@ -48,6 +48,8 @@ public:
     virtual void endTag( const char* pTag ) override;
 };
 
+}
+
 OdfEmitter::OdfEmitter( const uno::Reference<io::XOutputStream>& xOutput ) :
     m_xOutput( xOutput ),
     m_aLineFeed(1),
@@ -56,9 +58,7 @@ OdfEmitter::OdfEmitter( const uno::Reference<io::XOutputStream>& xOutput ) :
     OSL_PRECOND(m_xOutput.is(), "OdfEmitter(): invalid output stream");
     m_aLineFeed[0] = '\n';
 
-    OUStringBuffer aElement;
-    aElement.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>");
-    write(aElement.makeStringAndClear());
+    write("<?xml version=\"1.0\" encoding=\"UTF-8\"?>");
 }
 
 void OdfEmitter::beginTag( const char* pTag, const PropertyMap& rProperties )
@@ -71,17 +71,14 @@ void OdfEmitter::beginTag( const char* pTag, const PropertyMap& rProperties )
     aElement.append(" ");
 
     std::vector<OUString>        aAttributes;
-    PropertyMap::const_iterator       aCurr(rProperties.begin());
-    const PropertyMap::const_iterator aEnd(rProperties.end());
-    while( aCurr != aEnd )
+    for( const auto& rCurr : rProperties )
     {
-        OUStringBuffer aAttribute;
-        aAttribute.append(aCurr->first);
-        aAttribute.append("=\"");
-        aAttribute.append(aCurr->second);
-        aAttribute.append("\" ");
-        aAttributes.push_back(aAttribute.makeStringAndClear());
-        ++aCurr;
+        OUString aAttribute =
+            rCurr.first +
+            "=\"" +
+            rCurr.second +
+            "\" ";
+        aAttributes.push_back(aAttribute);
     }
 
     // since the hash map's sorting is undefined (and varies across
@@ -100,7 +97,7 @@ void OdfEmitter::write( const OUString& rText )
     const OString aStr = OUStringToOString(rText,RTL_TEXTENCODING_UTF8);
     const sal_Int32 nLen( aStr.getLength() );
     m_aBuf.realloc( nLen );
-    const sal_Char* pStr = aStr.getStr();
+    const char* pStr = aStr.getStr();
     std::copy(pStr,pStr+nLen,m_aBuf.getArray());
 
     m_xOutput->writeBytes(m_aBuf);
@@ -118,7 +115,7 @@ void OdfEmitter::endTag( const char* pTag )
 
 XmlEmitterSharedPtr createOdfEmitter( const uno::Reference<io::XOutputStream>& xOut )
 {
-    return XmlEmitterSharedPtr(new OdfEmitter(xOut));
+    return std::make_shared<OdfEmitter>(xOut);
 }
 
 }

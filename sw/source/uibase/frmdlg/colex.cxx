@@ -17,9 +17,8 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "cmdid.h"
-#include "hintids.hxx"
-#include <algorithm>
+#include <cmdid.h>
+#include <hintids.hxx>
 #include <svl/eitem.hxx>
 #include <tools/fract.hxx>
 #include <editeng/lrspitem.hxx>
@@ -28,24 +27,19 @@
 #include <svx/pageitem.hxx>
 #include <editeng/brushitem.hxx>
 #include <editeng/frmdiritem.hxx>
-#include <vcl/bitmap.hxx>
-#include <vcl/builder.hxx>
-#include <vcl/graph.hxx>
+#include <vcl/outdev.hxx>
 #include <vcl/settings.hxx>
-#include <vcl/builderfactory.hxx>
 #include <tgrditem.hxx>
 #include <viewopt.hxx>
-#include "colex.hxx"
-#include "colmgr.hxx"
+#include <colex.hxx>
+#include <colmgr.hxx>
 #include <svx/unobrushitemhelper.hxx>
 
-// Taking the updated values from the set
 void SwPageExample::UpdateExample( const SfxItemSet& rSet )
 {
     if (SfxItemState::DEFAULT <= rSet.GetItemState(RES_FRAMEDIR))
     {
-        const SvxFrameDirectionItem& rDirItem =
-                    static_cast<const SvxFrameDirectionItem&>(rSet.Get(RES_FRAMEDIR));
+        const SvxFrameDirectionItem& rDirItem = rSet.Get(RES_FRAMEDIR);
         m_bVertical = rDirItem.GetValue() == SvxFrameDirection::Vertical_RL_TB||
                     rDirItem.GetValue() == SvxFrameDirection::Vertical_LR_TB;
     }
@@ -55,10 +49,8 @@ void SwPageExample::UpdateExample( const SfxItemSet& rSet )
     if ( rSet.GetItemState( nWhich, false ) == SfxItemState::SET )
     {
         // alignment
-        const SvxPageItem* pPage = static_cast<const SvxPageItem*>(&rSet.Get( nWhich ));
-
-        if ( pPage )
-            SetUsage( pPage->GetPageUsage() );
+        const SvxPageItem& rPage = static_cast<const SvxPageItem&>(rSet.Get(nWhich));
+        SetUsage(rPage.GetPageUsage());
     }
 
     nWhich = pPool->GetWhich( SID_ATTR_PAGE_SIZE );
@@ -128,7 +120,7 @@ void SwPageExample::UpdateExample( const SfxItemSet& rSet )
             if(SfxItemState::SET == rHeaderSet.GetItemState(RES_BACKGROUND))
             {
                 // create FillAttributes from SvxBrushItem //SetHdColor(rItem.GetColor());
-                const SvxBrushItem& rItem = static_cast< const SvxBrushItem& >(rHeaderSet.Get(RES_BACKGROUND));
+                const SvxBrushItem& rItem = rHeaderSet.Get(RES_BACKGROUND);
                 SfxItemSet aTempSet(*rHeaderSet.GetPool(), svl::Items<XATTR_FILL_FIRST, XATTR_FILL_LAST>{});
 
                 setSvxBrushItemAsFillAttributesToTargetSet(rItem, aTempSet);
@@ -145,8 +137,7 @@ void SwPageExample::UpdateExample( const SfxItemSet& rSet )
             false, &pItem ) )
     {
         const SfxItemSet& rFooterSet = static_cast<const SvxSetItem*>(pItem)->GetItemSet();
-        const SfxBoolItem& rFooterOn =
-            static_cast<const SfxBoolItem&>(rFooterSet.Get( SID_ATTR_PAGE_ON ));
+        const SfxBoolItem& rFooterOn = rFooterSet.Get( SID_ATTR_PAGE_ON );
 
         if ( rFooterOn.GetValue() )
         {
@@ -167,7 +158,7 @@ void SwPageExample::UpdateExample( const SfxItemSet& rSet )
             if( rFooterSet.GetItemState( RES_BACKGROUND ) == SfxItemState::SET )
             {
                 // create FillAttributes from SvxBrushItem //SetFtColor(rItem.GetColor());
-                const SvxBrushItem& rItem = static_cast< const SvxBrushItem& >(rFooterSet.Get(RES_BACKGROUND));
+                const SvxBrushItem& rItem = rFooterSet.Get(RES_BACKGROUND);
                 SfxItemSet aTempSet(*rFooterSet.GetPool(), svl::Items<XATTR_FILL_FIRST, XATTR_FILL_LAST>{});
 
                 setSvxBrushItemAsFillAttributesToTargetSet(rItem, aTempSet);
@@ -215,18 +206,18 @@ void SwColExample::DrawPage(vcl::RenderContext& rRenderContext, const Point& rOr
         nR = GetLeft();
     }
 
-    rRenderContext.SetFillColor(Color(COL_LIGHTGRAY));
+    rRenderContext.SetFillColor(COL_LIGHTGRAY);
     tools::Rectangle aRect;
-    aRect.Right() = rOrg.X() + GetSize().Width() - nR;
-    aRect.Left()  = rOrg.X() + nL;
-    aRect.Top()   = rOrg.Y() + GetTop() + GetHdHeight() + GetHdDist();
-    aRect.Bottom()= rOrg.Y() + GetSize().Height() - GetBottom() - GetFtHeight() - GetFtDist();
+    aRect.SetRight( rOrg.X() + GetSize().Width() - nR );
+    aRect.SetLeft( rOrg.X() + nL );
+    aRect.SetTop( rOrg.Y() + GetTop() + GetHdHeight() + GetHdDist() );
+    aRect.SetBottom( rOrg.Y() + GetSize().Height() - GetBottom() - GetFtHeight() - GetFtDist() );
     rRenderContext.DrawRect(aRect);
 
     const tools::Rectangle aDefineRect(aRect);
     const drawinglayer::attribute::SdrAllFillAttributesHelperPtr& rFillAttributes = getPageFillAttributes();
 
-    if (!rFillAttributes.get() || !rFillAttributes->isUsed())
+    if (!rFillAttributes || !rFillAttributes->isUsed())
     {
         // If there is no fill, use fallback color
         const StyleSettings& rStyleSettings = rRenderContext.GetSettings().GetStyleSettings();
@@ -254,9 +245,9 @@ void SwColExample::DrawPage(vcl::RenderContext& rRenderContext, const Point& rOr
             nAutoColWidth = pColMgr->GetColWidth(i);
 
         if (!m_bVertical)
-            aRect.Right() = aRect.Left() + nAutoColWidth;
+            aRect.SetRight( aRect.Left() + nAutoColWidth );
         else
-            aRect.Bottom() = aRect.Top() + nAutoColWidth;
+            aRect.SetBottom( aRect.Top() + nAutoColWidth );
 
         // use primitive draw command
         drawFillAttributes(rRenderContext, getPageFillAttributes(), aRect, aDefineRect);
@@ -264,103 +255,89 @@ void SwColExample::DrawPage(vcl::RenderContext& rRenderContext, const Point& rOr
         if (i < nColumnCount - 1)
         {
             if (!m_bVertical)
-                aRect.Left() = aRect.Right() + pColMgr->GetGutterWidth(i);
+                aRect.SetLeft( aRect.Right() + pColMgr->GetGutterWidth(i) );
             else
-                aRect.Top() = aRect.Bottom() + pColMgr->GetGutterWidth(i);
+                aRect.SetTop( aRect.Bottom() + pColMgr->GetGutterWidth(i) );
         }
     }
-    if (pColMgr->HasLine())
+    if (!pColMgr->HasLine())
+        return;
+
+    Point aUp(rOrg.X() + nL, rOrg.Y() + GetTop());
+    Point aDown(rOrg.X() + nL,
+                    rOrg.Y() + GetSize().Height() - GetBottom() - GetFtHeight() - GetFtDist());
+
+    if (pColMgr->GetLineHeightPercent() != 100)
     {
-        Point aUp(rOrg.X() + nL, rOrg.Y() + GetTop());
-        Point aDown(rOrg.X() + nL,
-                        rOrg.Y() + GetSize().Height() - GetBottom() - GetFtHeight() - GetFtDist());
-
-        if (pColMgr->GetLineHeightPercent() != 100)
+        long nLength = !m_bVertical ? aDown.Y() - aUp.Y() : aDown.X() - aUp.X();
+        nLength -= nLength * pColMgr->GetLineHeightPercent() / 100;
+        switch (pColMgr->GetAdjust())
         {
-            long nLength = !m_bVertical ? aDown.Y() - aUp.Y() : aDown.X() - aUp.X();
-            nLength -= nLength * pColMgr->GetLineHeightPercent() / 100;
-            switch (pColMgr->GetAdjust())
-            {
-                case COLADJ_BOTTOM:
-                    if (!m_bVertical)
-                        aUp.Y() += nLength;
-                    else
-                        aUp.X() += nLength;
-                    break;
-                case COLADJ_TOP:
-                    if (!m_bVertical)
-                        aDown.Y() -= nLength;
-                    else
-                        aDown.X() -= nLength;
-                    break;
-                case COLADJ_CENTER:
-                    if (!m_bVertical)
-                    {
-                        aUp.Y() += nLength / 2;
-                        aDown.Y() -= nLength / 2;
-                    }
-                    else
-                    {
-                        aUp.X() += nLength / 2;
-                        aDown.X() -= nLength / 2;
-                    }
-                    break;
-                default:
-                    break; // prevent warning
-            }
+            case COLADJ_BOTTOM:
+                if (!m_bVertical)
+                    aUp.AdjustY(nLength );
+                else
+                    aUp.AdjustX(nLength );
+                break;
+            case COLADJ_TOP:
+                if (!m_bVertical)
+                    aDown.AdjustY( -nLength );
+                else
+                    aDown.AdjustX( -nLength );
+                break;
+            case COLADJ_CENTER:
+                if (!m_bVertical)
+                {
+                    aUp.AdjustY(nLength / 2 );
+                    aDown.AdjustY( -(nLength / 2) );
+                }
+                else
+                {
+                    aUp.AdjustX(nLength / 2 );
+                    aDown.AdjustX( -(nLength / 2) );
+                }
+                break;
+            default:
+                break; // prevent warning
+        }
+    }
+
+    for (sal_uInt16 i = 0; i < nColumnCount -  1; ++i)
+    {
+        int nGutter = pColMgr->GetGutterWidth(i);
+        int nDist = pColMgr->GetColWidth( i ) + nGutter;
+        nDist -= (i == 0) ? nGutter / 2 : 0;
+        if (!m_bVertical)
+        {
+            aUp.AdjustX(nDist );
+            aDown.AdjustX(nDist );
+        }
+        else
+        {
+            aUp.AdjustY(nDist );
+            aDown.AdjustY(nDist );
         }
 
-        for (sal_uInt16 i = 0; i < nColumnCount -  1; ++i)
-        {
-            int nGutter = pColMgr->GetGutterWidth(i);
-            int nDist = pColMgr->GetColWidth( i ) + nGutter;
-            nDist -= (i == 0) ? nGutter / 2 : 0;
-            if (!m_bVertical)
-            {
-                aUp.X() += nDist;
-                aDown.X() += nDist;
-            }
-            else
-            {
-                aUp.Y() += nDist;
-                aDown.Y() += nDist;
-            }
-
-            rRenderContext.DrawLine(aUp, aDown);
-        }
+        rRenderContext.DrawLine(aUp, aDown);
     }
 }
 
-VCL_BUILDER_FACTORY(SwColExample)
-
-SwColumnOnlyExample::SwColumnOnlyExample(vcl::Window* pParent)
-    : Window(pParent)
-    , m_aFrameSize(1,1)
+SwColumnOnlyExample::SwColumnOnlyExample()
+    : m_aFrameSize(SvxPaperInfo::GetPaperSize(PAPER_A4)) // DIN A4
 {
-    SetMapMode( MapMode( MapUnit::MapTwip ) );
-    m_aWinSize = GetOptimalSize();
-    m_aWinSize.Height() -= 4;
-    m_aWinSize.Width() -= 4;
-
-    m_aWinSize = PixelToLogic( m_aWinSize );
-
-    SetBorderStyle( WindowBorderStyle::MONO );
-
-    m_aFrameSize  = SvxPaperInfo::GetPaperSize(PAPER_A4);// DIN A4
-    ::FitToActualSize(m_aCols, (sal_uInt16)m_aFrameSize.Width());
-
-    long nHeight = m_aFrameSize.Height();
-    Fraction aScale( m_aWinSize.Height(), nHeight );
-    MapMode aMapMode( GetMapMode() );
-    aMapMode.SetScaleX( aScale );
-    aMapMode.SetScaleY( aScale );
-    SetMapMode( aMapMode );
+    ::FitToActualSize(m_aCols, static_cast<sal_uInt16>(m_aFrameSize.Width()));
 }
-
-VCL_BUILDER_FACTORY(SwColumnOnlyExample)
 
 void SwColumnOnlyExample::Paint(vcl::RenderContext& rRenderContext, const tools::Rectangle& /*rRect*/)
 {
+    rRenderContext.Push(PushFlags::MAPMODE);
+
+    Fraction aScale(m_aWinSize.Height(), m_aFrameSize.Height());
+    MapMode aMapMode(MapUnit::MapTwip);
+    aMapMode.SetScaleX(aScale);
+    aMapMode.SetScaleY(aScale);
+    rRenderContext.SetMapMode(aMapMode);
+
     const StyleSettings& rStyleSettings = rRenderContext.GetSettings().GetStyleSettings();
     const Color& rFieldColor = rStyleSettings.GetFieldColor();
     const Color& rDlgColor = rStyleSettings.GetDialogColor();
@@ -381,7 +358,7 @@ void SwColumnOnlyExample::Paint(vcl::RenderContext& rRenderContext, const tools:
     tools::Rectangle aRect(aTL, m_aFrameSize);
 
     //draw a shadow rectangle
-    rRenderContext.SetFillColor(Color(COL_GRAY));
+    rRenderContext.SetFillColor(COL_GRAY);
     tools::Rectangle aShadowRect(aRect);
     aShadowRect.Move(aTL.Y(), aTL.Y());
     rRenderContext.DrawRect(aShadowRect);
@@ -406,11 +383,11 @@ void SwColumnOnlyExample::Paint(vcl::RenderContext& rRenderContext, const tools:
             nLength -= nLength * nPercent / 100;
             switch(m_aCols.GetLineAdj())
             {
-                case COLADJ_BOTTOM: aUp.Y() += nLength; break;
-                case COLADJ_TOP: aDown.Y() -= nLength; break;
+                case COLADJ_BOTTOM: aUp.AdjustY(nLength ); break;
+                case COLADJ_TOP: aDown.AdjustY( -nLength ); break;
                 case COLADJ_CENTER:
-                        aUp.Y() += nLength / 2;
-                        aDown.Y() -= nLength / 2;
+                        aUp.AdjustY(nLength / 2 );
+                        aDown.AdjustY( -(nLength / 2) );
                 break;
                 default:
                     break; //prevent warning
@@ -429,9 +406,9 @@ void SwColumnOnlyExample::Paint(vcl::RenderContext& rRenderContext, const tools:
         for (sal_uInt16 i = 0; i < nColCount; i++)
         {
             const SwColumn* pCol = &rCols[i];
-            aFrameRect.Left() = nSum + pCol->GetLeft(); //nSum + pCol->GetLeft() + aTL.X();
+            aFrameRect.SetLeft( nSum + pCol->GetLeft() ); //nSum + pCol->GetLeft() + aTL.X();
             nSum += pCol->GetWishWidth();
-            aFrameRect.Right() = nSum - pCol->GetRight();
+            aFrameRect.SetRight( nSum - pCol->GetRight() );
             rRenderContext.DrawRect(aFrameRect);
         }
         if (bLines)
@@ -440,12 +417,13 @@ void SwColumnOnlyExample::Paint(vcl::RenderContext& rRenderContext, const tools:
             for (sal_uInt16 i = 0; i < nColCount - 1; i++)
             {
                 nSum += rCols[i].GetWishWidth();
-                aUp.X() = nSum;
-                aDown.X() = nSum;
+                aUp.setX( nSum );
+                aDown.setX( nSum );
                 rRenderContext.DrawLine(aUp, aDown);
             }
         }
     }
+    rRenderContext.Pop();
 }
 
 void  SwColumnOnlyExample::SetColumns(const SwFormatCol& rCol)
@@ -462,50 +440,59 @@ void  SwColumnOnlyExample::SetColumns(const SwFormatCol& rCol)
         long nWish = pCol->GetWishWidth();
         nWish *= nFrameWidth;
         nWish /= nWishSum;
-        pCol->SetWishWidth((sal_uInt16)nWish);
+        pCol->SetWishWidth(static_cast<sal_uInt16>(nWish));
         long nLeft = pCol->GetLeft();
         nLeft *= nFrameWidth;
         nLeft /= nWishSum;
-        pCol->SetLeft((sal_uInt16)nLeft);
+        pCol->SetLeft(static_cast<sal_uInt16>(nLeft));
         long nRight = pCol->GetRight();
         nRight *= nFrameWidth;
         nRight /= nWishSum;
-        pCol->SetRight((sal_uInt16)nRight);
+        pCol->SetRight(static_cast<sal_uInt16>(nRight));
     }
     // #97495# make sure that the automatic column width's are always equal
-    if(nColCount && m_aCols.IsOrtho())
+    if(!(nColCount && m_aCols.IsOrtho()))
+        return;
+
+    sal_Int32 nColumnWidthSum = 0;
+    sal_uInt16 i;
+    for(i = 0; i < nColCount; ++i)
     {
-        sal_Int32 nColumnWidthSum = 0;
-        sal_uInt16 i;
-        for(i = 0; i < nColCount; ++i)
-        {
-            SwColumn* pCol = &rCols[i];
-            nColumnWidthSum += pCol->GetWishWidth();
-            nColumnWidthSum -= (pCol->GetRight() + pCol->GetLeft());
-        }
-        nColumnWidthSum /= nColCount;
-        for(i = 0; i < nColCount; ++i)
-        {
-            SwColumn* pCol = &rCols[i];
-            pCol->SetWishWidth( static_cast< sal_uInt16 >(nColumnWidthSum + pCol->GetRight() + pCol->GetLeft()));
-        }
+        SwColumn* pCol = &rCols[i];
+        nColumnWidthSum += pCol->GetWishWidth();
+        nColumnWidthSum -= (pCol->GetRight() + pCol->GetLeft());
+    }
+    nColumnWidthSum /= nColCount;
+    for(i = 0; i < nColCount; ++i)
+    {
+        SwColumn* pCol = &rCols[i];
+        pCol->SetWishWidth( static_cast< sal_uInt16 >(nColumnWidthSum + pCol->GetRight() + pCol->GetLeft()));
     }
 }
 
-Size SwColumnOnlyExample::GetOptimalSize() const
+void SwColumnOnlyExample::SetDrawingArea(weld::DrawingArea* pDrawingArea)
 {
-    return LogicToPixel(Size(75, 46), MapMode(MapUnit::MapAppFont));
+    weld::CustomWidgetController::SetDrawingArea(pDrawingArea);
+    OutputDevice& rRefDevice = pDrawingArea->get_ref_device();
+    Size aPrefSize(rRefDevice.LogicToPixel(Size(75, 46), MapMode(MapUnit::MapAppFont)));
+    pDrawingArea->set_size_request(aPrefSize.Width(), aPrefSize.Height());
 }
 
-SwPageGridExample::~SwPageGridExample()
+void SwColumnOnlyExample::Resize()
 {
-    disposeOnce();
+    OutputDevice& rRefDevice = GetDrawingArea()->get_ref_device();
+    rRefDevice.Push(PushFlags::MAPMODE);
+    rRefDevice.SetMapMode(MapMode(MapUnit::MapTwip));
+    m_aWinSize = GetOutputSizePixel();
+    m_aWinSize.AdjustHeight( -4 );
+    m_aWinSize.AdjustWidth( -4 );
+    m_aWinSize = rRefDevice.PixelToLogic(m_aWinSize);
+    rRefDevice.Pop();
+    Invalidate();
 }
 
-void SwPageGridExample::dispose()
+SwPageGridExample::SwPageGridExample()
 {
-    delete pGridItem;
-    SwPageExample::dispose();
 }
 
 void SwPageGridExample::DrawPage(vcl::RenderContext& rRenderContext, const Point& rOrg,
@@ -513,109 +500,108 @@ void SwPageGridExample::DrawPage(vcl::RenderContext& rRenderContext, const Point
 {
     SwPageExample::DrawPage(rRenderContext, rOrg, bSecond, bEnabled);
 
-    if (pGridItem && pGridItem->GetGridType())
+    if (!pGridItem || !pGridItem->GetGridType())
+        return;
+
+    //paint the grid now
+    Color aLineColor = pGridItem->GetColor();
+    if (aLineColor == COL_AUTO)
     {
-        //paint the grid now
-        Color aLineColor = pGridItem->GetColor();
-        if (aLineColor.GetColor() == COL_AUTO)
-        {
-            aLineColor = rRenderContext.GetFillColor();
-            aLineColor.Invert();
-        }
-        rRenderContext.SetLineColor(aLineColor);
-        long nL = GetLeft();
-        long nR = GetRight();
-
-        if (GetUsage() == SvxPageUsage::Mirror && !bSecond)
-        {
-            // rotate for mirrored
-            nL = GetRight();
-            nR = GetLeft();
-        }
-
-        tools::Rectangle aRect;
-        aRect.Right() = rOrg.X() + GetSize().Width() - nR;
-        aRect.Left()  = rOrg.X() + nL;
-        aRect.Top()   = rOrg.Y() + GetTop() + GetHdHeight() + GetHdDist();
-        aRect.Bottom()= rOrg.Y() + GetSize().Height() - GetBottom() - GetFtHeight() - GetFtDist();
-
-        //increase the values to get a 'viewable' preview
-        sal_Int32 nBaseHeight = pGridItem->GetBaseHeight() * 3;
-        sal_Int32 nRubyHeight = pGridItem->GetRubyHeight() * 3;
-
-        //detect height of rectangles
-        tools::Rectangle aRubyRect(aRect.TopLeft(),
-                    m_bVertical ?
-                    Size(nRubyHeight, aRect.GetHeight()) :
-                    Size(aRect.GetWidth(), nRubyHeight));
-        tools::Rectangle aCharRect(aRect.TopLeft(),
-                    m_bVertical ?
-                    Size(nBaseHeight, aRect.GetHeight()) :
-                    Size(aRect.GetWidth(), nBaseHeight));
-
-        sal_Int32 nLineHeight = nBaseHeight + nRubyHeight;
-
-        //detect count of rectangles
-        sal_Int32 nLines = (m_bVertical ? aRect.GetWidth(): aRect.GetHeight()) / nLineHeight;
-        if (nLines > pGridItem->GetLines())
-            nLines = pGridItem->GetLines();
-
-        // determine start position
-        if (m_bVertical)
-        {
-            sal_Int16 nXStart = static_cast<sal_Int16>(aRect.GetWidth() / 2 - nLineHeight * nLines /2);
-            aRubyRect.Move(nXStart, 0);
-            aCharRect.Move(nXStart, 0);
-        }
-        else
-        {
-            sal_Int16 nYStart = static_cast<sal_Int16>(aRect.GetHeight() / 2 - nLineHeight * nLines /2);
-            aRubyRect.Move(0, nYStart);
-            aCharRect.Move(0, nYStart);
-        }
-
-        if (pGridItem->IsRubyTextBelow())
-            m_bVertical ? aRubyRect.Move(nBaseHeight, 0) : aRubyRect.Move(0, nBaseHeight);
-        else
-            m_bVertical ? aCharRect.Move(nRubyHeight, 0) : aCharRect.Move(0, nRubyHeight);
-
-        //vertical lines
-        bool bBothLines = pGridItem->GetGridType() == GRID_LINES_CHARS;
-        rRenderContext.SetFillColor(Color(COL_TRANSPARENT));
-        sal_Int32 nXMove = m_bVertical ? nLineHeight : 0;
-        sal_Int32 nYMove = m_bVertical ? 0 : nLineHeight;
-        for (sal_Int32 nLine = 0; nLine < nLines; nLine++)
-        {
-            rRenderContext.DrawRect(aRubyRect);
-            rRenderContext.DrawRect(aCharRect);
-            if (bBothLines)
-            {
-                Point aStart = aCharRect.TopLeft();
-                Point aEnd = m_bVertical ? aCharRect.TopRight() : aCharRect.BottomLeft();
-                while (m_bVertical ? aStart.Y() < aRect.Bottom(): aStart.X() < aRect.Right())
-                {
-                    rRenderContext.DrawLine(aStart, aEnd);
-                    if(m_bVertical)
-                        aStart.Y() = aEnd.Y() += nBaseHeight;
-                    else
-                        aStart.X() = aEnd.X() += nBaseHeight;
-                }
-            }
-            aRubyRect.Move(nXMove, nYMove);
-            aCharRect.Move(nXMove, nYMove);
-        }
+        aLineColor = rRenderContext.GetFillColor();
+        aLineColor.Invert();
     }
+    rRenderContext.SetLineColor(aLineColor);
+    long nL = GetLeft();
+    long nR = GetRight();
+
+    if (GetUsage() == SvxPageUsage::Mirror && !bSecond)
+    {
+        // rotate for mirrored
+        nL = GetRight();
+        nR = GetLeft();
+    }
+
+    tools::Rectangle aRect;
+    aRect.SetRight( rOrg.X() + GetSize().Width() - nR );
+    aRect.SetLeft( rOrg.X() + nL );
+    aRect.SetTop( rOrg.Y() + GetTop() + GetHdHeight() + GetHdDist() );
+    aRect.SetBottom( rOrg.Y() + GetSize().Height() - GetBottom() - GetFtHeight() - GetFtDist() );
+
+    //increase the values to get a 'viewable' preview
+    sal_Int32 nBaseHeight = pGridItem->GetBaseHeight() * 3;
+    sal_Int32 nRubyHeight = pGridItem->GetRubyHeight() * 3;
+
+    //detect height of rectangles
+    tools::Rectangle aRubyRect(aRect.TopLeft(),
+                m_bVertical ?
+                Size(nRubyHeight, aRect.GetHeight()) :
+                Size(aRect.GetWidth(), nRubyHeight));
+    tools::Rectangle aCharRect(aRect.TopLeft(),
+                m_bVertical ?
+                Size(nBaseHeight, aRect.GetHeight()) :
+                Size(aRect.GetWidth(), nBaseHeight));
+
+    sal_Int32 nLineHeight = nBaseHeight + nRubyHeight;
+
+    //detect count of rectangles
+    sal_Int32 nLines = (m_bVertical ? aRect.GetWidth(): aRect.GetHeight()) / nLineHeight;
+    if (nLines > pGridItem->GetLines())
+        nLines = pGridItem->GetLines();
+
+    // determine start position
+    if (m_bVertical)
+    {
+        sal_Int16 nXStart = static_cast<sal_Int16>(aRect.GetWidth() / 2 - nLineHeight * nLines /2);
+        aRubyRect.Move(nXStart, 0);
+        aCharRect.Move(nXStart, 0);
+    }
+    else
+    {
+        sal_Int16 nYStart = static_cast<sal_Int16>(aRect.GetHeight() / 2 - nLineHeight * nLines /2);
+        aRubyRect.Move(0, nYStart);
+        aCharRect.Move(0, nYStart);
+    }
+
+    if (pGridItem->IsRubyTextBelow())
+        m_bVertical ? aRubyRect.Move(nBaseHeight, 0) : aRubyRect.Move(0, nBaseHeight);
+    else
+        m_bVertical ? aCharRect.Move(nRubyHeight, 0) : aCharRect.Move(0, nRubyHeight);
+
+    //vertical lines
+    bool bBothLines = pGridItem->GetGridType() == GRID_LINES_CHARS;
+    rRenderContext.SetFillColor(COL_TRANSPARENT);
+    sal_Int32 nXMove = m_bVertical ? nLineHeight : 0;
+    sal_Int32 nYMove = m_bVertical ? 0 : nLineHeight;
+    for (sal_Int32 nLine = 0; nLine < nLines; nLine++)
+    {
+        rRenderContext.DrawRect(aRubyRect);
+        rRenderContext.DrawRect(aCharRect);
+        if (bBothLines)
+        {
+            Point aStart = aCharRect.TopLeft();
+            Point aEnd = m_bVertical ? aCharRect.TopRight() : aCharRect.BottomLeft();
+            while (m_bVertical ? aStart.Y() < aRect.Bottom(): aStart.X() < aRect.Right())
+            {
+                rRenderContext.DrawLine(aStart, aEnd);
+                if (m_bVertical)
+                    aStart.setY( aEnd.AdjustY(nBaseHeight ) );
+                else
+                    aStart.setX( aEnd.AdjustX(nBaseHeight ) );
+            }
+        }
+        aRubyRect.Move(nXMove, nYMove);
+        aCharRect.Move(nXMove, nYMove);
+    }
+
 }
 
 void SwPageGridExample::UpdateExample( const SfxItemSet& rSet )
 {
-    DELETEZ(pGridItem);
+    pGridItem.reset();
     //get the grid information
-    if(SfxItemState::DEFAULT <= rSet.GetItemState(RES_TEXTGRID))
-        pGridItem = static_cast<SwTextGridItem*>(static_cast<const SwTextGridItem&>(rSet.Get(RES_TEXTGRID)).Clone());
+    if (SfxItemState::DEFAULT <= rSet.GetItemState(RES_TEXTGRID))
+        pGridItem.reset(rSet.Get(RES_TEXTGRID).Clone());
     SwPageExample::UpdateExample(rSet);
 }
-
-VCL_BUILDER_FACTORY(SwPageGridExample)
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

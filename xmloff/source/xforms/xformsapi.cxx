@@ -20,6 +20,7 @@
 
 #include "xformsapi.hxx"
 
+#include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/uno/Reference.hxx>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/container/XNameAccess.hpp>
@@ -32,10 +33,11 @@
 
 #include <comphelper/processfactory.hxx>
 #include <osl/diagnose.h>
+#include <sal/log.hxx>
 
 #include <xmloff/xmltoken.hxx>
-#include <xmloff/nmspmap.hxx>
-#include <xmloff/xmlnmspe.hxx>
+#include <xmloff/namespacemap.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmltkmap.hxx>
 
 using com::sun::star::uno::Reference;
@@ -112,13 +114,11 @@ static Reference<XPropertySet> lcl_findXFormsBindingOrSubmission(
             if( xForms.is() )
             {
                 // iterate over all models
-                Sequence<OUString> aNames = xForms->getElementNames();
-                const OUString* pNames = aNames.getConstArray();
-                sal_Int32 nNames = aNames.getLength();
-                for( sal_Int32 n = 0; (n < nNames) && !xRet.is(); n++ )
+                const Sequence<OUString> aNames = xForms->getElementNames();
+                for( const auto& rName : aNames )
                 {
                     Reference<xforms::XModel2> xModel(
-                        xForms->getByName( pNames[n] ), UNO_QUERY );
+                        xForms->getByName( rName ), UNO_QUERY );
                     if( xModel.is() )
                     {
                         // ask model for bindings
@@ -133,6 +133,9 @@ static Reference<XPropertySet> lcl_findXFormsBindingOrSubmission(
                             xRet.set( xBindings->getByName( rBindingID ),
                                       UNO_QUERY );
                     }
+
+                    if (xRet.is())
+                        break;
                 }
             }
         }
@@ -161,7 +164,7 @@ Reference<XPropertySet> xforms_findXFormsSubmission(
     return lcl_findXFormsBindingOrSubmission( xDocument, rBindingID, false );
 }
 
-void xforms_setValue( Reference<XPropertySet>& xPropertySet,
+void xforms_setValue( Reference<XPropertySet> const & xPropertySet,
                    const OUString& rName,
                    const Any& rAny )
 {
@@ -169,7 +172,7 @@ void xforms_setValue( Reference<XPropertySet>& xPropertySet,
 }
 
 #define TOKEN_MAP_ENTRY(NAMESPACE,TOKEN) { XML_NAMESPACE_##NAMESPACE, xmloff::token::XML_##TOKEN, xmloff::token::XML_##TOKEN }
-static const SvXMLTokenMapEntry aTypes[] =
+const SvXMLTokenMapEntry aTypes[] =
 {
     TOKEN_MAP_ENTRY( XSD, STRING  ),
     TOKEN_MAP_ENTRY( XSD, DECIMAL ),
@@ -193,8 +196,8 @@ sal_uInt16 xforms_getTypeClass(
 {
     // translate name into token for local name
     OUString sLocalName;
-    sal_uInt16 nPrefix = rNamespaceMap.GetKeyByAttrName(rXMLName, &sLocalName);
-    SvXMLTokenMap aMap( aTypes );
+    sal_uInt16 nPrefix = rNamespaceMap.GetKeyByAttrValueQName(rXMLName, &sLocalName);
+    static const SvXMLTokenMap aMap( aTypes );
     sal_uInt16 nToken = aMap.Get( nPrefix, sLocalName );
 
     sal_uInt16 nTypeClass = css::xsd::DataTypeClass::STRING;
@@ -263,8 +266,8 @@ OUString xforms_getTypeName(
     const OUString& rXMLName )
 {
     OUString sLocalName;
-    sal_uInt16 nPrefix = rNamespaceMap.GetKeyByAttrName(rXMLName, &sLocalName);
-    SvXMLTokenMap aMap( aTypes );
+    sal_uInt16 nPrefix = rNamespaceMap.GetKeyByAttrValueQName(rXMLName, &sLocalName);
+    static const SvXMLTokenMap aMap( aTypes );
     sal_uInt16 nToken = aMap.Get( nPrefix, sLocalName );
     return ( nToken == XML_TOK_UNKNOWN )
         ? rXMLName

@@ -20,17 +20,16 @@
 
 #include <sdr/contact/viewcontactofsdrcircobj.hxx>
 #include <svx/svdocirc.hxx>
-#include <svx/sdr/primitive2d/sdrattributecreator.hxx>
+#include <svx/sdangitm.hxx>
+#include <sdr/primitive2d/sdrattributecreator.hxx>
 #include <sdr/primitive2d/sdrellipseprimitive2d.hxx>
 #include <svl/itemset.hxx>
-#include <svx/sxciaitm.hxx>
 #include <basegfx/matrix/b2dhommatrixtools.hxx>
+#include <vcl/canvastools.hxx>
 
 
-namespace sdr
+namespace sdr::contact
 {
-    namespace contact
-    {
         ViewContactOfSdrCircObj::ViewContactOfSdrCircObj(SdrCircObj& rCircObj)
         :   ViewContactOfSdrRectObj(rCircObj)
         {
@@ -43,26 +42,19 @@ namespace sdr
         drawinglayer::primitive2d::Primitive2DContainer ViewContactOfSdrCircObj::createViewIndependentPrimitive2DSequence() const
         {
             const SfxItemSet& rItemSet = GetCircObj().GetMergedItemSet();
-            const drawinglayer::attribute::SdrLineFillShadowTextAttribute aAttribute(
-                drawinglayer::primitive2d::createNewSdrLineFillShadowTextAttribute(
+            const drawinglayer::attribute::SdrLineFillEffectsTextAttribute aAttribute(
+                drawinglayer::primitive2d::createNewSdrLineFillEffectsTextAttribute(
                     rItemSet,
                     GetCircObj().getText(0),
                     false));
 
             // take unrotated snap rect (direct model data) for position and size
-            tools::Rectangle aRectangle = GetCircObj().GetGeoRect();
-            // Hack for calc, transform position of object according
-            // to current zoom so as objects relative position to grid
-            // appears stable
-            aRectangle += GetRectObj().GetGridOffset();
-            const basegfx::B2DRange aObjectRange(
-                aRectangle.Left(), aRectangle.Top(),
-                aRectangle.Right(), aRectangle.Bottom() );
+            const basegfx::B2DRange aObjectRange = vcl::unotools::b2DRectangleFromRectangle(GetCircObj().GetGeoRect());
             const GeoStat& rGeoStat(GetCircObj().GetGeoStat());
 
             // fill object matrix
             const basegfx::B2DHomMatrix aObjectMatrix(
-                basegfx::tools::createScaleShearXRotateTranslateB2DHomMatrix(
+                basegfx::utils::createScaleShearXRotateTranslateB2DHomMatrix(
                     aObjectRange.getWidth(), aObjectRange.getHeight(),
                     rGeoStat.nShearAngle ? tan((36000 - rGeoStat.nShearAngle) * F_PI18000) : 0.0,
                     rGeoStat.nRotationAngle ? (36000 - rGeoStat.nRotationAngle) * F_PI18000 : 0.0,
@@ -85,8 +77,8 @@ namespace sdr
             }
             else
             {
-                const sal_Int32 nNewStart(static_cast<const SdrAngleItem&>(rItemSet.Get(SDRATTR_CIRCSTARTANGLE)).GetValue());
-                const sal_Int32 nNewEnd(static_cast<const SdrAngleItem&>(rItemSet.Get(SDRATTR_CIRCENDANGLE)).GetValue());
+                const sal_Int32 nNewStart(rItemSet.Get(SDRATTR_CIRCSTARTANGLE).GetValue());
+                const sal_Int32 nNewEnd(rItemSet.Get(SDRATTR_CIRCENDANGLE).GetValue());
                 const double fStart(((36000 - nNewEnd) % 36000) * F_PI18000);
                 const double fEnd(((36000 - nNewStart) % 36000) * F_PI18000);
                 const bool bCloseSegment(OBJ_CARC != nIdentifier);
@@ -104,7 +96,7 @@ namespace sdr
                 return drawinglayer::primitive2d::Primitive2DContainer { xReference };
             }
         }
-    } // end of namespace contact
-} // end of namespace sdr
+
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

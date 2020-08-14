@@ -19,35 +19,35 @@
 
 #include <com/sun/star/beans/PropertyValue.hpp>
 
+#include <com/sun/star/document/XEmbeddedScripts.hpp>
+#include <com/sun/star/document/XScriptInvocationContext.hpp>
 #include <com/sun/star/util/URL.hpp>
-
 #include <com/sun/star/frame/Desktop.hpp>
 #include <com/sun/star/util/URLTransformer.hpp>
 #include <com/sun/star/util/XURLTransformer.hpp>
+#include <com/sun/star/uno/XInterface.hpp>
 #include <tools/urlobj.hxx>
 #include <tools/diagnose_ex.h>
 #include <svl/macitem.hxx>
 #include <sfx2/objsh.hxx>
-#include <sfx2/sfxbasemodel.hxx>
 #include <sfx2/evntconf.hxx>
 #include <unotools/eventcfg.hxx>
+#include <sal/log.hxx>
 
-#include <unotools/securityoptions.hxx>
 #include <comphelper/processfactory.hxx>
 #include <comphelper/namedvaluecollection.hxx>
-#include "eventsupplier.hxx"
+#include <comphelper/sequence.hxx>
+#include <eventsupplier.hxx>
 
 #include <sfx2/app.hxx>
-#include <sfx2/sfxresid.hxx>
 
-#include <sfx2/sfxsids.hrc>
-#include "sfxlocal.hrc"
-#include <sfx2/docfile.hxx>
 #include <sfx2/viewfrm.hxx>
 #include <sfx2/frame.hxx>
 #include <macroloader.hxx>
 
 using namespace css;
+using namespace ::com::sun::star;
+
 
 
     //  --- XNameReplace ---
@@ -57,49 +57,46 @@ void SAL_CALL SfxEvents_Impl::replaceByName( const OUString & aName, const uno::
     ::osl::MutexGuard aGuard( maMutex );
 
     // find the event in the list and replace the data
-    long nCount = maEventNames.getLength();
-    for ( long i=0; i<nCount; i++ )
+    auto nIndex = comphelper::findValue(maEventNames, aName);
+    if (nIndex != -1)
     {
-        if ( maEventNames[i] == aName )
+        // check for correct type of the element
+        if ( !::comphelper::NamedValueCollection::canExtractFrom( rElement ) )
+            throw lang::IllegalArgumentException();
+        ::comphelper::NamedValueCollection const aEventDescriptor( rElement );
+
+        // create Configuration at first, creation might call this method also and that would overwrite everything
+        // we might have stored before!
+        if ( mpObjShell && !mpObjShell->IsLoading() )
+            mpObjShell->SetModified();
+
+        ::comphelper::NamedValueCollection aNormalizedDescriptor;
+        NormalizeMacro( aEventDescriptor, aNormalizedDescriptor, mpObjShell );
+
+        OUString sType;
+        if  (   ( aNormalizedDescriptor.size() == 1 )
+            &&  !aNormalizedDescriptor.has( PROP_EVENT_TYPE ) //TODO
+            &&  ( aNormalizedDescriptor.get( PROP_EVENT_TYPE ) >>= sType )
+            &&  ( sType.isEmpty() )
+            )
         {
-            // check for correct type of the element
-            if ( !::comphelper::NamedValueCollection::canExtractFrom( rElement ) )
-                throw lang::IllegalArgumentException();
-            ::comphelper::NamedValueCollection const aEventDescriptor( rElement );
-
-            // create Configuration at first, creation might call this method also and that would overwrite everything
-            // we might have stored before!
-            if ( mpObjShell && !mpObjShell->IsLoading() )
-                mpObjShell->SetModified();
-
-            ::comphelper::NamedValueCollection aNormalizedDescriptor;
-            NormalizeMacro( aEventDescriptor, aNormalizedDescriptor, mpObjShell );
-
-            OUString sType;
-            if  (   ( aNormalizedDescriptor.size() == 1 )
-                &&  !aNormalizedDescriptor.has( PROP_EVENT_TYPE ) //TODO
-                &&  ( aNormalizedDescriptor.get( PROP_EVENT_TYPE ) >>= sType )
-                &&  ( sType.isEmpty() )
-                )
-            {
-                // An empty event type means no binding. Therefore reset data
-                // to reflect that state.
-                // (that's for compatibility only. Nowadays, the Tools/Customize dialog should
-                // set an empty sequence to indicate the request for resetting the assignment.)
-                OSL_ENSURE( false, "legacy event assignment format detected" );
-                aNormalizedDescriptor.clear();
-            }
-
-            if ( !aNormalizedDescriptor.empty() )
-            {
-                maEventData[i] <<= aNormalizedDescriptor.getPropertyValues();
-            }
-            else
-            {
-                maEventData[i].clear();
-            }
-            return;
+            // An empty event type means no binding. Therefore reset data
+            // to reflect that state.
+            // (that's for compatibility only. Nowadays, the Tools/Customize dialog should
+            // set an empty sequence to indicate the request for resetting the assignment.)
+            OSL_ENSURE( false, "legacy event assignment format detected" );
+            aNormalizedDescriptor.clear();
         }
+
+        if ( !aNormalizedDescriptor.empty() )
+        {
+            maEventData[nIndex] <<= aNormalizedDescriptor.getPropertyValues();
+        }
+        else
+        {
+            maEventData[nIndex].clear();
+        }
+        return;
     }
 
     throw container::NoSuchElementException();
@@ -114,13 +111,9 @@ uno::Any SAL_CALL SfxEvents_Impl::getByName( const OUString& aName )
 
     // find the event in the list and return the data
 
-    long nCount = maEventNames.getLength();
-
-    for ( long i=0; i<nCount; i++ )
-    {
-        if ( maEventNames[i] == aName )
-            return maEventData[i];
-    }
+    auto nIndex = comphelper::findValue(maEventNames, aName);
+    if (nIndex != -1)
+        return maEventData[nIndex];
 
     throw container::NoSuchElementException();
 }
@@ -138,15 +131,7 @@ sal_Bool SAL_CALL SfxEvents_Impl::hasByName( const OUString& aName )
 
     // find the event in the list and return the data
 
-    long nCount = maEventNames.getLength();
-
-    for ( long i=0; i<nCount; i++ )
-    {
-        if ( maEventNames[i] == aName )
-            return true;
-    }
-
-    return false;
+    return comphelper::findValue(maEventNames, aName) != -1;
 }
 
 
@@ -163,101 +148,102 @@ sal_Bool SAL_CALL SfxEvents_Impl::hasElements()
 {
     ::osl::MutexGuard aGuard( maMutex );
 
-    if ( maEventNames.getLength() )
-        return true;
-    else
-        return false;
+    return maEventNames.hasElements();
 }
 
-void SfxEvents_Impl::Execute( uno::Any& aEventData, const document::DocumentEvent& aTrigger, SfxObjectShell* pDoc )
+void SfxEvents_Impl::Execute( uno::Any const & aEventData, const document::DocumentEvent& aTrigger, SfxObjectShell* pDoc )
 {
     uno::Sequence < beans::PropertyValue > aProperties;
-    if ( aEventData >>= aProperties )
+    if ( !(aEventData >>= aProperties) )
+        return;
+
+    OUString aType;
+    OUString aScript;
+    OUString aLibrary;
+    OUString aMacroName;
+
+    if ( !aProperties.hasElements() )
+        return;
+
+    for ( const auto& rProp : std::as_const(aProperties) )
     {
-        OUString aType;
-        OUString aScript;
-        OUString aLibrary;
-        OUString aMacroName;
-
-        sal_Int32 nCount = aProperties.getLength();
-
-        if ( !nCount )
-            return;
-
-        sal_Int32 nIndex = 0;
-        while ( nIndex < nCount )
-        {
-            if ( aProperties[ nIndex ].Name == PROP_EVENT_TYPE )
-                aProperties[ nIndex ].Value >>= aType;
-            else if ( aProperties[ nIndex ].Name == PROP_SCRIPT )
-                aProperties[ nIndex ].Value >>= aScript;
-            else if ( aProperties[ nIndex ].Name == PROP_LIBRARY )
-                aProperties[ nIndex ].Value >>= aLibrary;
-            else if ( aProperties[ nIndex ].Name == PROP_MACRO_NAME )
-                aProperties[ nIndex ].Value >>= aMacroName;
-            else {
-                OSL_FAIL("Unknown property value!");
-            }
-            nIndex += 1;
+        if ( rProp.Name == PROP_EVENT_TYPE )
+            rProp.Value >>= aType;
+        else if ( rProp.Name == PROP_SCRIPT )
+            rProp.Value >>= aScript;
+        else if ( rProp.Name == PROP_LIBRARY )
+            rProp.Value >>= aLibrary;
+        else if ( rProp.Name == PROP_MACRO_NAME )
+            rProp.Value >>= aMacroName;
+        else {
+            OSL_FAIL("Unknown property value!");
         }
+    }
 
-        if (aType == STAR_BASIC && !aScript.isEmpty())
+    if (aType.isEmpty())
+    {
+        // Empty type means no active binding for the event. Just ignore do nothing.
+        return;
+    }
+
+    if (aScript.isEmpty())
+        return;
+
+    if (!pDoc)
+        pDoc = SfxObjectShell::Current();
+
+    if (pDoc && !SfxObjectShell::isScriptAccessAllowed(pDoc->GetModel()))
+        return;
+
+    if (aType == STAR_BASIC)
+    {
+        uno::Any aAny;
+        SfxMacroLoader::loadMacro( aScript, aAny, pDoc );
+    }
+    else if (aType == "Service" || aType == "Script")
+    {
+        util::URL aURL;
+        uno::Reference < util::XURLTransformer > xTrans( util::URLTransformer::create( ::comphelper::getProcessComponentContext() ) );
+
+        aURL.Complete = aScript;
+        xTrans->parseStrict( aURL );
+
+        bool bAllowed = !SfxObjectShell::UnTrustedScript(aURL.Complete);
+
+        if (bAllowed)
         {
-            uno::Any aAny;
-            SfxMacroLoader::loadMacro( aScript, aAny, pDoc );
-        }
-        else if (aType == "Service" ||
-                  aType == "Script")
-        {
-            if ( !aScript.isEmpty() )
+            SfxViewFrame* pView = SfxViewFrame::GetFirst(pDoc);
+
+            uno::Reference
+                < frame::XDispatchProvider > xProv;
+
+            if ( pView != nullptr )
             {
-                SfxViewFrame* pView = pDoc ?
-                    SfxViewFrame::GetFirst( pDoc ) :
-                    SfxViewFrame::Current();
+                xProv = uno::Reference
+                    < frame::XDispatchProvider > (
+                        pView->GetFrame().GetFrameInterface(), uno::UNO_QUERY );
+            }
+            else
+            {
+                xProv = frame::Desktop::create( ::comphelper::getProcessComponentContext() );
+            }
 
-                uno::Reference < util::XURLTransformer > xTrans( util::URLTransformer::create( ::comphelper::getProcessComponentContext() ) );
+            uno::Reference < frame::XDispatch > xDisp;
+            if ( xProv.is() )
+                xDisp = xProv->queryDispatch( aURL, OUString(), 0 );
 
-                util::URL aURL;
-                aURL.Complete = aScript;
-                xTrans->parseStrict( aURL );
-
-                uno::Reference
-                    < frame::XDispatchProvider > xProv;
-
-                if ( pView != nullptr )
-                {
-                    xProv = uno::Reference
-                        < frame::XDispatchProvider > (
-                            pView->GetFrame().GetFrameInterface(), uno::UNO_QUERY );
-                }
-                else
-                {
-                    xProv.set( frame::Desktop::create( ::comphelper::getProcessComponentContext() ),
-                               uno::UNO_QUERY );
-                }
-
-                uno::Reference < frame::XDispatch > xDisp;
-                if ( xProv.is() )
-                    xDisp = xProv->queryDispatch( aURL, OUString(), 0 );
-
-                if ( xDisp.is() )
-                {
-
-                    beans::PropertyValue aEventParam;
-                    aEventParam.Value <<= aTrigger;
-                    uno::Sequence< beans::PropertyValue > aDispatchArgs( &aEventParam, 1 );
-                    xDisp->dispatch( aURL, aDispatchArgs );
-                }
+            if ( xDisp.is() )
+            {
+                beans::PropertyValue aEventParam;
+                aEventParam.Value <<= aTrigger;
+                uno::Sequence< beans::PropertyValue > aDispatchArgs( &aEventParam, 1 );
+                xDisp->dispatch( aURL, aDispatchArgs );
             }
         }
-        else if ( aType.isEmpty() )
-        {
-            // Empty type means no active binding for the event. Just ignore do nothing.
-        }
-        else
-        {
-            SAL_WARN( "sfx.notify", "notifyEvent(): Unsupported event type" );
-        }
+    }
+    else
+    {
+        SAL_WARN( "sfx.notify", "notifyEvent(): Unsupported event type" );
     }
 }
 
@@ -268,22 +254,10 @@ void SAL_CALL SfxEvents_Impl::notifyEvent( const document::EventObject& aEvent )
 {
     ::osl::ClearableMutexGuard aGuard( maMutex );
 
-    // get the event name, find the coresponding data, execute the data
+    // get the event name, find the corresponding data, execute the data
 
-    OUString aName   = aEvent.EventName;
-    long        nCount  = maEventNames.getLength();
-    long        nIndex  = 0;
-    bool    bFound  = false;
-
-    while ( !bFound && ( nIndex < nCount ) )
-    {
-        if ( maEventNames[nIndex] == aName )
-            bFound = true;
-        else
-            nIndex += 1;
-    }
-
-    if ( !bFound )
+    auto nIndex = comphelper::findValue(maEventNames, aEvent.EventName);
+    if ( nIndex == -1 )
         return;
 
     uno::Any aEventData = maEventData[ nIndex ];
@@ -330,15 +304,12 @@ SfxEvents_Impl::~SfxEvents_Impl()
 }
 
 
-SvxMacro* SfxEvents_Impl::ConvertToMacro( const uno::Any& rElement, SfxObjectShell* pObjShell, bool bNormalizeMacro )
+std::unique_ptr<SvxMacro> SfxEvents_Impl::ConvertToMacro( const uno::Any& rElement, SfxObjectShell* pObjShell )
 {
-    SvxMacro* pMacro = nullptr;
+    std::unique_ptr<SvxMacro> pMacro;
     uno::Sequence < beans::PropertyValue > aProperties;
     uno::Any aAny;
-    if ( bNormalizeMacro )
-        NormalizeMacro( rElement, aAny, pObjShell );
-    else
-        aAny = rElement;
+    NormalizeMacro( rElement, aAny, pObjShell );
 
     if ( aAny >>= aProperties )
     {
@@ -347,26 +318,22 @@ SvxMacro* SfxEvents_Impl::ConvertToMacro( const uno::Any& rElement, SfxObjectShe
         OUString aLibrary;
         OUString aMacroName;
 
-        long nCount = aProperties.getLength();
-        long nIndex = 0;
-
-        if ( !nCount )
+        if ( !aProperties.hasElements() )
             return pMacro;
 
-        while ( nIndex < nCount )
+        for ( const auto& rProp : std::as_const(aProperties) )
         {
-            if ( aProperties[ nIndex ].Name == PROP_EVENT_TYPE )
-                aProperties[ nIndex ].Value >>= aType;
-            else if ( aProperties[ nIndex ].Name == PROP_SCRIPT )
-                aProperties[ nIndex ].Value >>= aScriptURL;
-            else if ( aProperties[ nIndex ].Name == PROP_LIBRARY )
-                aProperties[ nIndex ].Value >>= aLibrary;
-            else if ( aProperties[ nIndex ].Name == PROP_MACRO_NAME )
-                aProperties[ nIndex ].Value >>= aMacroName;
+            if ( rProp.Name == PROP_EVENT_TYPE )
+                rProp.Value >>= aType;
+            else if ( rProp.Name == PROP_SCRIPT )
+                rProp.Value >>= aScriptURL;
+            else if ( rProp.Name == PROP_LIBRARY )
+                rProp.Value >>= aLibrary;
+            else if ( rProp.Name == PROP_MACRO_NAME )
+                rProp.Value >>= aMacroName;
             else {
                 OSL_FAIL("Unknown property value!");
             }
-            nIndex += 1;
         }
 
         // Get the type
@@ -387,10 +354,10 @@ SvxMacro* SfxEvents_Impl::ConvertToMacro( const uno::Any& rElement, SfxObjectShe
                 aLibrary = SfxGetpApp()->GetName();
             else
                 aLibrary.clear();
-            pMacro = new SvxMacro( aMacroName, aLibrary, eType );
+            pMacro.reset(new SvxMacro( aMacroName, aLibrary, eType ));
         }
         else if ( eType == EXTENDED_STYPE )
-            pMacro = new SvxMacro( aScriptURL, aType );
+            pMacro.reset(new SvxMacro( aScriptURL, aType ));
     }
 
     return pMacro;
@@ -423,54 +390,54 @@ void SfxEvents_Impl::NormalizeMacro( const ::comphelper::NamedValueCollection& i
     if ( !aScript.isEmpty() )
         o_normalizedDescriptor.put( PROP_SCRIPT, aScript );
 
-    if ( aType == STAR_BASIC )
-    {
-        if ( !aScript.isEmpty() )
-        {
-            if ( aMacroName.isEmpty() || aLibrary.isEmpty() )
-            {
-                sal_Int32 nHashPos = aScript.indexOf( '/', 8 );
-                sal_Int32 nArgsPos = aScript.indexOf( '(' );
-                if ( ( nHashPos != -1 ) && ( nArgsPos == -1 || nHashPos < nArgsPos ) )
-                {
-                    OUString aBasMgrName( INetURLObject::decode( aScript.copy( 8, nHashPos-8 ), INetURLObject::DecodeMechanism::WithCharset ) );
-                    if ( aBasMgrName == "." )
-                        aLibrary = pDoc->GetTitle();
-                    else
-                        aLibrary = SfxGetpApp()->GetName();
+    if ( aType != STAR_BASIC )
+        return;
 
-                    // Get the macro name
-                    aMacroName = aScript.copy( nHashPos+1, nArgsPos - nHashPos - 1 );
-                }
+    if ( !aScript.isEmpty() )
+    {
+        if ( aMacroName.isEmpty() || aLibrary.isEmpty() )
+        {
+            sal_Int32 nThirdSlashPos = aScript.indexOf( '/', 8 );
+            sal_Int32 nArgsPos = aScript.indexOf( '(' );
+            if ( ( nThirdSlashPos != -1 ) && ( nArgsPos == -1 || nThirdSlashPos < nArgsPos ) )
+            {
+                OUString aBasMgrName( INetURLObject::decode( aScript.copy( 8, nThirdSlashPos-8 ), INetURLObject::DecodeMechanism::WithCharset ) );
+                if (pDoc && aBasMgrName == ".")
+                    aLibrary = pDoc->GetTitle();
                 else
-                {
-                    SAL_WARN( "sfx.notify", "ConvertToMacro: Unknown macro url format" );
-                }
+                    aLibrary = SfxGetpApp()->GetName();
+
+                // Get the macro name
+                aMacroName = aScript.copy( nThirdSlashPos+1, nArgsPos - nThirdSlashPos - 1 );
+            }
+            else
+            {
+                SAL_WARN( "sfx.notify", "ConvertToMacro: Unknown macro url format" );
             }
         }
-        else if ( !aMacroName.isEmpty() )
-        {
-            aScript = "macro://";
-            if ( aLibrary != SfxGetpApp()->GetName() && aLibrary != "StarDesktop" && aLibrary != "application" )
-                aScript += ".";
-            aScript += "/" + aMacroName + "()";
-        }
-        else
-            // wrong properties
-            return;
-
-        if (aLibrary != "document")
-        {
-            if ( aLibrary.isEmpty() || (pDoc && ( aLibrary == pDoc->GetTitle( SFX_TITLE_APINAME ) || aLibrary == pDoc->GetTitle() )) )
-                aLibrary = "document";
-            else
-                aLibrary = "application";
-        }
-
-        o_normalizedDescriptor.put( PROP_SCRIPT, aScript );
-        o_normalizedDescriptor.put( PROP_LIBRARY, aLibrary );
-        o_normalizedDescriptor.put( PROP_MACRO_NAME, aMacroName );
     }
+    else if ( !aMacroName.isEmpty() )
+    {
+        aScript = "macro://";
+        if ( aLibrary != SfxGetpApp()->GetName() && aLibrary != "StarDesktop" && aLibrary != "application" )
+            aScript += ".";
+        aScript += "/" + aMacroName + "()";
+    }
+    else
+        // wrong properties
+        return;
+
+    if (aLibrary != "document")
+    {
+        if ( aLibrary.isEmpty() || (pDoc && ( aLibrary == pDoc->GetTitle( SFX_TITLE_APINAME ) || aLibrary == pDoc->GetTitle() )) )
+            aLibrary = "document";
+        else
+            aLibrary = "application";
+    }
+
+    o_normalizedDescriptor.put( PROP_SCRIPT, aScript );
+    o_normalizedDescriptor.put( PROP_LIBRARY, aLibrary );
+    o_normalizedDescriptor.put( PROP_MACRO_NAME, aMacroName );
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

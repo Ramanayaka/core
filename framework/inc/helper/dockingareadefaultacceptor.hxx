@@ -20,8 +20,6 @@
 #ifndef INCLUDED_FRAMEWORK_INC_HELPER_DOCKINGAREADEFAULTACCEPTOR_HXX
 #define INCLUDED_FRAMEWORK_INC_HELPER_DOCKINGAREADEFAULTACCEPTOR_HXX
 
-#include <classes/framecontainer.hxx>
-
 #include <com/sun/star/ui/XDockingAreaAcceptor.hpp>
 #include <com/sun/star/frame/XFrame.hpp>
 
@@ -30,7 +28,7 @@
 
 namespace framework{
 
-class DockingAreaDefaultAcceptor    :   public ::cppu::WeakImplHelper< css::ui::XDockingAreaAcceptor >
+class DockingAreaDefaultAcceptor final : public ::cppu::WeakImplHelper< css::ui::XDockingAreaAcceptor >
 {
     public:
 
@@ -39,7 +37,7 @@ class DockingAreaDefaultAcceptor    :   public ::cppu::WeakImplHelper< css::ui::
         /*-****************************************************************************************************
             @short      constructor to initialize this instance
             @descr      A docking area acceptor
-                        But we need a instance to create more than one enumerations to the same tasklist!
+                        But we need an instance to create more than one enumerations to the same tasklist!
 
             @seealso    class Desktop
             @seealso    class OTasksEnumeration

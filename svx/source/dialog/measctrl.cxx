@@ -20,77 +20,74 @@
 #include <sfx2/dialoghelper.hxx>
 #include <svx/svdomeas.hxx>
 #include <svx/svdmodel.hxx>
-#include "svx/measctrl.hxx"
-#include <svx/dialmgr.hxx>
-#include "svx/dlgutil.hxx"
-#include <vcl/builderfactory.hxx>
+#include <svx/measctrl.hxx>
+#include <svx/dlgutil.hxx>
+#include <vcl/event.hxx>
 #include <vcl/settings.hxx>
+#include <vcl/svapp.hxx>
 #include <memory>
 
-SvxXMeasurePreview::SvxXMeasurePreview(vcl::Window* pParent, WinBits nStyle)
-    : Control(pParent, nStyle)
+SvxXMeasurePreview::SvxXMeasurePreview()
+    : m_aMapMode(MapUnit::Map100thMM)
 {
-    SetMapMode(MapUnit::Map100thMM);
-
     // Scale: 1:2
-    MapMode aMapMode = GetMapMode();
-    aMapMode.SetScaleX(Fraction(1, 2));
-    aMapMode.SetScaleY(Fraction(1, 2));
-    SetMapMode(aMapMode);
+    m_aMapMode.SetScaleX(Fraction(1, 2));
+    m_aMapMode.SetScaleY(Fraction(1, 2));
+}
 
-    Size aSize = GetOutputSize();
-    Point aPt1 = Point(aSize.Width() / 5, (long) (aSize.Height() / 2));
-    Point aPt2 = Point(aSize.Width() * 4 / 5, (long) (aSize.Height() / 2));
+void SvxXMeasurePreview::SetDrawingArea(weld::DrawingArea* pDrawingArea)
+{
+    CustomWidgetController::SetDrawingArea(pDrawingArea);
+    Size aSize(getPreviewStripSize(pDrawingArea->get_ref_device()));
+    pDrawingArea->set_size_request(aSize.Width(), aSize.Height());
 
-    pMeasureObj = new SdrMeasureObj(aPt1, aPt2);
-    pModel = new SdrModel();
-    pMeasureObj->SetModel(pModel);
+    pModel.reset(new SdrModel(nullptr, nullptr, true));
+    pMeasureObj.reset(new SdrMeasureObj(*pModel, Point(), Point()));
 
-    bool bHighContrast = GetSettings().GetStyleSettings().GetHighContrastMode();
-    SetDrawMode(bHighContrast ? OUTPUT_DRAWMODE_CONTRAST : OUTPUT_DRAWMODE_COLOR);
-
+    ResizeImpl(aSize);
     Invalidate();
+}
+
+void SvxXMeasurePreview::ResizeImpl(const Size& rSize)
+{
+    OutputDevice& rRefDevice = GetDrawingArea()->get_ref_device();
+    rRefDevice.Push(PushFlags::MAPMODE);
+
+    rRefDevice.SetMapMode(m_aMapMode);
+
+    Size aSize = rRefDevice.PixelToLogic(rSize);
+    Point aPt1(aSize.Width() / 5, static_cast<long>(aSize.Height() / 2));
+    pMeasureObj->SetPoint(aPt1, 0);
+    Point aPt2(aSize.Width() * 4 / 5, static_cast<long>(aSize.Height() / 2));
+    pMeasureObj->SetPoint(aPt2, 1);
+
+    rRefDevice.Pop();
 }
 
 void SvxXMeasurePreview::Resize()
 {
-    Control::Resize();
-
-    Size aSize = GetOutputSize();
-    Point aPt1 = Point(aSize.Width() / 5, (long) (aSize.Height() / 2));
-    pMeasureObj->SetPoint(aPt1, 0);
-    Point aPt2 = Point(aSize.Width() * 4 / 5, (long) (aSize.Height() / 2));
-    pMeasureObj->SetPoint(aPt2, 1);
-}
-
-VCL_BUILDER_FACTORY_CONSTRUCTOR(SvxXMeasurePreview, 0)
-
-Size SvxXMeasurePreview::GetOptimalSize() const
-{
-    return getPreviewStripSize(this);
+    CustomWidgetController::Resize();
+    ResizeImpl(GetOutputSizePixel());
+    Invalidate();
 }
 
 SvxXMeasurePreview::~SvxXMeasurePreview()
 {
-    disposeOnce();
-}
-
-void SvxXMeasurePreview::dispose()
-{
-    // No one is deleting the MeasureObj? This is not only an error but also
-    // a memory leak (!). Main problem is that this object is still listening to
-    // a StyleSheet of the model which was set. Thus, if You want to keep the object,
-    // set the model to 0L, if object is not needed (seems to be the case here),
-    // delete it.
-    delete pMeasureObj;
-
-    delete pModel;
-    Control::dispose();
 }
 
 void SvxXMeasurePreview::Paint(vcl::RenderContext& rRenderContext, const tools::Rectangle&)
 {
+    rRenderContext.SetBackground(rRenderContext.GetSettings().GetStyleSettings().GetWindowColor());
+    rRenderContext.Erase();
+
+    rRenderContext.Push(PushFlags::MAPMODE);
+    rRenderContext.SetMapMode(m_aMapMode);
+
+    bool bHighContrast = Application::GetSettings().GetStyleSettings().GetHighContrastMode();
+    rRenderContext.SetDrawMode(bHighContrast ? OUTPUT_DRAWMODE_CONTRAST : OUTPUT_DRAWMODE_COLOR);
     pMeasureObj->SingleObjectPainter(rRenderContext);
+
+    rRenderContext.Pop();
 }
 
 void SvxXMeasurePreview::SetAttributes(const SfxItemSet& rInAttrs)
@@ -100,7 +97,7 @@ void SvxXMeasurePreview::SetAttributes(const SfxItemSet& rInAttrs)
     Invalidate();
 }
 
-void SvxXMeasurePreview::MouseButtonDown(const MouseEvent& rMEvt)
+bool SvxXMeasurePreview::MouseButtonDown(const MouseEvent& rMEvt)
 {
     bool bZoomIn  = rMEvt.IsLeft() && !rMEvt.IsShift();
     bool bZoomOut = rMEvt.IsRight() || rMEvt.IsShift();
@@ -108,9 +105,8 @@ void SvxXMeasurePreview::MouseButtonDown(const MouseEvent& rMEvt)
 
     if (bZoomIn || bZoomOut)
     {
-        MapMode aMapMode = GetMapMode();
-        Fraction aXFrac = aMapMode.GetScaleX();
-        Fraction aYFrac = aMapMode.GetScaleY();
+        Fraction aXFrac = m_aMapMode.GetScaleX();
+        Fraction aYFrac = m_aMapMode.GetScaleY();
         std::unique_ptr<Fraction> pMultFrac;
 
         if (bZoomIn)
@@ -134,35 +130,28 @@ void SvxXMeasurePreview::MouseButtonDown(const MouseEvent& rMEvt)
         if (double(aXFrac) > 0.001 && double(aXFrac) < 1000.0 &&
             double(aYFrac) > 0.001 && double(aYFrac) < 1000.0)
         {
-            aMapMode.SetScaleX(aXFrac);
-            aMapMode.SetScaleY(aYFrac);
-            SetMapMode(aMapMode);
+            m_aMapMode.SetScaleX(aXFrac);
+            m_aMapMode.SetScaleY(aYFrac);
 
-            Size aOutSize(GetOutputSize());
+            OutputDevice& rRefDevice = GetDrawingArea()->get_ref_device();
+            rRefDevice.Push(PushFlags::MAPMODE);
+            rRefDevice.SetMapMode(m_aMapMode);
+            Size aOutSize(rRefDevice.PixelToLogic(GetOutputSizePixel()));
+            rRefDevice.Pop();
 
-            Point aPt(aMapMode.GetOrigin());
+            Point aPt(m_aMapMode.GetOrigin());
             long nX = long((double(aOutSize.Width()) - (double(aOutSize.Width()) * double(*pMultFrac))) / 2.0 + 0.5);
             long nY = long((double(aOutSize.Height()) - (double(aOutSize.Height()) * double(*pMultFrac))) / 2.0 + 0.5);
-            aPt.X() += nX;
-            aPt.Y() += nY;
+            aPt.AdjustX(nX );
+            aPt.AdjustY(nY );
 
-            aMapMode.SetOrigin(aPt);
-            SetMapMode(aMapMode);
+            m_aMapMode.SetOrigin(aPt);
 
             Invalidate();
         }
     }
-}
 
-void SvxXMeasurePreview::DataChanged( const DataChangedEvent& rDCEvt )
-{
-    Control::DataChanged( rDCEvt );
-
-    if ((rDCEvt.GetType() == DataChangedEventType::SETTINGS) && (rDCEvt.GetFlags() & AllSettingsFlags::STYLE))
-    {
-        bool bHighContrast = GetSettings().GetStyleSettings().GetHighContrastMode();
-        SetDrawMode(bHighContrast ? OUTPUT_DRAWMODE_CONTRAST : OUTPUT_DRAWMODE_COLOR);
-    }
+    return true;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

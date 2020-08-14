@@ -19,51 +19,29 @@
 #ifndef INCLUDED_SVX_FMTOOLS_HXX
 #define INCLUDED_SVX_FMTOOLS_HXX
 
+#include <config_options.h>
 #include <svx/svxdllapi.h>
 
-#include <com/sun/star/sdb/SQLContext.hpp>
-#include <com/sun/star/sdb/XSQLQueryComposerFactory.hpp>
-#include <com/sun/star/sdbcx/Privilege.hpp>
 #include <com/sun/star/sdbcx/XColumnsSupplier.hpp>
-#include <com/sun/star/sdbcx/XDataDescriptorFactory.hpp>
-#include <com/sun/star/sdbc/XRowSet.hpp>
-#include <com/sun/star/sdbc/XDatabaseMetaData.hpp>
-#include <com/sun/star/sdb/XColumn.hpp>
-#include <com/sun/star/sdb/XColumnUpdate.hpp>
-#include <com/sun/star/sdb/SQLErrorEvent.hpp>
-#include <com/sun/star/sdbc/XConnection.hpp>
 #include <com/sun/star/sdbc/XResultSet.hpp>
-#include <com/sun/star/sdbc/XResultSetUpdate.hpp>
 #include <com/sun/star/sdbcx/XRowLocate.hpp>
-#include <com/sun/star/sdbc/XDataSource.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/container/XIndexContainer.hpp>
-#include <com/sun/star/container/XNameAccess.hpp>
-#include <com/sun/star/container/XEnumeration.hpp>
-#include <com/sun/star/container/XIndexAccess.hpp>
-#include <com/sun/star/awt/XControlModel.hpp>
-#include <com/sun/star/awt/XControl.hpp>
-#include <com/sun/star/awt/FontSlant.hpp>
-#include <com/sun/star/awt/FontDescriptor.hpp>
-#include <com/sun/star/awt/FontUnderline.hpp>
-#include <com/sun/star/awt/FontStrikeout.hpp>
-#include <com/sun/star/util/XNumberFormatsSupplier.hpp>
-#include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/io/XObjectInputStream.hpp>
-#include <com/sun/star/io/XObjectOutputStream.hpp>
-#include <com/sun/star/io/XPersistObject.hpp>
-#include <com/sun/star/util/XNumberFormatter.hpp>
-#include <com/sun/star/util/XNumberFormats.hpp>
+#include <com/sun/star/lang/EventObject.hpp>
+#include <com/sun/star/lang/XEventListener.hpp>
 
 #include <rtl/ref.hxx>
-#include <tools/wintypes.hxx>
-#include <cppuhelper/weakref.hxx>
-#include <comphelper/uno3.hxx>
-#include <comphelper/stl_types.hxx>
 #include <cppuhelper/implbase.hxx>
 
 #include <set>
 
+namespace com::sun::star::beans { class XPropertySet; }
+namespace com::sun::star::container { class XIndexAccess; }
+namespace com::sun::star::container { class XNameAccess; }
+namespace com::sun::star::lang { class XComponent; }
+namespace com::sun::star::lang { class XServiceInfo; }
+namespace com::sun::star::sdbc { class SQLException; }
+namespace com::sun::star::sdbc { class XRowSet; }
+namespace com::sun::star::sdb { class SQLContext; }
+namespace com::sun::star::sdb { struct SQLErrorEvent; }
 namespace vcl { class Window; }
 
 
@@ -72,13 +50,13 @@ namespace vcl { class Window; }
 // displaying a database exception for the user
 // display info about a simple css::sdbc::SQLException
 void displayException(const css::sdbc::SQLException&, vcl::Window* _pParent);
-SVX_DLLPUBLIC void displayException(const css::sdb::SQLContext&, vcl::Window* _pParent);
-void displayException(const css::sdb::SQLErrorEvent&);
+SVXCORE_DLLPUBLIC void displayException(const css::sdb::SQLContext&, vcl::Window* _pParent);
+void displayException(const css::sdb::SQLErrorEvent&, vcl::Window* _pParent = nullptr);
 void displayException(const css::uno::Any&, vcl::Window* _pParent = nullptr);
 
 sal_Int32 getElementPos(const css::uno::Reference< css::container::XIndexAccess>& xCont, const css::uno::Reference< css::uno::XInterface>& xElement);
 
-SVX_DLLPUBLIC OUString getLabelName(const css::uno::Reference< css::beans::XPropertySet>& xControlModel);
+SVXCORE_DLLPUBLIC OUString getLabelName(const css::uno::Reference< css::beans::XPropertySet>& xControlModel);
 
 
 // = class CursorWrapper - a helper class which works in common with a css::uno::Reference<XDatabaseUpdateCursor>,
@@ -97,7 +75,7 @@ private:
 public:
     // Construction/Destruction
     CursorWrapper(const css::uno::Reference< css::sdbc::XRowSet>& _rxCursor, bool bUseCloned = false);
-    SVX_DLLPUBLIC CursorWrapper(const css::uno::Reference< css::sdbc::XResultSet>& _rxCursor, bool bUseCloned = false);
+    UNLESS_MERGELIBS(SVXCORE_DLLPUBLIC) CursorWrapper(const css::uno::Reference< css::sdbc::XResultSet>& _rxCursor, bool bUseCloned = false);
         // if bUseCloned == sal_True, the cursor is first doubled over the XCloneable interface (which it must implement)
         // and then used
 
@@ -161,7 +139,7 @@ public:
     virtual ~FmXDisposeListener();
 
     /// @throws css::uno::RuntimeException
-    virtual void disposing(const css::lang::EventObject& _rEvent, sal_Int16 _nId) = 0;
+    virtual void disposing(sal_Int16 _nId) = 0;
 
 protected:
     void setAdapter(FmXDisposeMultiplexer* pAdapter);
@@ -190,9 +168,7 @@ bool isRowSetAlive(const css::uno::Reference< css::uno::XInterface>& _rxRowSet);
     // checks if the css::sdbcx::XColumnsSupplier provided by _rxRowSet supplies any columns
 
 
-typedef ::std::set  < css::uno::Reference< css::uno::XInterface >
-                    , ::comphelper::OInterfaceCompare< css::uno::XInterface >
-                    > InterfaceBag;
+typedef ::std::set< css::uno::Reference< css::uno::XInterface > > InterfaceBag;
 
 #endif // INCLUDED_SVX_FMTOOLS_HXX
 

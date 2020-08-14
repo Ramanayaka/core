@@ -21,16 +21,19 @@
 
 #include <algorithm>
 
+#include <com/sun/star/uno/XComponentContext.hpp>
+#include <drawinglayer/attribute/fontattribute.hxx>
 #include <drawinglayer/primitive2d/textlayoutdevice.hxx>
 #include <comphelper/processfactory.hxx>
 #include <comphelper/unique_disposing_ptr.hxx>
+#include <osl/diagnose.h>
 #include <tools/gen.hxx>
+#include <vcl/canvastools.hxx>
 #include <vcl/timer.hxx>
 #include <vcl/virdev.hxx>
 #include <vcl/font.hxx>
 #include <vcl/metric.hxx>
 #include <i18nlangtag/languagetag.hxx>
-#include <drawinglayer/primitive2d/textprimitive2d.hxx>
 #include <vcl/svapp.hxx>
 
 
@@ -40,13 +43,13 @@ namespace
 {
     class ImpTimedRefDev;
 
-    //the scoped_timed_RefDev owns a ImpTimeRefDev and releases it on dtor
+    //the scoped_timed_RefDev owns an ImpTimeRefDev and releases it on dtor
     //or disposing of the default XComponentContext which causes the underlying
     //OutputDevice to get released
 
     //The ImpTimerRefDev itself, if the timeout ever gets hit, will call
     //reset on the scoped_timed_RefDev to release the ImpTimerRefDev early
-    //if its unused for a few minutes
+    //if it's unused for a few minutes
     class scoped_timed_RefDev : public comphelper::unique_disposing_ptr<ImpTimedRefDev>
     {
     public:
@@ -76,7 +79,7 @@ namespace
     :   Timer( "drawinglayer ImpTimedRefDev destroy mpVirDev" ),
         mrOwnerOfMe(rOwnerOfMe),
         mpVirDev(nullptr),
-        mnUseCount(0L)
+        mnUseCount(0)
     {
         SetTimeout(3L * 60L * 1000L); // three minutes
         Start();
@@ -84,7 +87,7 @@ namespace
 
     ImpTimedRefDev::~ImpTimedRefDev()
     {
-        OSL_ENSURE(0L == mnUseCount, "destruction of a still used ImpTimedRefDev (!)");
+        OSL_ENSURE(0 == mnUseCount, "destruction of a still used ImpTimedRefDev (!)");
         const SolarMutexGuard aSolarGuard;
         mpVirDev.disposeAndClear();
     }
@@ -128,12 +131,10 @@ namespace
 
 // access to one global ImpTimedRefDev incarnation in namespace drawinglayer::primitive
 
-namespace drawinglayer
+namespace drawinglayer::primitive2d
 {
-    namespace primitive2d
-    {
         // static methods here
-        VirtualDevice& acquireGlobalVirtualDevice()
+        static VirtualDevice& acquireGlobalVirtualDevice()
         {
             scoped_timed_RefDev& rStdRefDevice = the_scoped_timed_RefDev::get();
 
@@ -143,7 +144,7 @@ namespace drawinglayer
             return rStdRefDevice->acquireVirtualDevice();
         }
 
-        void releaseGlobalVirtualDevice()
+        static void releaseGlobalVirtualDevice()
         {
             scoped_timed_RefDev& rStdRefDevice = the_scoped_timed_RefDev::get();
 
@@ -157,7 +158,7 @@ namespace drawinglayer
         {
         }
 
-        TextLayouterDevice::~TextLayouterDevice()
+        TextLayouterDevice::~TextLayouterDevice() COVERITY_NOEXCEPT_FALSE
         {
             releaseGlobalVirtualDevice();
         }
@@ -229,7 +230,7 @@ namespace drawinglayer
             return mrDevice.GetTextWidth(rText, nIndex, nLength);
         }
 
-        bool TextLayouterDevice::getTextOutlines(
+        void TextLayouterDevice::getTextOutlines(
             basegfx::B2DPolyPolygonVector& rB2DPolyPolyVector,
             const OUString& rText,
             sal_uInt32 nIndex,
@@ -255,18 +256,18 @@ namespace drawinglayer
                     aIntegerDXArray[a] = basegfx::fround(rDXArray[a]);
                 }
 
-                return mrDevice.GetTextOutlines(
+                mrDevice.GetTextOutlines(
                     rB2DPolyPolyVector,
                     rText,
                     nIndex,
                     nIndex,
                     nLength,
                     0,
-                    &(aIntegerDXArray[0]));
+                    aIntegerDXArray.data());
             }
             else
             {
-                return mrDevice.GetTextOutlines(
+                mrDevice.GetTextOutlines(
                     rB2DPolyPolyVector,
                     rText,
                     nIndex,
@@ -290,7 +291,7 @@ namespace drawinglayer
 
             if(nTextLength)
             {
-                tools::Rectangle aRect;
+                ::tools::Rectangle aRect;
 
                 mrDevice.GetTextBoundRect(
                     aRect,
@@ -302,9 +303,7 @@ namespace drawinglayer
                 // #i104432#, #i102556# take empty results into account
                 if(!aRect.IsEmpty())
                 {
-                    return basegfx::B2DRange(
-                        aRect.Left(), aRect.Top(),
-                        aRect.Right(), aRect.Bottom());
+                    return vcl::unotools::b2DRectangleFromRectangle(aRect);
                 }
             }
 
@@ -324,7 +323,7 @@ namespace drawinglayer
         }
 
         void TextLayouterDevice::addTextRectActions(
-            const tools::Rectangle& rRectangle,
+            const ::tools::Rectangle& rRectangle,
             const OUString& rText,
             DrawTextFlags nStyle,
             GDIMetaFile& rGDIMetaFile) const
@@ -351,23 +350,16 @@ namespace drawinglayer
             {
                 aRetval.reserve(nTextLength);
                 std::vector<long> aArray(nTextLength);
-                mrDevice.GetTextArray(rText, &aArray[0], nIndex, nLength);
+                mrDevice.GetTextArray(rText, aArray.data(), nIndex, nLength);
                 aRetval.assign(aArray.begin(), aArray.end());
             }
 
             return aRetval;
         }
 
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
-
 
 // helper methods for vcl font handling
 
-namespace drawinglayer
-{
-    namespace primitive2d
-    {
         vcl::Font getVclFontFromFontAttribute(
             const attribute::FontAttribute& rFontAttribute,
             double fFontScaleX,
@@ -417,8 +409,8 @@ namespace drawinglayer
 
                 if(aUnscaledFontMetric.GetAverageFontWidth() > 0)
                 {
-                    const double fScaleFactor((double)nWidth / (double)nHeight);
-                    const sal_uInt32 nScaledWidth(basegfx::fround((double)aUnscaledFontMetric.GetAverageFontWidth() * fScaleFactor));
+                    const double fScaleFactor(static_cast<double>(nWidth) / static_cast<double>(nHeight));
+                    const sal_uInt32 nScaledWidth(basegfx::fround(static_cast<double>(aUnscaledFontMetric.GetAverageFontWidth()) * fScaleFactor));
                     aRetval.SetAverageFontWidth(nScaledWidth);
                 }
             }
@@ -426,7 +418,7 @@ namespace drawinglayer
             // handle FontRotation (if defined)
             if(!basegfx::fTools::equalZero(fFontRotation))
             {
-                sal_Int16 aRotate10th((sal_Int16)(fFontRotation * (-1800.0/F_PI)));
+                sal_Int16 aRotate10th(static_cast<sal_Int16>(fFontRotation * (-1800.0/F_PI)));
                 aRetval.SetOrientation(aRotate10th % 3600);
             }
 
@@ -453,7 +445,7 @@ namespace drawinglayer
             // TODO: eKerning
 
             // set FontHeight and init to no FontScaling
-            o_rSize.setY(rFont.GetFontSize().getHeight() > 0 ? rFont.GetFontSize().getHeight() : 0);
+            o_rSize.setY(std::max<long>(rFont.GetFontSize().getHeight(), 0));
             o_rSize.setX(o_rSize.getY());
 
 #ifdef _WIN32
@@ -470,7 +462,7 @@ namespace drawinglayer
 
                 if(aUnscaledFontMetric.GetAverageFontWidth() > 0)
                 {
-                    const double fScaleFactor((double)rFont.GetFontSize().getWidth() / (double)aUnscaledFontMetric.GetAverageFontWidth());
+                    const double fScaleFactor(static_cast<double>(rFont.GetFontSize().getWidth()) / static_cast<double>(aUnscaledFontMetric.GetAverageFontWidth()));
                     o_rSize.setX(fScaleFactor * o_rSize.getY());
                 }
             }
@@ -481,12 +473,12 @@ namespace drawinglayer
             // means the scaling is in the direct relation of width to height
             if(rFont.GetFontSize().getWidth() > 0)
             {
-                o_rSize.setX((double)rFont.GetFontSize().getWidth());
+                o_rSize.setX(static_cast<double>(rFont.GetFontSize().getWidth()));
             }
 #endif
             return aRetval;
         }
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
+
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

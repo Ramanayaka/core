@@ -22,6 +22,7 @@
 #include <vcl/outdev.hxx>
 #include <vcl/virdev.hxx>
 #include <vcl/window.hxx>
+#include <sal/log.hxx>
 
 #include <vcl/salnativewidgets.hxx>
 #include <vcl/pdfextoutdevdata.hxx>
@@ -49,6 +50,8 @@ static bool EnableNativeWidget( const OutputDevice& i_rDevice )
             }
         }
 
+    case OUTDEV_PDF:
+        [[fallthrough]];
     case OUTDEV_VIRDEV:
     {
         const vcl::ExtOutDevData* pOutDevData( i_rDevice.GetExtOutDevData() );
@@ -89,6 +92,14 @@ SliderValue* SliderValue::clone() const
 {
     assert( typeid( const SliderValue ) == typeid( *this ));
     return new SliderValue( *this );
+}
+
+int TabPaneValue::m_nOverlap = 0;
+
+TabPaneValue* TabPaneValue::clone() const
+{
+    assert(typeid(const TabPaneValue) == typeid(*this));
+    return new TabPaneValue(*this);
 }
 
 TabitemValue::~TabitemValue()
@@ -159,11 +170,10 @@ bool OutputDevice::IsNativeControlSupported( ControlType nType, ControlPart nPar
     if( !EnableNativeWidget( *this ) )
         return false;
 
-    if ( !mpGraphics )
-        if ( !AcquireGraphics() )
-            return false;
+    if ( !mpGraphics && !AcquireGraphics() )
+        return false;
 
-    return( mpGraphics->IsNativeControlSupported(nType, nPart) );
+    return mpGraphics->IsNativeControlSupported(nType, nPart);
 }
 
 bool OutputDevice::HitTestNativeScrollbar(
@@ -175,9 +185,8 @@ bool OutputDevice::HitTestNativeScrollbar(
     if( !EnableNativeWidget( *this ) )
         return false;
 
-    if ( !mpGraphics )
-        if ( !AcquireGraphics() )
-            return false;
+    if ( !mpGraphics && !AcquireGraphics() )
+        return false;
 
     Point aWinOffs( mnOutOffX, mnOutOffY );
     tools::Rectangle screenRegion( rControlRegion );
@@ -227,6 +236,15 @@ static std::shared_ptr< ImplControlValue > TransformControlValue( const ImplCont
             pNew->maGripRect = rDev.ImplLogicToDevicePixel( pTVal->maGripRect );
         }
         break;
+    case ControlType::TabPane:
+        {
+            const TabPaneValue* pTIVal = static_cast<const TabPaneValue*>(&rVal);
+            TabPaneValue* pNew = new TabPaneValue(*pTIVal);
+            pNew->m_aTabHeaderRect = rDev.ImplLogicToDevicePixel(pTIVal->m_aTabHeaderRect);
+            pNew->m_aSelectedTabRect = rDev.ImplLogicToDevicePixel(pTIVal->m_aSelectedTabRect);
+            aResult.reset(pNew);
+        }
+        break;
     case ControlType::TabItem:
         {
             const TabitemValue* pTIVal = static_cast<const TabitemValue*>(&rVal);
@@ -250,7 +268,7 @@ static std::shared_ptr< ImplControlValue > TransformControlValue( const ImplCont
         }
         break;
     case ControlType::Generic:
-            aResult.reset( new ImplControlValue( rVal ) );
+            aResult = std::make_shared<ImplControlValue>( rVal );
             break;
     case ControlType::MenuPopup:
         {
@@ -261,7 +279,7 @@ static std::shared_ptr< ImplControlValue > TransformControlValue( const ImplCont
         }
         break;
     default:
-        OSL_FAIL( "unknown ImplControlValue type !" );
+        std::abort();
         break;
     }
     return aResult;
@@ -279,9 +297,8 @@ bool OutputDevice::DrawNativeControl( ControlType nType,
         return false;
 
     // make sure the current clip region is initialized correctly
-    if ( !mpGraphics )
-        if ( !AcquireGraphics() )
-            return false;
+    if ( !mpGraphics && !AcquireGraphics() )
+        return false;
 
     if ( mbInitClipRegion )
         InitClipRegion();
@@ -297,14 +314,6 @@ bool OutputDevice::DrawNativeControl( ControlType nType,
     // in the correct place in platform code
     std::shared_ptr< ImplControlValue > aScreenCtrlValue( TransformControlValue( aValue, *this ) );
     tools::Rectangle screenRegion( ImplLogicToDevicePixel( rControlRegion ) );
-
-    vcl::Region aTestRegion( GetActiveClipRegion() );
-    aTestRegion.Intersect( rControlRegion );
-    if (aTestRegion == vcl::Region(rControlRegion))
-        nState |= ControlState::CACHING_ALLOWED;   // control is not clipped, caching allowed
-
-    if (dynamic_cast<VirtualDevice*>(this))
-        nState |= ControlState::DOUBLEBUFFERING;
 
     bool bRet = mpGraphics->DrawNativeControl(nType, nPart, screenRegion, nState, *aScreenCtrlValue, aCaption, this );
 
@@ -322,9 +331,8 @@ bool OutputDevice::GetNativeControlRegion(  ControlType nType,
     if( !EnableNativeWidget( *this ) )
         return false;
 
-    if ( !mpGraphics )
-        if ( !AcquireGraphics() )
-            return false;
+    if ( !mpGraphics && !AcquireGraphics() )
+        return false;
 
     // Convert the coordinates from relative to Window-absolute, so we draw
     // in the correct place in platform code

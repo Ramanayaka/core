@@ -19,41 +19,31 @@
 
 
 #include <vcl/svapp.hxx>
-#include <vcl/window.hxx>
-#include <vcl/wall.hxx>
 #include <osl/mutex.hxx>
-#include <toolkit/controls/dialogcontrol.hxx>
-#include <toolkit/controls/geometrycontrolmodel.hxx>
+#include <controls/dialogcontrol.hxx>
+#include <controls/geometrycontrolmodel.hxx>
 #include <toolkit/helper/property.hxx>
-#include <toolkit/controls/stdtabcontroller.hxx>
+#include <helper/servicenames.hxx>
 #include <com/sun/star/awt/PosSize.hpp>
 #include <com/sun/star/awt/WindowAttribute.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
-#include <com/sun/star/graphic/XGraphicProvider.hpp>
 #include <cppuhelper/supportsservice.hxx>
 #include <cppuhelper/typeprovider.hxx>
 #include <cppuhelper/queryinterface.hxx>
+#include <cppuhelper/weak.hxx>
 #include <tools/debug.hxx>
-#include <tools/diagnose_ex.h>
 #include <comphelper/sequence.hxx>
 #include <vcl/outdev.hxx>
 
-#include <toolkit/helper/vclunohelper.hxx>
-#include <unotools/ucbstreamhelper.hxx>
-#include <vcl/graph.hxx>
 #include <vcl/image.hxx>
 #include <cppuhelper/implbase.hxx>
-#include <algorithm>
-#include <functional>
-#include <map>
 #include <unordered_map>
-#include "osl/file.hxx"
 
 #include <vcl/tabctrl.hxx>
 #include <toolkit/awt/vclxwindows.hxx>
-#include "toolkit/controls/unocontrols.hxx"
+#include <toolkit/controls/unocontrols.hxx>
 
-#include "helper/unopropertyarrayhelper.hxx"
+#include <helper/unopropertyarrayhelper.hxx>
 #include "controlmodelcontainerbase_internal.hxx"
 
 using namespace ::com::sun::star;
@@ -72,11 +62,12 @@ using namespace ::com::sun::star::util;
 // we probably will need both a hash of control models and hash of controls
 // => use some template magic
 
+namespace {
+
 template< typename T >
 class SimpleNamedThingContainer : public ::cppu::WeakImplHelper< container::XNameContainer >
 {
-    typedef std::unordered_map< OUString, Reference< T >, OUStringHash > NamedThingsHash;
-    NamedThingsHash things;
+    std::unordered_map< OUString, Reference< T > > things;
     ::osl::Mutex m_aMutex;
 public:
     // css::container::XNameContainer, XNameReplace, XNameAccess
@@ -134,8 +125,6 @@ public:
     }
 };
 
-namespace {
-
 class UnoControlDialogModel :   public ControlModelContainerBase
 {
 protected:
@@ -148,7 +137,7 @@ public:
     explicit UnoControlDialogModel( const css::uno::Reference< css::uno::XComponentContext >& rxContext );
     UnoControlDialogModel( const UnoControlDialogModel& rModel );
 
-    UnoControlModel*    Clone() const override;
+    rtl::Reference<UnoControlModel> Clone() const override;
     // css::beans::XMultiPropertySet
     css::uno::Reference< css::beans::XPropertySetInfo > SAL_CALL getPropertySetInfo(  ) override;
 
@@ -157,7 +146,7 @@ public:
 
     // XServiceInfo
     OUString SAL_CALL getImplementationName() override
-    { return OUString("stardiv.Toolkit.UnoControlDialogModel"); }
+    { return "stardiv.Toolkit.UnoControlDialogModel"; }
 
     css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override
     {
@@ -210,18 +199,16 @@ UnoControlDialogModel::UnoControlDialogModel( const UnoControlDialogModel& rMode
     Reference< XNameContainer > xSrcNameCont( const_cast< UnoControlDialogModel& >(rModel).getPropertyValue( GetPropertyName( BASEPROPERTY_USERFORMCONTAINEES ) ), UNO_QUERY );
     Reference<XNameContainer > xNameCont( new SimpleNamedThingContainer< XControlModel > );
 
-    uno::Sequence< OUString > sNames = xSrcNameCont->getElementNames();
-    OUString* pName = sNames.getArray();
-    OUString* pNamesEnd = pName + sNames.getLength();
-    for ( ; pName != pNamesEnd; ++pName )
+    const uno::Sequence< OUString > sNames = xSrcNameCont->getElementNames();
+    for ( OUString const & name : sNames )
     {
-        if ( xSrcNameCont->hasByName( *pName ) )
-            xNameCont->insertByName( *pName, xSrcNameCont->getByName( *pName ) );
+        if ( xSrcNameCont->hasByName( name ) )
+            xNameCont->insertByName( name, xSrcNameCont->getByName( name ) );
     }
     setFastPropertyValue_NoBroadcast( BASEPROPERTY_USERFORMCONTAINEES, makeAny( xNameCont ) );
 }
 
-UnoControlModel* UnoControlDialogModel::Clone() const
+rtl::Reference<UnoControlModel> UnoControlDialogModel::Clone() const
 {
     // clone the container itself
     UnoControlDialogModel* pClone = new UnoControlDialogModel( *this );
@@ -234,7 +221,7 @@ UnoControlModel* UnoControlDialogModel::Clone() const
 
 OUString UnoControlDialogModel::getServiceName( )
 {
-    return OUString("stardiv.vcl.controlmodel.Dialog");
+    return "stardiv.vcl.controlmodel.Dialog";
 }
 
 Any UnoControlDialogModel::ImplGetDefaultValue( sal_uInt16 nPropId ) const
@@ -261,13 +248,8 @@ Any UnoControlDialogModel::ImplGetDefaultValue( sal_uInt16 nPropId ) const
 
 ::cppu::IPropertyArrayHelper& UnoControlDialogModel::getInfoHelper()
 {
-    static UnoPropertyArrayHelper* pHelper = nullptr;
-    if ( !pHelper )
-    {
-        Sequence<sal_Int32> aIDs = ImplGetPropertyIds();
-        pHelper = new UnoPropertyArrayHelper( aIDs );
-    }
-    return *pHelper;
+    static UnoPropertyArrayHelper aHelper( ImplGetPropertyIds() );
+    return aHelper;
 }
 
 // XMultiPropertySet
@@ -285,8 +267,18 @@ void SAL_CALL UnoControlDialogModel::setFastPropertyValue_NoBroadcast( sal_Int32
         if ( nHandle == BASEPROPERTY_IMAGEURL && ImplHasProperty( BASEPROPERTY_GRAPHIC ) )
         {
             OUString sImageURL;
-            OSL_VERIFY( rValue >>= sImageURL );
-            setPropertyValue( GetPropertyName( BASEPROPERTY_GRAPHIC ), uno::makeAny( ImageHelper::getGraphicAndGraphicObjectFromURL_nothrow( mxGrfObj, sImageURL ) ) );
+            uno::Reference<graphic::XGraphic> xGraphic;
+            if (rValue >>= sImageURL)
+            {
+                setPropertyValue(
+                    GetPropertyName(BASEPROPERTY_GRAPHIC),
+                    uno::makeAny(ImageHelper::getGraphicAndGraphicObjectFromURL_nothrow(
+                        mxGrfObj, sImageURL)));
+            }
+            else if (rValue >>= xGraphic)
+            {
+                setPropertyValue("Graphic", uno::makeAny(xGraphic));
+            }
         }
     }
     catch( const css::uno::Exception& )
@@ -320,9 +312,9 @@ OUString UnoDialogControl::GetComponentServiceName()
     bool bDecoration( true );
     ImplGetPropertyValue( GetPropertyName( BASEPROPERTY_DECORATION )) >>= bDecoration;
     if ( bDecoration )
-        return OUString("Dialog");
+        return "Dialog";
     else
-        return OUString("TabPage");
+        return "TabPage";
 }
 
 void UnoDialogControl::dispose()
@@ -345,7 +337,7 @@ sal_Bool UnoDialogControl::setModel( const Reference< XControlModel >& rxModel )
 {
         // #Can we move all the Resource stuff to the ControlContainerBase ?
     SolarMutexGuard aGuard;
-        bool bRet = ControlContainerBase::setModel( rxModel );
+    bool bRet = ControlContainerBase::setModel( rxModel );
     ImplStartListingForResourceEvents();
     return bRet;
 }
@@ -357,31 +349,30 @@ void UnoDialogControl::createPeer( const Reference< XToolkit > & rxToolkit, cons
     UnoControlContainer::createPeer( rxToolkit, rParentPeer );
 
     Reference < XTopWindow > xTW( getPeer(), UNO_QUERY );
-    if ( xTW.is() )
+    if ( !xTW.is() )
+        return;
+
+    xTW->setMenuBar( mxMenuBar );
+
+    if ( !mbWindowListener )
     {
-        xTW->setMenuBar( mxMenuBar );
-
-        if ( !mbWindowListener )
-        {
-            Reference< XWindowListener > xWL( static_cast< cppu::OWeakObject*>( this ), UNO_QUERY );
-            addWindowListener( xWL );
-            mbWindowListener = true;
-        }
-
-        if ( maTopWindowListeners.getLength() )
-            xTW->addTopWindowListener( &maTopWindowListeners );
-        // there must be a better way than doing this, we can't
-        // process the scrolltop & scrollleft in XDialog because
-        // the children haven't been added when those props are applied
-        ImplSetPeerProperty( GetPropertyName( BASEPROPERTY_SCROLLTOP ), ImplGetPropertyValue( GetPropertyName( BASEPROPERTY_SCROLLTOP ) ) );
-        ImplSetPeerProperty( GetPropertyName( BASEPROPERTY_SCROLLLEFT ), ImplGetPropertyValue( GetPropertyName( BASEPROPERTY_SCROLLLEFT ) ) );
-
+        Reference< XWindowListener > xWL( static_cast< cppu::OWeakObject*>( this ), UNO_QUERY );
+        addWindowListener( xWL );
+        mbWindowListener = true;
     }
+
+    if ( maTopWindowListeners.getLength() )
+        xTW->addTopWindowListener( &maTopWindowListeners );
+    // there must be a better way than doing this, we can't
+    // process the scrolltop & scrollleft in XDialog because
+    // the children haven't been added when those props are applied
+    ImplSetPeerProperty( GetPropertyName( BASEPROPERTY_SCROLLTOP ), ImplGetPropertyValue( GetPropertyName( BASEPROPERTY_SCROLLTOP ) ) );
+    ImplSetPeerProperty( GetPropertyName( BASEPROPERTY_SCROLLLEFT ), ImplGetPropertyValue( GetPropertyName( BASEPROPERTY_SCROLLLEFT ) ) );
 }
 
 OUString UnoDialogControl::getImplementationName()
 {
-    return OUString("stardiv.Toolkit.UnoDialogControl");
+    return "stardiv.Toolkit.UnoDialogControl";
 }
 
 sal_Bool UnoDialogControl::supportsService(OUString const & ServiceName)
@@ -392,7 +383,7 @@ sal_Bool UnoDialogControl::supportsService(OUString const & ServiceName)
 css::uno::Sequence<OUString> UnoDialogControl::getSupportedServiceNames()
 {
     return css::uno::Sequence<OUString>{
-        OUString::createFromAscii(szServiceName2_UnoControlDialog),
+        "com.sun.star.awt.UnoControlDialog",
         "stardiv.vcl.control.Dialog"};
 }
 
@@ -417,11 +408,7 @@ void UnoDialogControl::PrepareWindowDescriptor( css::awt::WindowDescriptor& rDes
     if (( ImplGetPropertyValue( PROPERTY_IMAGEURL ) >>= aImageURL ) &&
         ( !aImageURL.isEmpty() ))
     {
-        OUString absoluteUrl = aImageURL;
-        if ( !aImageURL.startsWith( UNO_NAME_GRAPHOBJ_URLPREFIX ) )
-            absoluteUrl = getPhysicalLocation( ImplGetPropertyValue( PROPERTY_DIALOGSOURCEURL ),
-                                 uno::makeAny( aImageURL ) );
-
+        OUString absoluteUrl = getPhysicalLocation(ImplGetPropertyValue(PROPERTY_DIALOGSOURCEURL), uno::makeAny(aImageURL));
         xGraphic = ImageHelper::getGraphicFromURL_nothrow( absoluteUrl );
         ImplSetPropertyValue( PROPERTY_GRAPHIC, uno::makeAny( xGraphic ), true );
     }
@@ -480,9 +467,9 @@ void UnoDialogControl::setMenuBar( const Reference< XMenuBar >& rxMenuBar )
             xTW->setMenuBar( mxMenuBar );
     }
 }
-static ::Size ImplMapPixelToAppFont( OutputDevice* pOutDev, const ::Size& aSize )
+static ::Size ImplMapPixelToAppFont( OutputDevice const * pOutDev, const ::Size& aSize )
 {
-    ::Size aTmp = pOutDev->PixelToLogic( aSize, MapUnit::MapAppFont );
+    ::Size aTmp = pOutDev->PixelToLogic(aSize, MapMode(MapUnit::MapAppFont));
     return aTmp;
 }
 // css::awt::XWindowListener
@@ -490,65 +477,67 @@ void SAL_CALL UnoDialogControl::windowResized( const css::awt::WindowEvent& e )
 {
     OutputDevice*pOutDev = Application::GetDefaultDevice();
     DBG_ASSERT( pOutDev, "Missing Default Device!" );
-    if ( pOutDev && !mbSizeModified )
+    if ( !pOutDev || mbSizeModified )
+        return;
+
+    // Currently we are simply using MapUnit::MapAppFont
+    ::Size aAppFontSize( e.Width, e.Height );
+
+    Reference< XControl > xDialogControl( *this, UNO_QUERY_THROW );
+    Reference< XDevice > xDialogDevice( xDialogControl->getPeer(), UNO_QUERY );
+    OSL_ENSURE( xDialogDevice.is(), "UnoDialogControl::windowResized: no peer, but a windowResized event?" );
+
+    // #i87592 In design mode the drawing layer works with sizes with decoration.
+    // Therefore we have to subtract them before writing back to the properties (model).
+    if ( xDialogDevice.is() && mbDesignMode )
     {
-        // Currentley we are simply using MapUnit::MapAppFont
-        ::Size aAppFontSize( e.Width, e.Height );
-
-        Reference< XControl > xDialogControl( *this, UNO_QUERY_THROW );
-        Reference< XDevice > xDialogDevice( xDialogControl->getPeer(), UNO_QUERY );
-        OSL_ENSURE( xDialogDevice.is(), "UnoDialogControl::windowResized: no peer, but a windowResized event?" );
-
-        // #i87592 In design mode the drawing layer works with sizes with decoration.
-        // Therefore we have to subtract them before writing back to the properties (model).
-        if ( xDialogDevice.is() && mbDesignMode )
-        {
-            DeviceInfo aDeviceInfo( xDialogDevice->getInfo() );
-            aAppFontSize.Width() -= aDeviceInfo.LeftInset + aDeviceInfo.RightInset;
-            aAppFontSize.Height() -= aDeviceInfo.TopInset + aDeviceInfo.BottomInset;
-        }
-
-        aAppFontSize = ImplMapPixelToAppFont( pOutDev, aAppFontSize );
-
-        // Remember that changes have been done by listener. No need to
-        // update the position because of property change event.
-        mbSizeModified = true;
-        Sequence< OUString > aProps( 2 );
-        Sequence< Any > aValues( 2 );
-        // Properties in a sequence must be sorted!
-        aProps[0] = "Height";
-        aProps[1] = "Width";
-        aValues[0] <<= aAppFontSize.Height();
-        aValues[1] <<= aAppFontSize.Width();
-
-        ImplSetPropertyValues( aProps, aValues, true );
-        mbSizeModified = false;
+        DeviceInfo aDeviceInfo( xDialogDevice->getInfo() );
+        aAppFontSize.AdjustWidth( -(aDeviceInfo.LeftInset + aDeviceInfo.RightInset) );
+        aAppFontSize.AdjustHeight( -(aDeviceInfo.TopInset + aDeviceInfo.BottomInset) );
     }
+
+    aAppFontSize = ImplMapPixelToAppFont( pOutDev, aAppFontSize );
+
+    // Remember that changes have been done by listener. No need to
+    // update the position because of property change event.
+    mbSizeModified = true;
+    Sequence< OUString > aProps( 2 );
+    Sequence< Any > aValues( 2 );
+    // Properties in a sequence must be sorted!
+    aProps[0] = "Height";
+    aProps[1] = "Width";
+    aValues[0] <<= aAppFontSize.Height();
+    aValues[1] <<= aAppFontSize.Width();
+
+    ImplSetPropertyValues( aProps, aValues, true );
+    mbSizeModified = false;
+
 }
 
 void SAL_CALL UnoDialogControl::windowMoved( const css::awt::WindowEvent& e )
 {
     OutputDevice*pOutDev = Application::GetDefaultDevice();
     DBG_ASSERT( pOutDev, "Missing Default Device!" );
-    if ( pOutDev && !mbPosModified )
-    {
-        // Currentley we are simply using MapUnit::MapAppFont
-        ::Size aTmp( e.X, e.Y );
-        aTmp = ImplMapPixelToAppFont( pOutDev, aTmp );
+    if ( !pOutDev || mbPosModified )
+        return;
 
-        // Remember that changes have been done by listener. No need to
-        // update the position because of property change event.
-        mbPosModified = true;
-        Sequence< OUString > aProps( 2 );
-        Sequence< Any > aValues( 2 );
-        aProps[0] = "PositionX";
-        aProps[1] = "PositionY";
-        aValues[0] <<= aTmp.Width();
-        aValues[1] <<= aTmp.Height();
+    // Currently we are simply using MapUnit::MapAppFont
+    ::Size aTmp( e.X, e.Y );
+    aTmp = ImplMapPixelToAppFont( pOutDev, aTmp );
 
-        ImplSetPropertyValues( aProps, aValues, true );
-        mbPosModified = false;
-    }
+    // Remember that changes have been done by listener. No need to
+    // update the position because of property change event.
+    mbPosModified = true;
+    Sequence< OUString > aProps( 2 );
+    Sequence< Any > aValues( 2 );
+    aProps[0] = "PositionX";
+    aProps[1] = "PositionY";
+    aValues[0] <<= aTmp.Width();
+    aValues[1] <<= aTmp.Height();
+
+    ImplSetPropertyValues( aProps, aValues, true );
+    mbPosModified = false;
+
 }
 
 void SAL_CALL UnoDialogControl::windowShown( const EventObject& ) {}
@@ -621,28 +610,30 @@ void SAL_CALL UnoDialogControl::modified(
 
 void UnoDialogControl::ImplModelPropertiesChanged( const Sequence< PropertyChangeEvent >& rEvents )
 {
-    sal_Int32 nLen = rEvents.getLength();
-    for( sal_Int32 i = 0; i < nLen; i++ )
+    for( const PropertyChangeEvent& rEvt : rEvents )
     {
-        const PropertyChangeEvent& rEvt = rEvents.getConstArray()[i];
         Reference< XControlModel > xModel( rEvt.Source, UNO_QUERY );
         bool bOwnModel = xModel.get() == getModel().get();
-        if ( bOwnModel && rEvt.PropertyName == "ImageURL" )
+        if (bOwnModel && rEvt.PropertyName == "ImageURL" && !ImplHasProperty(BASEPROPERTY_GRAPHIC))
         {
             OUString aImageURL;
             Reference< graphic::XGraphic > xGraphic;
             if (( ImplGetPropertyValue( GetPropertyName( BASEPROPERTY_IMAGEURL ) ) >>= aImageURL ) &&
                 ( !aImageURL.isEmpty() ))
             {
-                OUString absoluteUrl = aImageURL;
-                if ( !aImageURL.startsWith( UNO_NAME_GRAPHOBJ_URLPREFIX ) )
-
-                    absoluteUrl = getPhysicalLocation( ImplGetPropertyValue( GetPropertyName( BASEPROPERTY_DIALOGSOURCEURL )),
-                                         uno::makeAny(aImageURL));
-
+                OUString absoluteUrl = getPhysicalLocation(ImplGetPropertyValue(GetPropertyName(BASEPROPERTY_DIALOGSOURCEURL)), uno::makeAny(aImageURL));
                 xGraphic = ImageHelper::getGraphicFromURL_nothrow( absoluteUrl );
             }
             ImplSetPropertyValue(  GetPropertyName( BASEPROPERTY_GRAPHIC), uno::makeAny( xGraphic ), true );
+            break;
+        }
+        else if (bOwnModel && rEvt.PropertyName == "Graphic")
+        {
+            uno::Reference<graphic::XGraphic> xGraphic;
+            if (ImplGetPropertyValue("Graphic") >>= xGraphic)
+            {
+                ImplSetPropertyValue("Graphic", uno::makeAny(xGraphic), true);
+            }
             break;
         }
     }
@@ -650,7 +641,6 @@ void UnoDialogControl::ImplModelPropertiesChanged( const Sequence< PropertyChang
 }
 
 
-//  class MultiPageControl
 
 UnoMultiPageControl::UnoMultiPageControl( const uno::Reference< uno::XComponentContext >& rxContext ) : ControlContainerBase(rxContext), maTabListeners( *this )
 {
@@ -748,19 +738,26 @@ void SAL_CALL UnoMultiPageControl::removeTabListener( const Reference< XTabListe
     maTabListeners.removeInterface( Listener );
 }
 
+IMPL_IMPLEMENTATION_ID( UnoMultiPageControl )
 
 // lang::XTypeProvider
-IMPL_XTYPEPROVIDER_START( UnoMultiPageControl )
-    cppu::UnoType<awt::XSimpleTabController>::get(),
-    cppu::UnoType<awt::XTabListener>::get(),
-    ControlContainerBase::getTypes()
-IMPL_XTYPEPROVIDER_END
+css::uno::Sequence< css::uno::Type > UnoMultiPageControl::getTypes()
+{
+    static const ::cppu::OTypeCollection aTypeList(
+        cppu::UnoType<css::lang::XTypeProvider>::get(),
+        cppu::UnoType<awt::XSimpleTabController>::get(),
+        cppu::UnoType<awt::XTabListener>::get(),
+        ControlContainerBase::getTypes()
+    );
+    return aTypeList.getTypes();
+}
 
 // uno::XInterface
 uno::Any UnoMultiPageControl::queryAggregation( const uno::Type & rType )
 {
     uno::Any aRet = ::cppu::queryInterface( rType,
-                                        (static_cast< awt::XTabListener* >(this)), (static_cast< awt::XSimpleTabController* >(this)) );
+                                        static_cast< awt::XTabListener* >(this),
+                                        static_cast< awt::XSimpleTabController* >(this) );
     return (aRet.hasValue() ? aRet : ControlContainerBase::queryAggregation( rType ));
 }
 
@@ -769,9 +766,9 @@ OUString UnoMultiPageControl::GetComponentServiceName()
     bool bDecoration( true );
     ImplGetPropertyValue( GetPropertyName( BASEPROPERTY_DECORATION )) >>= bDecoration;
     if ( bDecoration )
-        return OUString("tabcontrol");
+        return "tabcontrol";
     // Hopefully we can tweak the tabcontrol to display without tabs
-    return OUString("tabcontrolnotabs");
+    return "tabcontrolnotabs";
 }
 
 void UnoMultiPageControl::bindPage( const uno::Reference< awt::XControl >& _rxControl )
@@ -780,8 +777,8 @@ void UnoMultiPageControl::bindPage( const uno::Reference< awt::XControl >& _rxCo
     uno::Reference< awt::XSimpleTabController > xTabCntrl( getPeer(), uno::UNO_QUERY );
     uno::Reference< beans::XPropertySet > xProps( _rxControl->getModel(), uno::UNO_QUERY );
 
-   VCLXTabPage* pXPage = dynamic_cast< VCLXTabPage* >( xPage.get() );
-   TabPage* pPage = pXPage ? pXPage->getTabPage() : nullptr;
+    VCLXTabPage* pXPage = dynamic_cast< VCLXTabPage* >( xPage.get() );
+    TabPage* pPage = pXPage ? pXPage->getTabPage() : nullptr;
     if ( xTabCntrl.is() && pPage )
     {
         VCLXMultiPage* pXTab = dynamic_cast< VCLXMultiPage* >( xTabCntrl.get() );
@@ -801,10 +798,9 @@ void UnoMultiPageControl::createPeer( const Reference< XToolkit > & rxToolkit, c
 
     UnoControlContainer::createPeer( rxToolkit, rParentPeer );
 
-    uno::Sequence< uno::Reference< awt::XControl > > aCtrls = getControls();
-    sal_uInt32 nCtrls = aCtrls.getLength();
-    for( sal_uInt32 n = 0; n < nCtrls; n++ )
-       bindPage( aCtrls[ n ] );
+    const uno::Sequence< uno::Reference< awt::XControl > > aCtrls = getControls();
+    for( const auto& rCtrl : aCtrls )
+       bindPage( rCtrl );
     sal_Int32 nActiveTab(0);
     Reference< XPropertySet > xMultiProps( getModel(), UNO_QUERY );
     xMultiProps->getPropertyValue( GetPropertyName( BASEPROPERTY_MULTIPAGEVALUE ) ) >>= nActiveTab;
@@ -813,7 +809,7 @@ void UnoMultiPageControl::createPeer( const Reference< XToolkit > & rxToolkit, c
     if ( xTabCntrl.is() )
     {
         xTabCntrl->addTabListener( this );
-        if ( nActiveTab && nCtrls ) // Ensure peer is initialise with correct activated tab
+        if ( nActiveTab && aCtrls.hasElements() ) // Ensure peer is initialise with correct activated tab
         {
             xTabCntrl->activateTab( nActiveTab );
             ImplSetPropertyValue( GetPropertyName( BASEPROPERTY_MULTIPAGEVALUE ), uno::makeAny( nActiveTab ), true );
@@ -867,17 +863,11 @@ UnoMultiPageModel::UnoMultiPageModel( const Reference< XComponentContext >& rxCo
     ImplRegisterProperty( BASEPROPERTY_USERFORMCONTAINEES, uno::makeAny( xNameCont ) );
 }
 
-UnoMultiPageModel::UnoMultiPageModel( const UnoMultiPageModel& rModel )
-    : ControlModelContainerBase( rModel )
-{
-}
-
 UnoMultiPageModel::~UnoMultiPageModel()
 {
 }
 
-UnoControlModel*
-UnoMultiPageModel::Clone() const
+rtl::Reference<UnoControlModel> UnoMultiPageModel::Clone() const
 {
     // clone the container itself
     UnoMultiPageModel* pClone = new UnoMultiPageModel( *this );
@@ -887,7 +877,7 @@ UnoMultiPageModel::Clone() const
 
 OUString UnoMultiPageModel::getServiceName()
 {
-    return OUString( "com.sun.star.awt.UnoMultiPageModel" );
+    return "com.sun.star.awt.UnoMultiPageModel";
 }
 
 uno::Any UnoMultiPageModel::ImplGetDefaultValue( sal_uInt16 nPropId ) const
@@ -901,13 +891,8 @@ uno::Any UnoMultiPageModel::ImplGetDefaultValue( sal_uInt16 nPropId ) const
 
 ::cppu::IPropertyArrayHelper& UnoMultiPageModel::getInfoHelper()
 {
-    static UnoPropertyArrayHelper* pHelper = nullptr;
-    if ( !pHelper )
-    {
-        uno::Sequence<sal_Int32>    aIDs = ImplGetPropertyIds();
-        pHelper = new UnoPropertyArrayHelper( aIDs );
-    }
-    return *pHelper;
+    static UnoPropertyArrayHelper aHelper( ImplGetPropertyIds() );
+    return aHelper;
 }
 
 // beans::XMultiPropertySet
@@ -939,7 +924,6 @@ sal_Bool SAL_CALL UnoMultiPageModel::getGroupControl(  )
 }
 
 
-//  class UnoPageControl
 
 UnoPageControl::UnoPageControl( const uno::Reference< uno::XComponentContext >& rxContext ) : ControlContainerBase(rxContext)
 {
@@ -953,7 +937,7 @@ UnoPageControl::~UnoPageControl()
 
 OUString UnoPageControl::GetComponentServiceName()
 {
-    return OUString("tabpage");
+    return "tabpage";
 }
 
 
@@ -985,17 +969,11 @@ UnoPageModel::UnoPageModel( const Reference< XComponentContext >& rxContext ) : 
     ImplRegisterProperty( BASEPROPERTY_USERFORMCONTAINEES, uno::makeAny( xNameCont ) );
 }
 
-UnoPageModel::UnoPageModel( const UnoPageModel& rModel )
-    : ControlModelContainerBase( rModel )
-{
-}
-
 UnoPageModel::~UnoPageModel()
 {
 }
 
-UnoControlModel*
-UnoPageModel::Clone() const
+rtl::Reference<UnoControlModel> UnoPageModel::Clone() const
 {
     // clone the container itself
     UnoPageModel* pClone = new UnoPageModel( *this );
@@ -1005,7 +983,7 @@ UnoPageModel::Clone() const
 
 OUString UnoPageModel::getServiceName()
 {
-    return OUString( "com.sun.star.awt.UnoPageModel" );
+    return "com.sun.star.awt.UnoPageModel";
 }
 
 uno::Any UnoPageModel::ImplGetDefaultValue( sal_uInt16 nPropId ) const
@@ -1019,13 +997,8 @@ uno::Any UnoPageModel::ImplGetDefaultValue( sal_uInt16 nPropId ) const
 
 ::cppu::IPropertyArrayHelper& UnoPageModel::getInfoHelper()
 {
-    static UnoPropertyArrayHelper* pHelper = nullptr;
-    if ( !pHelper )
-    {
-        uno::Sequence<sal_Int32>  aIDs = ImplGetPropertyIds();
-        pHelper = new UnoPropertyArrayHelper( aIDs );
-    }
-    return *pHelper;
+    static UnoPropertyArrayHelper aHelper( ImplGetPropertyIds() );
+    return aHelper;
 }
 
 // beans::XMultiPropertySet
@@ -1044,7 +1017,6 @@ sal_Bool SAL_CALL UnoPageModel::getGroupControl(  )
 // Frame control
 
 
-//  class UnoFrameControl
 
 UnoFrameControl::UnoFrameControl( const uno::Reference< uno::XComponentContext >& rxContext ) : ControlContainerBase(rxContext)
 {
@@ -1058,7 +1030,7 @@ UnoFrameControl::~UnoFrameControl()
 
 OUString UnoFrameControl::GetComponentServiceName()
 {
-    return OUString("frame");
+    return "frame";
 }
 
 void UnoFrameControl::ImplSetPosSize( Reference< XControl >& rxCtrl )
@@ -1073,47 +1045,46 @@ void UnoFrameControl::ImplSetPosSize( Reference< XControl >& rxCtrl )
 
     ControlContainerBase::ImplSetPosSize( rxCtrl );
     Reference < XWindow > xW( rxCtrl, UNO_QUERY );
-    if ( !bOwnCtrl && xW.is() && !sTitle.isEmpty() )
-    {
-        awt::Rectangle aSizePos = xW->getPosSize();
+    if ( bOwnCtrl || !xW.is() || sTitle.isEmpty() )
+        return;
 
-        sal_Int32 nX = aSizePos.X, nY = aSizePos.Y, nWidth = aSizePos.Width, nHeight = aSizePos.Height;
-        // Retrieve the values set by the base class
-        OutputDevice*pOutDev = Application::GetDefaultDevice();
-        if ( pOutDev )
+    awt::Rectangle aSizePos = xW->getPosSize();
+
+    sal_Int32 nX = aSizePos.X, nY = aSizePos.Y, nWidth = aSizePos.Width, nHeight = aSizePos.Height;
+    // Retrieve the values set by the base class
+    OutputDevice*pOutDev = Application::GetDefaultDevice();
+    if ( pOutDev )
+    {
+        // Adjust Y based on height of Title
+        ::tools::Rectangle aRect = pOutDev->GetTextRect( {}, sTitle );
+        nY = nY + ( aRect.GetHeight() / 2 );
+    }
+    else
+    {
+        Reference< XWindowPeer > xPeer = ImplGetCompatiblePeer();
+        Reference< XDevice > xD( xPeer, UNO_QUERY );
+
+        SimpleFontMetric aFM;
+        FontDescriptor aFD;
+        Any aVal = ImplGetPropertyValue( GetPropertyName( BASEPROPERTY_FONTDESCRIPTOR ) );
+
+        aVal >>= aFD;
+        if ( !aFD.StyleName.isEmpty() )
         {
-            // Adjust Y based on height of Title
-            ::tools::Rectangle aRect;
-            aRect = pOutDev->GetTextRect( aRect, sTitle );
-            nY = nY + ( aRect.GetHeight() / 2 );
+            Reference< XFont > xFont = xD->getFont( aFD );
+            aFM = xFont->getFontMetric();
         }
         else
         {
-            Reference< XWindowPeer > xPeer = ImplGetCompatiblePeer();
-            Reference< XDevice > xD( xPeer, UNO_QUERY );
-
-            SimpleFontMetric aFM;
-            FontDescriptor aFD;
-            Any aVal = ImplGetPropertyValue( GetPropertyName( BASEPROPERTY_FONTDESCRIPTOR ) );
-
-            aVal >>= aFD;
-            if ( !aFD.StyleName.isEmpty() )
-            {
-                Reference< XFont > xFont = xD->getFont( aFD );
-                aFM = xFont->getFontMetric();
-            }
-            else
-            {
-                Reference< XGraphics > xG = xD->createGraphics();
-                aFM = xG->getFontMetric();
-            }
-
-            sal_Int16 nH = aFM.Ascent + aFM.Descent;
-            // offset y based on height of font ( not sure if my guess at the correct calculation is correct here )
-            nY = nY + ( nH / 8); // how do I test this
+            Reference< XGraphics > xG = xD->createGraphics();
+            aFM = xG->getFontMetric();
         }
-        xW->setPosSize( nX, nY, nWidth, nHeight, PosSize::POSSIZE );
+
+        sal_Int16 nH = aFM.Ascent + aFM.Descent;
+        // offset y based on height of font ( not sure if my guess at the correct calculation is correct here )
+        nY = nY + ( nH / 8); // how do I test this
     }
+    xW->setPosSize( nX, nY, nWidth, nHeight, PosSize::POSSIZE );
 }
 
 // ------------- UnoFrameModel -----------------
@@ -1144,17 +1115,11 @@ UnoFrameModel::UnoFrameModel(  const Reference< XComponentContext >& rxContext )
     ImplRegisterProperty( BASEPROPERTY_USERFORMCONTAINEES, uno::makeAny( xNameCont ) );
 }
 
-UnoFrameModel::UnoFrameModel( const UnoFrameModel& rModel )
-    : ControlModelContainerBase( rModel )
-{
-}
-
 UnoFrameModel::~UnoFrameModel()
 {
 }
 
-UnoControlModel*
-UnoFrameModel::Clone() const
+rtl::Reference<UnoControlModel> UnoFrameModel::Clone() const
 {
     // clone the container itself
     UnoFrameModel* pClone = new UnoFrameModel( *this );
@@ -1164,7 +1129,7 @@ UnoFrameModel::Clone() const
 
 OUString UnoFrameModel::getServiceName()
 {
-    return OUString( "com.sun.star.awt.UnoFrameModel" );
+    return "com.sun.star.awt.UnoFrameModel";
 }
 
 uno::Any UnoFrameModel::ImplGetDefaultValue( sal_uInt16 nPropId ) const
@@ -1191,13 +1156,8 @@ uno::Any UnoFrameModel::ImplGetDefaultValue( sal_uInt16 nPropId ) const
 
 ::cppu::IPropertyArrayHelper& UnoFrameModel::getInfoHelper()
 {
-    static UnoPropertyArrayHelper* pHelper = nullptr;
-    if ( !pHelper )
-    {
-        uno::Sequence<sal_Int32>    aIDs = ImplGetPropertyIds();
-        pHelper = new UnoPropertyArrayHelper( aIDs );
-    }
-    return *pHelper;
+    static UnoPropertyArrayHelper aHelper( ImplGetPropertyIds() );
+    return aHelper;
 }
 
 // beans::XMultiPropertySet
@@ -1207,7 +1167,7 @@ uno::Reference< beans::XPropertySetInfo > UnoFrameModel::getPropertySetInfo(  )
     return xInfo;
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 stardiv_Toolkit_UnoControlDialogModel_get_implementation(
     css::uno::XComponentContext *context,
     css::uno::Sequence<css::uno::Any> const &)
@@ -1215,7 +1175,7 @@ stardiv_Toolkit_UnoControlDialogModel_get_implementation(
     return cppu::acquire(new OGeometryControlModel<UnoControlDialogModel>(context));
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 stardiv_Toolkit_UnoDialogControl_get_implementation(
     css::uno::XComponentContext *context,
     css::uno::Sequence<css::uno::Any> const &)
@@ -1223,7 +1183,7 @@ stardiv_Toolkit_UnoDialogControl_get_implementation(
     return cppu::acquire(new UnoDialogControl(context));
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 stardiv_Toolkit_UnoMultiPageControl_get_implementation(
     css::uno::XComponentContext *context,
     css::uno::Sequence<css::uno::Any> const &)
@@ -1231,7 +1191,7 @@ stardiv_Toolkit_UnoMultiPageControl_get_implementation(
     return cppu::acquire(new UnoMultiPageControl(context));
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 stardiv_Toolkit_UnoMultiPageModel_get_implementation(
     css::uno::XComponentContext *context,
     css::uno::Sequence<css::uno::Any> const &)
@@ -1239,7 +1199,7 @@ stardiv_Toolkit_UnoMultiPageModel_get_implementation(
     return cppu::acquire(new UnoMultiPageModel(context));
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 stardiv_Toolkit_UnoPageControl_get_implementation(
     css::uno::XComponentContext *context,
     css::uno::Sequence<css::uno::Any> const &)
@@ -1247,7 +1207,7 @@ stardiv_Toolkit_UnoPageControl_get_implementation(
     return cppu::acquire(new UnoPageControl(context));
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 stardiv_Toolkit_UnoPageModel_get_implementation(
     css::uno::XComponentContext *context,
     css::uno::Sequence<css::uno::Any> const &)
@@ -1255,7 +1215,7 @@ stardiv_Toolkit_UnoPageModel_get_implementation(
     return cppu::acquire(new UnoPageModel(context));
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 stardiv_Toolkit_UnoFrameControl_get_implementation(
     css::uno::XComponentContext *context,
     css::uno::Sequence<css::uno::Any> const &)
@@ -1263,7 +1223,7 @@ stardiv_Toolkit_UnoFrameControl_get_implementation(
     return cppu::acquire(new UnoFrameControl(context));
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 stardiv_Toolkit_UnoFrameModel_get_implementation(
     css::uno::XComponentContext *context,
     css::uno::Sequence<css::uno::Any> const &)

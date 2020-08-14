@@ -17,27 +17,27 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <string.h>
-#include <stdio.h>
 #include <stdlib.h>
 
-#include <osl/module.hxx>
-
-#include <unx/salunx.h>
 #include <unx/saldata.hxx>
 #include <unx/saldisp.hxx>
+#include <unx/salinst.h>
 #include <unx/geninst.h>
 #include <unx/genpspgraphics.h>
 #include <unx/salframe.h>
-#include <unx/genprn.h>
 #include <unx/sm.hxx>
 #include <unx/i18n_im.hxx>
-#include <unx/helper.hxx>
 
 #include <vcl/inputtypes.hxx>
 
-#include "salwtype.hxx"
-#include <sal/macros.h>
+#include <salwtype.hxx>
+
+#include <config_features.h>
+#include <vcl/skia/SkiaHelper.hxx>
+#include <config_skia.h>
+#if HAVE_FEATURE_SKIA
+#include <skia/x11/gdiimpl.hxx>
+#endif
 
 // plugin factory function
 extern "C"
@@ -54,7 +54,7 @@ extern "C"
         if( ! ( pNoXInitThreads && *pNoXInitThreads ) )
             XInitThreads();
 
-        X11SalInstance* pInstance = new X11SalInstance( new SalYieldMutex() );
+        X11SalInstance* pInstance = new X11SalInstance( std::make_unique<SalYieldMutex>() );
 
         // initialize SalData
         X11SalData *pSalData = new X11SalData( SAL_DATA_UNX, pInstance );
@@ -66,13 +66,15 @@ extern "C"
     }
 }
 
-X11SalInstance::X11SalInstance(SalYieldMutex* pMutex)
-    : SalGenericInstance(pMutex)
+X11SalInstance::X11SalInstance(std::unique_ptr<SalYieldMutex> pMutex)
+    : SalGenericInstance(std::move(pMutex))
     , mpXLib(nullptr)
 {
     ImplSVData* pSVData = ImplGetSVData();
-    delete pSVData->maAppData.mpToolkitName;
-    pSVData->maAppData.mpToolkitName = new OUString("x11");
+    pSVData->maAppData.mxToolkitName = OUString("x11");
+#if HAVE_FEATURE_SKIA
+    X11SkiaSalGraphicsImpl::prepareSkia();
+#endif
 }
 
 X11SalInstance::~X11SalInstance()
@@ -83,7 +85,11 @@ X11SalInstance::~X11SalInstance()
     // dispose SalDisplay list from SalData
     // would be done in a static destructor else which is
     // a little late
-    GetGenericData()->Dispose();
+    GetGenericUnixSalData()->Dispose();
+
+#if HAVE_FEATURE_SKIA
+    SkiaHelper::cleanup();
+#endif
 }
 
 SalX11Display* X11SalInstance::CreateDisplay() const
@@ -93,14 +99,18 @@ SalX11Display* X11SalInstance::CreateDisplay() const
 
 // AnyInput from sv/mow/source/app/svapp.cxx
 
+namespace {
+
 struct PredicateReturn
 {
     VclInputFlags nType;
     bool          bRet;
 };
 
+}
+
 extern "C" {
-Bool ImplPredicateEvent( Display *, XEvent *pEvent, char *pData )
+static Bool ImplPredicateEvent( Display *, XEvent *pEvent, char *pData )
 {
     PredicateReturn *pPre = reinterpret_cast<PredicateReturn *>(pData);
 
@@ -141,13 +151,14 @@ Bool ImplPredicateEvent( Display *, XEvent *pEvent, char *pData )
 
 bool X11SalInstance::AnyInput(VclInputFlags nType)
 {
-    SalGenericData *pData = GetGenericData();
+    GenericUnixSalData *pData = GetGenericUnixSalData();
     Display *pDisplay  = vcl_sal::getSalDisplay(pData)->GetDisplay();
     bool bRet = false;
 
     if( (nType & VclInputFlags::TIMER) && (mpXLib && mpXLib->CheckTimeout(false)) )
         bRet = true;
-    else if (XPending(pDisplay) )
+
+    if( !bRet && XPending(pDisplay) )
     {
         PredicateReturn aInput;
         XEvent          aEvent;
@@ -161,15 +172,16 @@ bool X11SalInstance::AnyInput(VclInputFlags nType)
         bRet = aInput.bRet;
     }
 #if OSL_DEBUG_LEVEL > 1
-    fprintf( stderr, "AnyInput 0x%x = %s\n", static_cast<unsigned int>(nType), bRet ? "true" : "false" );
+    SAL_INFO("vcl.app", "AnyInput "
+            << std::showbase << std::hex
+            << static_cast<unsigned int>(nType)
+            << " = " << (bRet ? "true" : "false"));
 #endif
     return bRet;
 }
 
-SalYieldResult X11SalInstance::DoYield(bool bWait, bool bHandleAllCurrentEvents, sal_uLong const nReleased)
+bool X11SalInstance::DoYield(bool bWait, bool bHandleAllCurrentEvents)
 {
-    (void) nReleased;
-    assert(nReleased == 0); // not implemented
     return mpXLib->Yield( bWait, bHandleAllCurrentEvents );
 }
 
@@ -208,34 +220,30 @@ void X11SalInstance::AfterAppInit()
     pSalDisplay->SetupInput();
 }
 
-extern "C" { static void SAL_CALL thisModule() {} }
-
-void X11SalInstance::AddToRecentDocumentList(const OUString& rFileUrl, const OUString& rMimeType, const OUString& rDocumentService)
-{
-    typedef void (*PFUNC_ADD_TO_RECENTLY_USED_LIST)(const OUString&, const OUString&, const OUString&);
-
-    PFUNC_ADD_TO_RECENTLY_USED_LIST add_to_recently_used_file_list = nullptr;
-
-    osl::Module module;
-    module.loadRelative( &thisModule, "librecentfile.so" );
-    if (module.is())
-        add_to_recently_used_file_list = reinterpret_cast<PFUNC_ADD_TO_RECENTLY_USED_LIST>(module.getFunctionSymbol("add_to_recently_used_file_list"));
-    if (add_to_recently_used_file_list)
-        add_to_recently_used_file_list(rFileUrl, rMimeType, rDocumentService);
-}
+void X11SalInstance::AddToRecentDocumentList(const OUString&, const OUString&, const OUString&) {}
 
 void X11SalInstance::PostPrintersChanged()
 {
-    SalDisplay* pDisp = vcl_sal::getSalDisplay(GetGenericData());
-    const std::list< SalFrame* >& rList = pDisp->getFrames();
-    for( std::list< SalFrame* >::const_iterator it = rList.begin();
-         it != rList.end(); ++it )
-        pDisp->SendInternalEvent( *it, nullptr, SalEvent::PrinterChanged );
+    SalDisplay* pDisp = vcl_sal::getSalDisplay(GetGenericUnixSalData());
+    for (auto pSalFrame : pDisp->getFrames() )
+        pDisp->PostEvent( pSalFrame, nullptr, SalEvent::PrinterChanged );
 }
 
-GenPspGraphics *X11SalInstance::CreatePrintGraphics()
+std::unique_ptr<GenPspGraphics> X11SalInstance::CreatePrintGraphics()
 {
-    return new GenPspGraphics();
+    return std::make_unique<GenPspGraphics>();
+}
+
+std::shared_ptr<vcl::BackendCapabilities> X11SalInstance::GetBackendCapabilities()
+{
+    auto pBackendCapabilities = SalInstance::GetBackendCapabilities();
+#if HAVE_FEATURE_SKIA
+#if SKIA_USE_BITMAP32
+    if( SkiaHelper::isVCLSkiaEnabled())
+        pBackendCapabilities->mbSupportsBitmap32 = true;
+#endif
+#endif
+    return pBackendCapabilities;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -23,14 +23,12 @@
 #include <com/sun/star/sdbc/XRow.hpp>
 #include <com/sun/star/beans/PropertyValue.hpp>
 
-#include <rtl/ref.hxx>
 #include <ucbhelper/contenthelper.hxx>
 
-#include <list>
-#include <boost/optional.hpp>
+#include <optional>
 
 
-namespace ucb { namespace ucp { namespace ext
+namespace ucb::ucp::ext
 {
 
 
@@ -114,8 +112,7 @@ namespace ucb { namespace ucp { namespace ext
 
         css::uno::Sequence< css::uno::Any >
             setPropertyValues(
-                const css::uno::Sequence< css::beans::PropertyValue >& rValues,
-                const css::uno::Reference< css::ucb::XCommandEnvironment >& xEnv
+                const css::uno::Sequence< css::beans::PropertyValue >& rValues
             );
 
         static bool denotesRootContent( const OUString& i_rContentIdentifier );
@@ -125,14 +122,14 @@ namespace ucb { namespace ucp { namespace ext
 
     private:
         ExtensionContentType                    m_eExtContentType;
-        ::boost::optional< bool >               m_aIsFolder;
-        ::boost::optional< OUString >    m_aContentType;
+        ::std::optional< bool >               m_aIsFolder;
+        ::std::optional< OUString >    m_aContentType;
         OUString                         m_sExtensionId;
         OUString                         m_sPathIntoExtension;
     };
 
 
-} } }   // namespace ucb::ucp::ext
+} // namespace ucb::ucp::ext
 
 
 #endif // INCLUDED_UCB_SOURCE_UCP_EXT_UCPEXT_CONTENT_HXX

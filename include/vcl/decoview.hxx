@@ -21,14 +21,14 @@
 #define INCLUDED_VCL_DECOVIEW_HXX
 
 #include <vcl/dllapi.h>
+#include <vcl/outdev.hxx>
 #include <vcl/vclptr.hxx>
-#include <rsc/rsc-vcl-shared-types.hxx>
+#include <vcl/vclenum.hxx>
 #include <o3tl/typed_flags_set.hxx>
 
 namespace tools { class Rectangle; }
 class Point;
 class Color;
-class OutputDevice;
 
 // Flags for DrawSymbol()
 enum class DrawSymbolFlags
@@ -43,16 +43,6 @@ namespace o3tl
 }
 
 // Flags for DrawFrame()
-enum class DrawFrameStyle
-{
-    NONE                     = 0x0000,
-    In                       = 0x0001,
-    Out                      = 0x0002,
-    Group                    = 0x0003,
-    DoubleIn                 = 0x0004,
-    DoubleOut                = 0x0005,
-    NWF                      = 0x0006,
-};
 enum class DrawFrameFlags
 {
     NONE                     = 0x0000,
@@ -84,17 +74,14 @@ enum class DrawButtonFlags
     Checked                 = 0x0008,
     DontKnow                = 0x0010,
     Mono                    = 0x0020,
-    NoFill                  = 0x0040,
-    Disabled                = 0x0080,
+    Disabled                = 0x0040,
     Highlight               = 0x0100,
     Flat                    = 0x0200,
-    NoLeftLightBorder       = 0x1000,
-    NoText                  = 0x2000,
-    NoImage                 = 0x4000,
+    NoLeftLightBorder       = 0x1000
 };
 namespace o3tl
 {
-    template<> struct typed_flags<DrawButtonFlags> : is_typed_flags<DrawButtonFlags, 0x73ff> {};
+    template<> struct typed_flags<DrawButtonFlags> : is_typed_flags<DrawButtonFlags, 0x137f> {};
 }
 
 class VCL_DLLPUBLIC DecorationView

@@ -19,25 +19,26 @@
 
 #include <config_features.h>
 
-#include <vcl/svapp.hxx>
+#include <com/sun/star/frame/XFrame.hpp>
+#include <com/sun/star/view/XSelectionSupplier.hpp>
+
 #include <sfx2/viewfrm.hxx>
 #include <sfx2/dispatch.hxx>
 #include <svx/dataaccessdescriptor.hxx>
 #include <comphelper/servicehelper.hxx>
 #include <unodispatch.hxx>
-#include <unobaseclass.hxx>
 #include <view.hxx>
 #include <cmdid.h>
-#include "wrtsh.hxx"
-#include "dbmgr.hxx"
+#include <wrtsh.hxx>
+#include <dbmgr.hxx>
 
 using namespace ::com::sun::star;
 
-static const char cURLFormLetter[] = ".uno:DataSourceBrowser/FormLetter";
-static const char cURLInsertContent[] = ".uno:DataSourceBrowser/InsertContent";//data into fields
-static const char cURLInsertColumns[] = ".uno:DataSourceBrowser/InsertColumns";//data into text
-static const char cURLDocumentDataSource[] = ".uno:DataSourceBrowser/DocumentDataSource";//current data source of the document
-static const sal_Char cInternalDBChangeNotification[] = ".uno::Writer/DataSourceChanged";
+const char cURLFormLetter[] = ".uno:DataSourceBrowser/FormLetter";
+const char cURLInsertContent[] = ".uno:DataSourceBrowser/InsertContent";//data into fields
+const char cURLInsertColumns[] = ".uno:DataSourceBrowser/InsertColumns";//data into text
+const char cURLDocumentDataSource[] = ".uno:DataSourceBrowser/DocumentDataSource";//current data source of the document
+const char cInternalDBChangeNotification[] = ".uno::Writer/DataSourceChanged";
 
 SwXDispatchProviderInterceptor::SwXDispatchProviderInterceptor(SwView& rVw) :
     m_pView(&rVw)
@@ -46,14 +47,14 @@ SwXDispatchProviderInterceptor::SwXDispatchProviderInterceptor(SwView& rVw) :
     m_xIntercepted.set(xUnoFrame, uno::UNO_QUERY);
     if(m_xIntercepted.is())
     {
-        m_refCount++;
+        osl_atomic_increment(&m_refCount);
         m_xIntercepted->registerDispatchProviderInterceptor(static_cast<frame::XDispatchProviderInterceptor*>(this));
         // this should make us the top-level dispatch-provider for the component, via a call to our
-        // setDispatchProvider we should have got an fallback for requests we (i.e. our master) cannot fulfill
+        // setDispatchProvider we should have got a fallback for requests we (i.e. our master) cannot fulfill
         uno::Reference< lang::XComponent> xInterceptedComponent(m_xIntercepted, uno::UNO_QUERY);
         if (xInterceptedComponent.is())
             xInterceptedComponent->addEventListener(static_cast<lang::XEventListener*>(this));
-        m_refCount--;
+        osl_atomic_decrement(&m_refCount);
     }
 }
 
@@ -102,13 +103,9 @@ uno::Sequence< uno::Reference< frame::XDispatch > > SwXDispatchProviderIntercept
 {
     DispatchMutexLock_Impl aLock;
     uno::Sequence< uno::Reference< frame::XDispatch> > aReturn(aDescripts.getLength());
-    uno::Reference< frame::XDispatch>* pReturn = aReturn.getArray();
-    const frame::DispatchDescriptor* pDescripts = aDescripts.getConstArray();
-    for (sal_Int32 i=0; i<aDescripts.getLength(); ++i, ++pReturn, ++pDescripts)
-    {
-        *pReturn = queryDispatch(pDescripts->FeatureURL,
-                pDescripts->FrameName, pDescripts->SearchFlags);
-    }
+    std::transform(aDescripts.begin(), aDescripts.end(), aReturn.begin(),
+        [this](const frame::DispatchDescriptor& rDescr) -> uno::Reference<frame::XDispatch> {
+            return queryDispatch(rDescr.FeatureURL, rDescr.FrameName, rDescr.SearchFlags); });
     return aReturn;
 }
 
@@ -165,11 +162,9 @@ const uno::Sequence< sal_Int8 > & SwXDispatchProviderInterceptor::getUnoTunnelId
 sal_Int64 SwXDispatchProviderInterceptor::getSomething(
     const uno::Sequence< sal_Int8 >& aIdentifier )
 {
-    if( aIdentifier.getLength() == 16
-        && 0 == memcmp( getUnoTunnelId().getConstArray(),
-                                        aIdentifier.getConstArray(), 16 ) )
+    if( isUnoTunnelId<SwXDispatchProviderInterceptor>(aIdentifier) )
     {
-            return sal::static_int_cast< sal_Int64 >( reinterpret_cast< sal_IntPtr >( this ));
+        return sal::static_int_cast< sal_Int64 >( reinterpret_cast< sal_IntPtr >( this ));
     }
     return 0;
 }
@@ -231,7 +226,7 @@ void SwXDispatch::dispatch(const util::URL& aURL,
     }
     else if(aURL.Complete == cURLFormLetter)
     {
-        SfxUsrAnyItem aDBProperties(FN_PARAM_DATABASE_PROPERTIES, uno::makeAny(aArgs));
+        SfxUnoAnyItem aDBProperties(FN_PARAM_DATABASE_PROPERTIES, uno::makeAny(aArgs));
         m_pView->GetViewFrame()->GetDispatcher()->ExecuteList(
             FN_MAILMERGE_WIZARD,
             SfxCallMode::ASYNCHRON,
@@ -245,7 +240,6 @@ void SwXDispatch::dispatch(const util::URL& aURL,
     else if(aURL.Complete == cInternalDBChangeNotification)
     {
         frame::FeatureStateEvent aEvent;
-        aEvent.IsEnabled = true;
         aEvent.Source = *static_cast<cppu::OWeakObject*>(this);
 
         const SwDBData& rData = m_pView->GetWrtShell().GetDBDesc();
@@ -257,14 +251,15 @@ void SwXDispatch::dispatch(const util::URL& aURL,
         aEvent.State <<= aDescriptor.createPropertyValueSequence();
         aEvent.IsEnabled = !rData.sDataSource.isEmpty();
 
-        StatusListenerList::iterator aListIter = m_aListenerList.begin();
-        for(aListIter = m_aListenerList.begin(); aListIter != m_aListenerList.end(); ++aListIter)
+        // calls to statusChanged may call addStatusListener or removeStatusListener
+        // so copy m_aStatusListenerVector on stack
+        auto copyStatusListenerVector = m_aStatusListenerVector;
+        for (auto & status : copyStatusListenerVector)
         {
-            StatusStruct_Impl aStatus = *aListIter;
-            if(aStatus.aURL.Complete == cURLDocumentDataSource)
+            if(status.aURL.Complete == cURLDocumentDataSource)
             {
-                aEvent.FeatureURL = aStatus.aURL;
-                aStatus.xListener->statusChanged( aEvent );
+                aEvent.FeatureURL = status.aURL;
+                status.xListener->statusChanged( aEvent );
             }
         }
     }
@@ -290,7 +285,7 @@ void SwXDispatch::addStatusListener(
     aEvent.Source = *static_cast<cppu::OWeakObject*>(this);
     aEvent.FeatureURL = aURL;
 
-    // one of the URLs requires a special state ....
+    // one of the URLs requires a special state...
     if (aURL.Complete == cURLDocumentDataSource)
     {
         const SwDBData& rData = m_pView->GetWrtShell().GetDBDesc();
@@ -306,11 +301,10 @@ void SwXDispatch::addStatusListener(
 
     xControl->statusChanged( aEvent );
 
-    StatusListenerList::iterator aListIter = m_aListenerList.begin();
     StatusStruct_Impl aStatus;
     aStatus.xListener = xControl;
     aStatus.aURL = aURL;
-    m_aListenerList.insert(aListIter, aStatus);
+    m_aStatusListenerVector.emplace_back(aStatus);
 
     if(!m_bListenerAdded)
     {
@@ -324,17 +318,11 @@ void SwXDispatch::addStatusListener(
 void SwXDispatch::removeStatusListener(
     const uno::Reference< frame::XStatusListener >& xControl, const util::URL&  )
 {
-    StatusListenerList::iterator aListIter = m_aListenerList.begin();
-    for(aListIter = m_aListenerList.begin(); aListIter != m_aListenerList.end(); ++aListIter)
-    {
-        StatusStruct_Impl aStatus = *aListIter;
-        if(aStatus.xListener.get() == xControl.get())
-        {
-            m_aListenerList.erase(aListIter);
-            break;
-        }
-    }
-    if(m_aListenerList.empty() && m_pView)
+    m_aStatusListenerVector.erase(
+        std::remove_if(m_aStatusListenerVector.begin(), m_aStatusListenerVector.end(),
+            [&](const StatusStruct_Impl& status) { return status.xListener.get() == xControl.get(); }),
+        m_aStatusListenerVector.end());
+    if(m_aStatusListenerVector.empty() && m_pView)
     {
         uno::Reference<view::XSelectionSupplier> xSupplier = m_pView->GetUNOObject();
         uno::Reference<view::XSelectionChangeListener> xThis = this;
@@ -350,22 +338,23 @@ void SwXDispatch::selectionChanged( const lang::EventObject&  )
                        ShellMode::ListText == eMode  ||
                        ShellMode::TableText == eMode  ||
                        ShellMode::TableListText == eMode;
-    if(bEnable != m_bOldEnable)
-    {
-        m_bOldEnable = bEnable;
-        frame::FeatureStateEvent aEvent;
-        aEvent.IsEnabled = bEnable;
-        aEvent.Source = *static_cast<cppu::OWeakObject*>(this);
+    if(bEnable == m_bOldEnable)
+        return;
 
-        StatusListenerList::iterator aListIter = m_aListenerList.begin();
-        for(aListIter = m_aListenerList.begin(); aListIter != m_aListenerList.end(); ++aListIter)
-        {
-            StatusStruct_Impl aStatus = *aListIter;
-            aEvent.FeatureURL = aStatus.aURL;
-            if (aStatus.aURL.Complete != cURLDocumentDataSource)
-                // the document's data source does not depend on the selection, so it's state does not change here
-                aStatus.xListener->statusChanged( aEvent );
-        }
+    m_bOldEnable = bEnable;
+    frame::FeatureStateEvent aEvent;
+    aEvent.IsEnabled = bEnable;
+    aEvent.Source = *static_cast<cppu::OWeakObject*>(this);
+
+    // calls to statusChanged may call addStatusListener or removeStatusListener
+    // so copy m_aStatusListenerVector on stack
+    auto copyStatusListenerVector = m_aStatusListenerVector;
+    for (auto & status : copyStatusListenerVector)
+    {
+        aEvent.FeatureURL = status.aURL;
+        if (status.aURL.Complete != cURLDocumentDataSource)
+            // the document's data source does not depend on the selection, so it's state does not change here
+            status.xListener->statusChanged( aEvent );
     }
 }
 
@@ -378,16 +367,17 @@ void SwXDispatch::disposing( const lang::EventObject& rSource )
 
     lang::EventObject aObject;
     aObject.Source = static_cast<cppu::OWeakObject*>(this);
-    StatusListenerList::iterator aListIter = m_aListenerList.begin();
-    for(; aListIter != m_aListenerList.end(); ++aListIter)
+    // calls to statusChanged may call addStatusListener or removeStatusListener
+    // so copy m_aStatusListenerVector on stack
+    auto copyStatusListenerVector = m_aStatusListenerVector;
+    for (auto & status : copyStatusListenerVector)
     {
-        StatusStruct_Impl aStatus = *aListIter;
-        aStatus.xListener->disposing(aObject);
+        status.xListener->disposing(aObject);
     }
     m_pView = nullptr;
 }
 
-const sal_Char* SwXDispatch::GetDBChangeURL()
+const char* SwXDispatch::GetDBChangeURL()
 {
     return cInternalDBChangeNotification;
 }

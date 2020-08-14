@@ -25,11 +25,17 @@
 #include "LabelAlignment.hxx"
 #include "MinimumAndMaximumSupplier.hxx"
 #include "LegendEntryProvider.hxx"
-#include "ExplicitCategoriesProvider.hxx"
-#include <com/sun/star/chart2/XChartType.hpp>
 #include <com/sun/star/drawing/Direction3D.hpp>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star::awt { struct Point; }
+namespace com::sun::star::chart2 { class XChartType; }
+
+
+namespace chart { class ExplicitCategoriesProvider; }
+namespace chart { struct ExplicitScaleData; }
+namespace chart { class ChartModel; }
+
+namespace com::sun::star {
     namespace util {
         class XNumberFormatsSupplier;
     }
@@ -37,7 +43,7 @@ namespace com { namespace sun { namespace star {
         class XColorScheme;
         class XRegressionCurveCalculator;
     }
-}}}
+}
 
 namespace chart {
 
@@ -52,22 +58,10 @@ public:
     {
         m_aNumberFormatMap[tFullAxisIndex(nDimIndex,nAxisIndex)] = nFormatKey;
     }
-    bool hasFormat( sal_Int32 nDimIndex, sal_Int32 nAxisIndex ) const
-    {
-        return (m_aNumberFormatMap.find(tFullAxisIndex(nDimIndex,nAxisIndex)) !=m_aNumberFormatMap.end());
-    }
-    sal_Int32 getFormat( sal_Int32 nDimIndex, sal_Int32 nAxisIndex ) const
-    {
-        tNumberFormatMap::const_iterator aIt = m_aNumberFormatMap.find(tFullAxisIndex(nDimIndex,nAxisIndex));
-        if( aIt !=m_aNumberFormatMap.end() )
-            return aIt->second;
-        return 0;
-    }
 
 private:
     typedef std::pair< sal_Int32, sal_Int32 > tFullAxisIndex;
-    typedef std::map< tFullAxisIndex, sal_Int32 > tNumberFormatMap;
-    tNumberFormatMap m_aNumberFormatMap;
+    std::map< tFullAxisIndex, sal_Int32 > m_aNumberFormatMap;
 };
 
 /**
@@ -78,10 +72,11 @@ class VDataSeriesGroup final
 {
 public:
     VDataSeriesGroup() = delete;
-    VDataSeriesGroup( VDataSeries* pSeries );
+    VDataSeriesGroup( std::unique_ptr<VDataSeries> pSeries );
+    VDataSeriesGroup(VDataSeriesGroup&&) noexcept;
     ~VDataSeriesGroup();
 
-    void addSeries( VDataSeries* pSeries );//takes ownership of pSeries
+    void addSeries( std::unique_ptr<VDataSeries> pSeries );//takes ownership of pSeries
     sal_Int32 getSeriesCount() const;
     void deleteSeries();
 
@@ -98,7 +93,7 @@ public:
                                                 , bool bSeparateStackingForDifferentSigns
                                                 , double& rfMinimumY, double& rfMaximumY, sal_Int32 nAxisIndex );
 
-    std::vector< VDataSeries* >   m_aSeriesVector;
+    std::vector< std::unique_ptr<VDataSeries> >   m_aSeriesVector;
 
 private:
     //cached values
@@ -124,7 +119,7 @@ public:
 
     virtual ~VSeriesPlotter() override;
 
-    /*
+    /**
     * A new series can be positioned relative to other series in a chart.
     * This positioning has two dimensions. First a series can be placed
     * next to each other on the category axis. This position is indicated by xSlot.
@@ -139,7 +134,7 @@ public:
     * ySlot == already occupied     : insert at given y and x position
     * ySlot > occupied              : stack on top at given x position
     */
-    virtual void addSeries( VDataSeries* pSeries, sal_Int32 zSlot = -1, sal_Int32 xSlot = -1,sal_Int32 ySlot = -1 );
+    virtual void addSeries( std::unique_ptr<VDataSeries> pSeries, sal_Int32 zSlot, sal_Int32 xSlot, sal_Int32 ySlot );
 
     /** a value <= 0 for a directions means that this direction can be stretched arbitrary
     */
@@ -187,11 +182,12 @@ public:
 
     virtual std::vector< ViewLegendEntry > createLegendEntries(
             const css::awt::Size& rEntryKeyAspectRatio,
-            css::chart::ChartLegendExpansion eLegendExpansion,
+            css::chart2::LegendPosition eLegendPosition,
             const css::uno::Reference< css::beans::XPropertySet >& xTextProperties,
             const css::uno::Reference< css::drawing::XShapes >& xTarget,
             const css::uno::Reference< css::lang::XMultiServiceFactory >& xShapeFactory,
-            const css::uno::Reference< css::uno::XComponentContext >& xContext
+            const css::uno::Reference< css::uno::XComponentContext >& xContext,
+            ChartModel& rModel
                 ) override;
 
     virtual LegendSymbolStyle getLegendSymbolStyle();
@@ -223,7 +219,7 @@ public:
 
     std::vector< VDataSeries* > getAllSeries();
 
-    // This method creates a series plotter of the requested type; e.g. : return new PieChart ....
+    // This method creates a series plotter of the requested type; e.g. : return new PieChart...
     static VSeriesPlotter* createSeriesPlotter( const css::uno::Reference< css::chart2::XChartType >& xChartTypeModel
                                 , sal_Int32 nDimensionCount
                                 , bool bExcludingPositioning /*for pie and donut charts labels and exploded segments are excluded from the given size*/);
@@ -233,7 +229,6 @@ public:
     // Methods for number formats and color schemes
 
     void setNumberFormatsSupplier( const css::uno::Reference< css::util::XNumberFormatsSupplier > & xNumFmtSupplier );
-    void setAxesNumberFormats( const AxesNumberFormats& rAxesNumberFormats ) { m_aAxesNumberFormats = rAxesNumberFormats; };
 
     void setColorScheme( const css::uno::Reference< css::chart2::XColorScheme >& xColorScheme );
 
@@ -246,6 +241,7 @@ public:
     //better performance for big data
     void setCoordinateSystemResolution( const css::uno::Sequence< sal_Int32 >& rCoordinateSystemResolution );
     bool PointsWereSkipped() const { return m_bPointsWereSkipped;}
+    void setPieLabelsAllowToMove( bool bIsPieOrDonut ) { m_bPieLabelsAllowToMove = bIsPieOrDonut; };
 
     //return the depth for a logic 1
     double  getTransformedDepth() const;
@@ -327,7 +323,7 @@ protected:
 
     /// This method returns a text string representation of the passed numeric
     /// value by exploiting a NumberFormatterWrapper object.
-    OUString getLabelTextForValue( VDataSeries& rDataSeries
+    OUString getLabelTextForValue( VDataSeries const & rDataSeries
                 , sal_Int32 nPointIndex
                 , double fValue
                 , bool bAsPercentage );
@@ -359,6 +355,21 @@ protected:
         , const double* pfScaledLogicX
         );
 
+    void createErrorRectangle(
+          const css::drawing::Position3D& rUnscaledLogicPosition
+        , VDataSeries& rVDataSeries
+        , sal_Int32 nIndex
+        , const css::uno::Reference< css::drawing::XShapes >& rTarget
+        , bool bUseXErrorData
+        , bool bUseYErrorData
+    );
+
+    void addErrorBorder(
+          const css::drawing::Position3D& rPos0
+        , const css::drawing::Position3D& rPos1
+        , const css::uno::Reference< css::drawing::XShapes >& rTarget
+        , const css::uno::Reference< css::beans::XPropertySet >& rErrorBorderProp );
+
     void createErrorBar_X( const css::drawing::Position3D& rUnscaledLogicPosition
         , VDataSeries& rVDataSeries, sal_Int32 nPointIndex
         , const css::uno::Reference< css::drawing::XShapes >& xTarget );
@@ -366,9 +377,9 @@ protected:
     void createErrorBar_Y( const css::drawing::Position3D& rUnscaledLogicPosition
         , VDataSeries& rVDataSeries, sal_Int32 nPointIndex
         , const css::uno::Reference< css::drawing::XShapes >& xTarget
-        , double* pfScaledLogicX );
+        , double const * pfScaledLogicX );
 
-    void createRegressionCurvesShapes( VDataSeries& rVDataSeries
+    void createRegressionCurvesShapes( VDataSeries const & rVDataSeries
         , const css::uno::Reference< css::drawing::XShapes >& xTarget
         , const css::uno::Reference< css::drawing::XShapes >& xEquationTarget
         , bool bMaySkipPointsInRegressionCalculation );
@@ -383,11 +394,13 @@ protected:
           const css::uno::Reference< css::drawing::XShape >& xTarget
         , const css::uno::Reference< css::beans::XPropertySet >& xSource
         , const tPropertyNameMap& rMap
-        , tPropertyNameValueMap* pOverwriteMap=nullptr );
+        , tPropertyNameValueMap const * pOverwriteMap=nullptr );
 
     virtual PlottingPositionHelper& getPlottingPositionHelper( sal_Int32 nAxisIndex ) const;//nAxisIndex indicates whether the position belongs to the main axis ( nAxisIndex==0 ) or secondary axis ( nAxisIndex==1 )
 
     VDataSeries* getFirstSeries() const;
+
+    OUString getCategoryName( sal_Int32 nPointIndex ) const;
 
 protected:
     PlottingPositionHelper*    m_pMainPosHelper;
@@ -402,7 +415,6 @@ protected:
     Date m_aNullDate;
 
     std::unique_ptr< NumberFormatterWrapper > m_apNumberFormatterWrapper;
-    AxesNumberFormats                         m_aAxesNumberFormats;//direct numberformats on axes, if empty ask the data series instead
 
     css::uno::Reference< css::chart2::XColorScheme >    m_xColorScheme;
 
@@ -411,12 +423,13 @@ protected:
     //better performance for big data
     css::uno::Sequence< sal_Int32 >    m_aCoordinateSystemResolution;
     bool m_bPointsWereSkipped;
+    bool m_bPieLabelsAllowToMove;
 
 private:
     typedef std::map< sal_Int32 , ExplicitScaleData > tSecondaryValueScales;
     tSecondaryValueScales   m_aSecondaryValueScales;
 
-    typedef std::map< sal_Int32 , PlottingPositionHelper* > tSecondaryPosHelperMap;
+    typedef std::map< sal_Int32 , std::unique_ptr<PlottingPositionHelper> > tSecondaryPosHelperMap;
     mutable tSecondaryPosHelperMap   m_aSecondaryPosHelperMap;
     css::awt::Size      m_aPageReferenceSize;
 };

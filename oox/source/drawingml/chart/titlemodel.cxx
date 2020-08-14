@@ -17,12 +17,10 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "drawingml/chart/titlemodel.hxx"
+#include <drawingml/chart/titlemodel.hxx>
 #include <oox/token/tokens.hxx>
 
-namespace oox {
-namespace drawingml {
-namespace chart {
+namespace oox::drawingml::chart {
 
 TextModel::TextModel()
 {
@@ -42,9 +40,19 @@ TitleModel::~TitleModel()
 {
 }
 
-LegendModel::LegendModel(bool bMSO2007Doc) :
+LegendEntryModel::LegendEntryModel() :
+    mnLegendEntryIdx( -1 ),
+    mbLabelDeleted( false )
+{
+}
+
+LegendEntryModel::~LegendEntryModel()
+{
+}
+
+LegendModel::LegendModel() :
     mnPosition( XML_r ),
-    mbOverlay( !bMSO2007Doc )
+    mbOverlay( false )
 {
 }
 
@@ -52,8 +60,6 @@ LegendModel::~LegendModel()
 {
 }
 
-} // namespace chart
-} // namespace drawingml
-} // namespace oox
+} // namespace oox::drawingml::chart
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

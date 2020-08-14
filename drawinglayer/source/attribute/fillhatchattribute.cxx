@@ -22,10 +22,8 @@
 #include <rtl/instance.hxx>
 
 
-namespace drawinglayer
+namespace drawinglayer::attribute
 {
-    namespace attribute
-    {
         class ImpFillHatchAttribute
         {
         public:
@@ -107,36 +105,20 @@ namespace drawinglayer
         {
         }
 
-        FillHatchAttribute::FillHatchAttribute(const FillHatchAttribute& rCandidate)
-        :   mpFillHatchAttribute(rCandidate.mpFillHatchAttribute)
-        {
-        }
+        FillHatchAttribute::FillHatchAttribute(const FillHatchAttribute&) = default;
 
-        FillHatchAttribute::FillHatchAttribute(FillHatchAttribute&& rCandidate)
-        :   mpFillHatchAttribute(std::move(rCandidate.mpFillHatchAttribute))
-        {
-        }
+        FillHatchAttribute::FillHatchAttribute(FillHatchAttribute&&) = default;
 
-        FillHatchAttribute::~FillHatchAttribute()
-        {
-        }
+        FillHatchAttribute::~FillHatchAttribute() = default;
 
         bool FillHatchAttribute::isDefault() const
         {
             return mpFillHatchAttribute.same_object(theGlobalDefault::get());
         }
 
-        FillHatchAttribute& FillHatchAttribute::operator=(const FillHatchAttribute& rCandidate)
-        {
-            mpFillHatchAttribute = rCandidate.mpFillHatchAttribute;
-            return *this;
-        }
+        FillHatchAttribute& FillHatchAttribute::operator=(const FillHatchAttribute&) = default;
 
-        FillHatchAttribute& FillHatchAttribute::operator=(FillHatchAttribute&& rCandidate)
-        {
-            mpFillHatchAttribute = std::move(rCandidate.mpFillHatchAttribute);
-            return *this;
-        }
+        FillHatchAttribute& FillHatchAttribute::operator=(FillHatchAttribute&&) = default;
 
         bool FillHatchAttribute::operator==(const FillHatchAttribute& rCandidate) const
         {
@@ -178,7 +160,6 @@ namespace drawinglayer
             return mpFillHatchAttribute->isFillBackground();
         }
 
-    } // end of namespace attribute
-} // end of namespace drawinglayer
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -21,9 +21,10 @@
 #include <tools/wldcrd.hxx>
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
 #include <com/sun/star/lang/XComponent.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/util/URLTransformer.hpp>
+#include <com/sun/star/drawing/framework/XControllerManager.hpp>
 #include <comphelper/processfactory.hxx>
+#include <sal/log.hxx>
 
 #include <algorithm>
 
@@ -34,7 +35,7 @@ using namespace ::com::sun::star::drawing::framework;
 #undef VERBOSE
 //#define VERBOSE 1
 
-namespace sd { namespace framework {
+namespace sd::framework {
 
 ResourceFactoryManager::ResourceFactoryManager (const Reference<XControllerManager>& rxManager)
     : maMutex(),
@@ -50,12 +51,10 @@ ResourceFactoryManager::ResourceFactoryManager (const Reference<XControllerManag
 
 ResourceFactoryManager::~ResourceFactoryManager()
 {
-    for (auto iXInterfaceResource = maFactoryMap.begin();
-         iXInterfaceResource != maFactoryMap.end();
-         ++iXInterfaceResource)
+    for (auto& rXInterfaceResource : maFactoryMap)
     {
-        Reference<lang::XComponent> xComponent (iXInterfaceResource->second, UNO_QUERY);
-        iXInterfaceResource->second = nullptr;
+        Reference<lang::XComponent> xComponent (rXInterfaceResource.second, UNO_QUERY);
+        rXInterfaceResource.second = nullptr;
         if (xComponent.is())
             xComponent->dispose();
     }
@@ -78,8 +77,8 @@ void ResourceFactoryManager::AddFactory (
 
     if (rsURL.indexOf('*') >= 0 || rsURL.indexOf('?') >= 0)
     {
-        // The URL is a URL pattern not an single URL.
-        maFactoryPatternList.push_back(FactoryPatternList::value_type(rsURL, rxFactory));
+        // The URL is a URL pattern not a single URL.
+        maFactoryPatternList.emplace_back(rsURL, rxFactory);
 
 #if defined VERBOSE && VERBOSE>=1
         SAL_INFO("sd","ResourceFactoryManager::AddFactory pattern " << rsURL << std::hex << rxFactory.get());
@@ -111,17 +110,12 @@ void ResourceFactoryManager::RemoveFactoryForURL (
     else
     {
         // The URL may be a pattern.  Look that up.
-        FactoryPatternList::iterator iPattern;
-        for (iPattern=maFactoryPatternList.begin();
-             iPattern!=maFactoryPatternList.end();
-             ++iPattern)
+        auto iPattern = std::find_if(maFactoryPatternList.begin(), maFactoryPatternList.end(),
+            [&rsURL](const FactoryPatternList::value_type& rPattern) { return rPattern.first == rsURL; });
+        if (iPattern != maFactoryPatternList.end())
         {
-            if (iPattern->first == rsURL)
-            {
-                // Found the pattern.  Remove it.
-                maFactoryPatternList.erase(iPattern);
-                break;
-            }
+            // Found the pattern.  Remove it.
+            maFactoryPatternList.erase(iPattern);
         }
     }
 }
@@ -133,25 +127,22 @@ void ResourceFactoryManager::RemoveFactoryForReference(
 
     // Collect a list with all keys that map to the given factory.
     ::std::vector<OUString> aKeys;
-    FactoryMap::const_iterator iFactory;
-    for (iFactory=maFactoryMap.begin(); iFactory!=maFactoryMap.end(); ++iFactory)
-        if (iFactory->second == rxFactory)
-            aKeys.push_back(iFactory->first);
+    for (const auto& rFactory : maFactoryMap)
+        if (rFactory.second == rxFactory)
+            aKeys.push_back(rFactory.first);
 
     // Remove the entries whose keys we just have collected.
-    ::std::vector<OUString>::const_iterator iKey;
-    for (iKey=aKeys.begin(); iKey!=aKeys.end();  ++iKey)
-        maFactoryMap.erase(*iKey);
+    for (const auto& rKey : aKeys)
+        maFactoryMap.erase(rKey);
 
     // Remove the pattern entries whose factories are identical to the given
     // factory.
-    FactoryPatternList::iterator iNewEnd (
+    maFactoryPatternList.erase(
         std::remove_if(
             maFactoryPatternList.begin(),
             maFactoryPatternList.end(),
-            [&] (FactoryPatternList::value_type const& it) { return it.second == rxFactory; }));
-    if (iNewEnd != maFactoryPatternList.end())
-        maFactoryPatternList.erase(iNewEnd, maFactoryPatternList.end());
+            [&] (FactoryPatternList::value_type const& it) { return it.second == rxFactory; }),
+        maFactoryPatternList.end());
 }
 
 Reference<XResourceFactory> ResourceFactoryManager::GetFactory (
@@ -194,19 +185,17 @@ Reference<XResourceFactory> ResourceFactoryManager::FindFactory (const OUString&
     else
     {
         // Check the URL patterns.
-        FactoryPatternList::const_iterator iPattern;
-        for (iPattern=maFactoryPatternList.begin();
-             iPattern!=maFactoryPatternList.end();
-             ++iPattern)
-        {
-            WildCard aWildCard (iPattern->first);
-            if (aWildCard.Matches(rsURLBase))
-                return iPattern->second;
-        }
+        auto iPattern = std::find_if(maFactoryPatternList.begin(), maFactoryPatternList.end(),
+            [&rsURLBase](const FactoryPatternList::value_type& rPattern) {
+                WildCard aWildCard (rPattern.first);
+                return aWildCard.Matches(rsURLBase);
+            });
+        if (iPattern != maFactoryPatternList.end())
+            return iPattern->second;
     }
     return nullptr;
 }
 
-} } // end of namespace sd::framework
+} // end of namespace sd::framework
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

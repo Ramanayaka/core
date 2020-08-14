@@ -22,13 +22,10 @@
 #include <documentstreamaccess.hxx>
 
 class ScDocShell;
-class ScDocument;
-namespace vcl { class Window; }
 
 namespace sc {
 
 namespace datastreams {
-    class CallerThread;
     class ReaderThread;
 }
 
@@ -66,7 +63,7 @@ public:
     typedef std::vector<Line> LinesType;
 
     enum MoveType { NO_MOVE, RANGE_DOWN, MOVE_DOWN, MOVE_UP };
-    enum { SCRIPT_STREAM = 1, VALUES_IN_LINE = 2 };
+    enum { VALUES_IN_LINE = 2 };
 
     static void MakeToolbarVisible();
     static DataStream* Set(ScDocShell *pShell, const OUString& rURL, const ScRange& rRange,
@@ -111,7 +108,7 @@ private:
     bool mbRunning;
     bool mbValuesInLine;
     bool mbRefreshOnEmptyLine;
-    LinesType* mpLines;
+    std::unique_ptr<LinesType> mpLines;
     size_t mnLinesCount;
     size_t mnLinesSinceRefresh;
     double mfLastRefreshTime;

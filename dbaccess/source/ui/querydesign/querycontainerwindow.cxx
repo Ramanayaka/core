@@ -17,20 +17,19 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "querycontainerwindow.hxx"
-#include "QueryDesignView.hxx"
+#include <querycontainerwindow.hxx>
+#include <QueryDesignView.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/settings.hxx>
-#include "JoinController.hxx"
+#include <JoinController.hxx>
 #include <toolkit/helper/vclunohelper.hxx>
-#include "dbustrings.hrc"
+#include <strings.hxx>
 #include <sfx2/sfxsids.hrc>
-#include <vcl/fixed.hxx>
-#include "UITools.hxx"
+#include <vcl/event.hxx>
+#include <UITools.hxx>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/frame/Frame.hpp>
 #include <com/sun/star/util/XCloseable.hpp>
-#include <memory>
 
 namespace dbaui
 {
@@ -60,8 +59,9 @@ namespace dbaui
     void OQueryContainerWindow::dispose()
     {
         {
-            std::unique_ptr<OQueryViewSwitch> aTemp(m_pViewSwitch);
+            OQueryViewSwitch* pTemp = m_pViewSwitch;
             m_pViewSwitch = nullptr;
+            delete pTemp;
         }
         if ( m_pBeamer )
             ::dbaui::notifySystemWindow(this,m_pBeamer,::comphelper::mem_fun(&TaskPaneList::RemoveWindow));
@@ -96,13 +96,13 @@ namespace dbaui
             // calc pos and size of the splitter
             Point aSplitPos     = m_pSplitter->GetPosPixel();
             Size aSplitSize     = m_pSplitter->GetOutputSizePixel();
-            aSplitSize.Width() = aPlayground.GetWidth();
+            aSplitSize.setWidth( aPlayground.GetWidth() );
 
             if ( aSplitPos.Y() <= aPlayground.Top() )
-                aSplitPos.Y() = aPlayground.Top() + sal_Int32( aPlayground.GetHeight() * 0.2 );
+                aSplitPos.setY( aPlayground.Top() + sal_Int32( aPlayground.GetHeight() * 0.2 ) );
 
             if ( aSplitPos.Y() + aSplitSize.Height() > aPlayground.GetHeight() )
-                aSplitPos.Y() = aPlayground.GetHeight() - aSplitSize.Height();
+                aSplitPos.setY( aPlayground.GetHeight() - aSplitSize.Height() );
 
             // set pos and size of the splitter
             m_pSplitter->SetPosSizePixel( aSplitPos, aSplitSize );
@@ -113,7 +113,7 @@ namespace dbaui
             m_pBeamer->SetPosSizePixel( aPlayground.TopLeft(), aBeamerSize );
 
             // shrink the playground by the size which is occupied by the beamer
-            aPlayground.Top() = aSplitPos.Y() + aSplitSize.Height();
+            aPlayground.SetTop( aSplitPos.Y() + aSplitSize.Height() );
         }
 
         ODataView::resizeAll( aPlayground );
@@ -168,54 +168,53 @@ namespace dbaui
     }
     void OQueryContainerWindow::showPreview(const Reference<XFrame>& _xFrame)
     {
-        if(!m_pBeamer)
+        if(m_pBeamer)
+            return;
+
+        m_pBeamer = VclPtr<OBeamer>::Create(this);
+
+        ::dbaui::notifySystemWindow(this,m_pBeamer,::comphelper::mem_fun(&TaskPaneList::AddWindow));
+
+        m_xBeamer = Frame::create( m_pViewSwitch->getORB() );
+        m_xBeamer->initialize( VCLUnoHelper::GetInterface ( m_pBeamer ) );
+
+        // notify layout manager to not create internal toolbars
+        try
         {
-            m_pBeamer = VclPtr<OBeamer>::Create(this);
-
-            ::dbaui::notifySystemWindow(this,m_pBeamer,::comphelper::mem_fun(&TaskPaneList::AddWindow));
-
-            m_xBeamer = Frame::create( m_pViewSwitch->getORB() );
-            m_xBeamer->initialize( VCLUnoHelper::GetInterface ( m_pBeamer ) );
-
-            // notify layout manager to not create internal toolbars
-            try
+            Reference < XPropertySet > xLMPropSet(m_xBeamer->getLayoutManager(), UNO_QUERY);
+            if ( xLMPropSet.is() )
             {
-                Reference < XPropertySet > xLMPropSet(m_xBeamer->getLayoutManager(), UNO_QUERY);
-                if ( xLMPropSet.is() )
-                {
-                    const OUString aAutomaticToolbars( "AutomaticToolbars" );
-                    xLMPropSet->setPropertyValue( aAutomaticToolbars, Any( false ));
-                }
+                xLMPropSet->setPropertyValue( "AutomaticToolbars", Any( false ));
             }
-            catch( Exception& )
-            {
-            }
-
-            m_xBeamer->setName(FRAME_NAME_QUERY_PREVIEW);
-
-            // append our frame
-            Reference < XFramesSupplier > xSup(_xFrame,UNO_QUERY);
-            Reference < XFrames > xFrames = xSup->getFrames();
-            xFrames->append( Reference<XFrame>(m_xBeamer,UNO_QUERY_THROW) );
-
-            Size aSize = GetOutputSizePixel();
-            Size aBeamer(aSize.Width(),sal_Int32(aSize.Height()*0.33));
-
-            const long  nFrameHeight = LogicToPixel( Size( 0, 3 ), MapUnit::MapAppFont ).Height();
-            Point aPos(0,aBeamer.Height()+nFrameHeight);
-
-            m_pBeamer->SetPosSizePixel(Point(0,0),aBeamer);
-            m_pBeamer->Show();
-
-            m_pSplitter->SetPosSizePixel( Point(0,aBeamer.Height()), Size(aSize.Width(),nFrameHeight) );
-            // a default pos for the splitter, so that the listbox is about 80 (logical) pixels wide
-            m_pSplitter->SetSplitPosPixel( aBeamer.Height() );
-            m_pViewSwitch->SetPosSizePixel(aPos,Size(aBeamer.Width(),aSize.Height() - aBeamer.Height()-nFrameHeight));
-
-            m_pSplitter->Show();
-
-            Resize();
         }
+        catch( Exception& )
+        {
+        }
+
+        m_xBeamer->setName(FRAME_NAME_QUERY_PREVIEW);
+
+        // append our frame
+        Reference < XFramesSupplier > xSup(_xFrame,UNO_QUERY);
+        Reference < XFrames > xFrames = xSup->getFrames();
+        xFrames->append( Reference<XFrame>(m_xBeamer,UNO_QUERY_THROW) );
+
+        Size aSize = GetOutputSizePixel();
+        Size aBeamer(aSize.Width(),sal_Int32(aSize.Height()*0.33));
+
+        const long  nFrameHeight = LogicToPixel(Size(0, 3), MapMode(MapUnit::MapAppFont)).Height();
+        Point aPos(0,aBeamer.Height()+nFrameHeight);
+
+        m_pBeamer->SetPosSizePixel(Point(0,0),aBeamer);
+        m_pBeamer->Show();
+
+        m_pSplitter->SetPosSizePixel( Point(0,aBeamer.Height()), Size(aSize.Width(),nFrameHeight) );
+        // a default pos for the splitter, so that the listbox is about 80 (logical) pixels wide
+        m_pSplitter->SetSplitPosPixel( aBeamer.Height() );
+        m_pViewSwitch->SetPosSizePixel(aPos,Size(aBeamer.Width(),aSize.Height() - aBeamer.Height()-nFrameHeight));
+
+        m_pSplitter->Show();
+
+        Resize();
     }
 
 }   // namespace dbaui

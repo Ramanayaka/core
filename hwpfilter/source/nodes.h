@@ -22,7 +22,8 @@
 
 #include <sal/config.h>
 
-#include <list>
+#include <memory>
+#include <vector>
 #include <stdio.h>
 #include <stdlib.h>
 #include <osl/diagnose.h>
@@ -60,7 +61,7 @@ enum IDLIST {
      ID_NUMBER,
      ID_OPERATOR,
      ID_SPACE,
-     ID_DELIMETER
+     ID_DELIMITER
 };
 
 class Node{
@@ -94,8 +95,7 @@ public:
      Node *child;
      Node *next;
 };
-
-extern std::list<Node *> nodelist;
+extern std::vector<std::unique_ptr<Node>> nodelist;
 
 #endif
 

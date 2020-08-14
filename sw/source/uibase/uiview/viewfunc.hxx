@@ -18,7 +18,10 @@
  */
 #ifndef INCLUDED_SW_SOURCE_UIBASE_UIVIEW_VIEWFUNC_HXX
 #define INCLUDED_SW_SOURCE_UIBASE_UIVIEW_VIEWFUNC_HXX
-#include <tools/solar.h>
+
+#include <vcl/outdev.hxx>
+
+#include <IDocumentDeviceAccess.hxx>
 
 class ImageButton;
 class Point;
@@ -32,7 +35,7 @@ class SwViewShell;
 namespace vcl { class Window; }
 
 // The following functions are available in viewprt.cxx
-void SetPrinter( IDocumentDeviceAccess*, SfxPrinter*, bool bWeb );
+void SetPrinter( IDocumentDeviceAccess*, SfxPrinter const *, bool bWeb );
 void SetAppPrintOptions( SwViewShell* pSh, bool bWeb );
 
 // The following functions are available in viewport.cxx

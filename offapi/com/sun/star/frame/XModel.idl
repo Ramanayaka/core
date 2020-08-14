@@ -29,7 +29,7 @@
 
  module com {  module sun {  module star {  module frame {
 
-/** represents a component which is created from an URL and arguments.
+/** represents a component which is created from a URL and arguments.
 
     <p>
     It is a representation of a resource in the sense that it was
@@ -86,7 +86,7 @@ published interface XModel: com::sun::star::lang::XComponent
 
     /** provides read access on currently representation of the
         com::sun::star::document::MediaDescriptor
-        of this model which describes the model and his state
+        of this model which describes the model and its state
 
         @returns
             the arguments with which the model was originally created or

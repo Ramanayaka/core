@@ -17,10 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_ACCESSIBILITY_INC_EXTENDED_ACCESSIBLETABLISTBOXTABLE_HXX
-#define INCLUDED_ACCESSIBILITY_INC_EXTENDED_ACCESSIBLETABLISTBOXTABLE_HXX
+#pragma once
 
-#include "AccessibleBrowseBoxTable.hxx"
+#include <extended/AccessibleBrowseBoxTable.hxx>
 #include <comphelper/uno3.hxx>
 #include <cppuhelper/implbase1.hxx>
 #include <com/sun/star/accessibility/XAccessibleSelection.hpp>
@@ -33,7 +32,7 @@ namespace accessibility {
 typedef ::cppu::ImplHelper1< css::accessibility::XAccessibleSelection >
             AccessibleTabListBoxTableImplHelper;
 
-class AccessibleTabListBoxTable : public AccessibleBrowseBoxTable, public AccessibleTabListBoxTableImplHelper
+class AccessibleTabListBoxTable final : public AccessibleBrowseBoxTable, public AccessibleTabListBoxTableImplHelper
 {
 private:
     VclPtr<SvHeaderTabListBox>     m_pTabListBox;
@@ -59,7 +58,13 @@ private:
     sal_Int32 implGetSelRowCount() const;
 
     /** Returns the row index from cell index. */
-    sal_Int32 implGetRow( sal_Int32 _nIndex ) const { return _nIndex / implGetColumnCount(); }
+    sal_Int32 implGetRow( sal_Int32 _nIndex ) const
+    {
+        auto nColCount = implGetColumnCount();
+        assert(nColCount != 0);
+        return _nIndex / nColCount;
+    }
+
     /** Returns the absolute row index of the nSelRow-th selected row. */
     sal_Int32 implGetSelRow( sal_Int32 _nSelRow ) const;
 
@@ -71,7 +76,7 @@ public:
         const css::uno::Reference< css::accessibility::XAccessible >& rxParent,
         SvHeaderTabListBox& rBox );
 
-protected:
+private:
     /** dtor() */
     virtual ~AccessibleTabListBoxTable() override;
 
@@ -99,6 +104,5 @@ public:
 } // namespace accessibility
 
 
-#endif // INCLUDED_ACCESSIBILITY_INC_EXTENDED_ACCESSIBLETABLISTBOXTABLE_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

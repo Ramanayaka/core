@@ -35,13 +35,9 @@ namespace comphelper
         {
             // TODO: perhaps it's time to think about resources in the comphelper module?
             // Would be nice to have localized exception strings (a simply resource file containing
-            // strings only would suffice, and could be realized with an UNO service, so we do not
+            // strings only would suffice, and could be realized with a UNO service, so we do not
             // need the dependency to the Tools project)
-            OUStringBuffer sMessage;
-            sMessage.append( "The property \"" );
-            sMessage.append( _rPropertyName );
-            sMessage.append( "\" is unknown." );
-            return sMessage.makeStringAndClear();
+            return "The property \"" + _rPropertyName + "\" is unknown.";
         }
     }
 
@@ -119,7 +115,7 @@ namespace comphelper
                 OSL_ENSURE( pAllProperties->Name.compareTo( (pAllProperties + 1)->Name ) < 0,
                     "OPropertyStateContainer::getPropertyStates: all-properties not sorted!" );
 #endif
-            if ( pAllProperties->Name.equals( *pLookup ) )
+            if ( pAllProperties->Name == *pLookup )
             {
                 *pStates++ = getPropertyState( *pLookup );
                 ++pLookup;
@@ -149,11 +145,13 @@ namespace comphelper
     }
 
 
-    PropertyState OPropertyStateContainer::getPropertyStateByHandle( sal_Int32 _nHandle )
+    PropertyState OPropertyStateContainer::getPropertyStateByHandle( sal_Int32 _nHandle ) const
     {
         // simply compare the current and the default value
-        Any aCurrentValue; getFastPropertyValue( aCurrentValue, _nHandle );
-        Any aDefaultValue; getPropertyDefaultByHandle( _nHandle, aDefaultValue );
+        Any aCurrentValue;
+        getFastPropertyValue( aCurrentValue, _nHandle );
+        Any aDefaultValue;
+        getPropertyDefaultByHandle( _nHandle, aDefaultValue );
 
         bool bEqual = uno_type_equalData(
                 const_cast< void* >( aCurrentValue.getValue() ), aCurrentValue.getValueType().getTypeLibType(),

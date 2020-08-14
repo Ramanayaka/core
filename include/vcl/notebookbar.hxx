@@ -12,41 +12,68 @@
 
 #include <vcl/builder.hxx>
 #include <vcl/ctrl.hxx>
-#include <vcl/EnumContext.hxx>
-#include <sfx2/notebookbar/NotebookbarContextControl.hxx>
-#include <com/sun/star/ui/XContextChangeEventListener.hpp>
+#include <vcl/NotebookBarAddonsMerger.hxx>
+#include <vcl/settings.hxx>
+#include <set>
 #include <vector>
 
+namespace com::sun::star::ui { class XContextChangeEventListener; }
+
+class NotebookbarContextControl;
 class SystemWindow;
+class SfxViewShell;
 
 /// This implements Widget Layout-based notebook-like menu bar.
-class VCL_DLLPUBLIC NotebookBar : public Control, public VclBuilderContainer
+class VCL_DLLPUBLIC NotebookBar final : public Control, public VclBuilderContainer
 {
 friend class NotebookBarContextChangeEventListener;
 public:
-    NotebookBar(Window* pParent, const OString& rID, const OUString& rUIXMLDescription, const css::uno::Reference<css::frame::XFrame> &rFrame);
+    NotebookBar(Window* pParent, const OString& rID, const OUString& rUIXMLDescription,
+                const css::uno::Reference<css::frame::XFrame>& rFrame,
+                const NotebookBarAddonsItem& aNotebookBarAddonsItem);
     virtual ~NotebookBar() override;
-    virtual void dispose() SAL_OVERRIDE;
+    virtual void dispose() override;
 
     virtual bool PreNotify( NotifyEvent& rNEvt ) override;
-    virtual Size GetOptimalSize() const SAL_OVERRIDE;
-    virtual void setPosSizePixel(long nX, long nY, long nWidth, long nHeight, PosSizeFlags nFlags = PosSizeFlags::All) SAL_OVERRIDE;
+    virtual Size GetOptimalSize() const override;
+    virtual void setPosSizePixel(long nX, long nY, long nWidth, long nHeight, PosSizeFlags nFlags = PosSizeFlags::All) override;
     virtual void Resize() override;
 
     void SetSystemWindow(SystemWindow* pSystemWindow);
 
-    const css::uno::Reference<css::ui::XContextChangeEventListener>& getContextChangeEventListener() const { return m_pEventListener; }
+    void StateChanged(const StateChangedType nStateChange ) override;
 
     void DataChanged(const DataChangedEvent& rDCEvt) override;
+
+    void ControlListenerForCurrentController(bool bListen);
+    void StopListeningAllControllers();
+
+    bool IsWelded() { return m_bIsWelded; }
+    VclPtr<vcl::Window>& GetMainContainer() { return m_xVclContentArea; }
+    OUString GetUIFilePath() { return m_sUIXMLDescription; }
+    void SetDisposeCallback(const Link<const SfxViewShell*, void> rDisposeCallback, const SfxViewShell* pViewShell);
 
 private:
     VclPtr<SystemWindow> m_pSystemWindow;
     css::uno::Reference<css::ui::XContextChangeEventListener> m_pEventListener;
+    std::set<css::uno::Reference<css::frame::XController>> m_alisteningControllers;
     std::vector<NotebookbarContextControl*> m_pContextContainers;
+    css::uno::Reference<css::frame::XFrame> mxFrame;
+    const SfxViewShell* m_pViewShell;
+
+    VclPtr<vcl::Window> m_xVclContentArea;
+    bool m_bIsWelded;
+    OUString m_sUIXMLDescription;
+    Link<const SfxViewShell*, void> m_rDisposeLink;
+
+    AllSettings DefaultSettings;
+    AllSettings PersonaSettings;
 
     void UpdateBackground();
-};
 
+    void UpdateDefaultSettings();
+    void UpdatePersonaSettings();
+};
 
 #endif // INCLUDED_VCL_NOTEBOOKBAR_HXX
 

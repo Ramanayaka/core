@@ -17,31 +17,28 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "FrameView.hxx"
+#include <FrameView.hxx>
 
 #include <svx/svxids.hrc>
-#include <com/sun/star/awt/Rectangle.hpp>
 #include <com/sun/star/drawing/framework/ResourceId.hpp>
+#include <com/sun/star/drawing/framework/XView.hpp>
 #include <rtl/ustrbuf.hxx>
-#include "unokywds.hxx"
+#include <unokywds.hxx>
 #include <vcl/settings.hxx>
+#include <vcl/svapp.hxx>
 
 #include <vector>
-#include "ViewShell.hxx"
-#include "drawdoc.hxx"
-#include "DrawDocShell.hxx"
-#include "optsitem.hxx"
-#include "ViewShellBase.hxx"
-#include "DrawViewShell.hxx"
-#include "OutlineViewShell.hxx"
-#include "sdmod.hxx"
-#include "sdresid.hxx"
-#include "pres.hxx"
-#include "glob.hrc"
-#include "sdiocmpt.hxx"
-#include "framework/FrameworkHelper.hxx"
+#include <ViewShell.hxx>
+#include <drawdoc.hxx>
+#include <DrawDocShell.hxx>
+#include <optsitem.hxx>
+#include <ViewShellBase.hxx>
+#include <sdmod.hxx>
+#include <pres.hxx>
+#include <framework/FrameworkHelper.hxx>
 #include <comphelper/processfactory.hxx>
 #include <sfx2/viewfrm.hxx>
+#include <officecfg/Office/Common.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
@@ -50,8 +47,8 @@ using namespace ::std;
 
 namespace sd {
 
-FrameView::FrameView(SdDrawDocument* pDrawDoc, FrameView* pFrameView /* = NULK */)
-  : SdrView(pDrawDoc, nullptr),
+FrameView::FrameView(SdDrawDocument* pDrawDoc, FrameView* pFrameView /* = NULL */)
+:   SdrView(*pDrawDoc, nullptr), // TTTT SdDrawDocument* -> should be reference
     mnRefCount(0),
     mnPresViewShellId(SID_VIEWSHELL0),
     mbIsNavigatorShowingAllShapes(false)
@@ -173,7 +170,7 @@ FrameView::FrameView(SdDrawDocument* pDrawDoc, FrameView* pFrameView /* = NULK *
         mePageKindOnLoad = pFrameView->GetPageKindOnLoad();
         mnSelectedPage = pFrameView->GetSelectedPage();
         mnSelectedPageOnLoad = pFrameView->GetSelectedPageOnLoad();
-        meEditMode = pFrameView->GetViewShEditMode();
+        mePageEditMode = pFrameView->GetViewShEditMode();
         // meStandardEditMode = pFrameView->GetViewShEditMode(PageKind::Standard);
         // meNotesEditMode = pFrameView->GetViewShEditMode(PageKind::Notes);
         // meHandoutEditMode = pFrameView->GetViewShEditMode(PageKind::Handout);
@@ -196,11 +193,18 @@ FrameView::FrameView(SdDrawDocument* pDrawDoc, FrameView* pFrameView /* = NULK *
     else
     {
         // initialize FrameView with the application data
-        maVisibleLayers.SetAll();
-        maPrintableLayers.SetAll();
+
+        // Layers need to be set, otherwise they are not visible and not printable in
+        // Impress documents. The document contains already the actual layers and their
+        // settings for visible, printable and locked. In case not read from <draw:layer-set>,
+        // ODF defaults are used.
+        SdrLayerAdmin rLayerAdmin = pDrawDoc -> GetLayerAdmin();
+        rLayerAdmin.getVisibleLayersODF(maVisibleLayers);
+        rLayerAdmin.getPrintableLayersODF(maPrintableLayers);
+        rLayerAdmin.getLockedLayersODF(maLockedLayers);
         SetGridCoarse( Size( 1000, 1000 ) );
         SetSnapGridWidth(Fraction(1000, 1), Fraction(1000, 1));
-        SetActiveLayer( SdResId(STR_LAYER_LAYOUT) );
+        SetActiveLayer(sUNO_LayerName_layout);
         mbNoColors = true;
         mbNoAttribs = false;
         maVisArea = ::tools::Rectangle( Point(), Size(0, 0) );
@@ -208,7 +212,7 @@ FrameView::FrameView(SdDrawDocument* pDrawDoc, FrameView* pFrameView /* = NULK *
         mePageKindOnLoad = PageKind::Standard;
         mnSelectedPage = 0;
         mnSelectedPageOnLoad = 0;
-        meEditMode = EditMode::Page;
+        mePageEditMode = EditMode::Page;
         // meStandardEditMode = EditMode::Page;
         // meNotesEditMode = EditMode::Page;
         // meHandoutEditMode = EditMode::MasterPage;
@@ -269,49 +273,49 @@ void FrameView::Disconnect()
 /**
  * Update with data from the specified SdOptions
  */
-void FrameView::Update(SdOptions* pOptions)
+void FrameView::Update(SdOptions const * pOptions)
 {
-    if (pOptions)
-    {
-        mbRuler = pOptions->IsRulerVisible();
-        SetGridVisible( pOptions->IsGridVisible() );
-        SetSnapAngle( pOptions->GetAngle() );
-        SetGridSnap( pOptions->IsUseGridSnap() );
-        SetBordSnap( pOptions->IsSnapBorder()  );
-        SetHlplSnap( pOptions->IsSnapHelplines() );
-        SetOFrmSnap( pOptions->IsSnapFrame() );
-        SetOPntSnap( pOptions->IsSnapPoints() );
-        SetHlplVisible( pOptions->IsHelplines() );
-        SetDragStripes( pOptions->IsDragStripes() );
-        SetPlusHandlesAlwaysVisible( pOptions->IsHandlesBezier() );
-        SetSnapMagneticPixel( pOptions->GetSnapArea() );
-        SetMarkedHitMovesAlways( pOptions->IsMarkedHitMovesAlways() );
-        SetMoveOnlyDragging( pOptions->IsMoveOnlyDragging() );
-        SetSlantButShear( pOptions->IsMoveOnlyDragging() );
-        SetNoDragXorPolys ( !pOptions->IsMoveOutline() );
-        SetCrookNoContortion( pOptions->IsCrookNoContortion() );
-        SetAngleSnapEnabled( pOptions->IsRotate() );
-        SetBigOrtho( pOptions->IsBigOrtho() );
-        SetOrtho( pOptions->IsOrtho() );
-        SetEliminatePolyPointLimitAngle( pOptions->GetEliminatePolyPointLimitAngle() );
-        GetModel()->SetPickThroughTransparentTextFrames( pOptions->IsPickThrough() );
+    if (!pOptions)
+        return;
 
-        SetSolidDragging( pOptions->IsSolidDragging() );
+    mbRuler = pOptions->IsRulerVisible();
+    SetGridVisible( pOptions->IsGridVisible() );
+    SetSnapAngle( pOptions->GetAngle() );
+    SetGridSnap( pOptions->IsUseGridSnap() );
+    SetBordSnap( pOptions->IsSnapBorder()  );
+    SetHlplSnap( pOptions->IsSnapHelplines() );
+    SetOFrmSnap( pOptions->IsSnapFrame() );
+    SetOPntSnap( pOptions->IsSnapPoints() );
+    SetHlplVisible( pOptions->IsHelplines() );
+    SetDragStripes( pOptions->IsDragStripes() );
+    SetPlusHandlesAlwaysVisible( pOptions->IsHandlesBezier() );
+    SetSnapMagneticPixel( pOptions->GetSnapArea() );
+    SetMarkedHitMovesAlways( pOptions->IsMarkedHitMovesAlways() );
+    SetMoveOnlyDragging( pOptions->IsMoveOnlyDragging() );
+    SetSlantButShear( pOptions->IsMoveOnlyDragging() );
+    SetNoDragXorPolys ( !pOptions->IsMoveOutline() );
+    SetCrookNoContortion( pOptions->IsCrookNoContortion() );
+    SetAngleSnapEnabled( pOptions->IsRotate() );
+    SetBigOrtho( pOptions->IsBigOrtho() );
+    SetOrtho( pOptions->IsOrtho() );
+    SetEliminatePolyPointLimitAngle( pOptions->GetEliminatePolyPointLimitAngle() );
+    GetModel()->SetPickThroughTransparentTextFrames( pOptions->IsPickThrough() );
 
-        SetGridCoarse( Size( pOptions->GetFieldDrawX(), pOptions->GetFieldDrawY() ) );
-        SetGridFine( Size( pOptions->GetFieldDivisionX(), pOptions->GetFieldDivisionY() ) );
-        Fraction aFractX(pOptions->GetFieldDrawX(), pOptions->GetFieldDrawX() / ( pOptions->GetFieldDivisionX() ? pOptions->GetFieldDivisionX() : 1 ));
-        Fraction aFractY(pOptions->GetFieldDrawY(), pOptions->GetFieldDrawY() / ( pOptions->GetFieldDivisionY() ? pOptions->GetFieldDivisionY() : 1 ));
-        SetSnapGridWidth(aFractX, aFractY);
-        SetQuickEdit(pOptions->IsQuickEdit());
+    SetSolidDragging( pOptions->IsSolidDragging() );
 
-        // #i26631#
-        SetMasterPagePaintCaching( pOptions->IsMasterPagePaintCaching() );
+    SetGridCoarse( Size( pOptions->GetFieldDrawX(), pOptions->GetFieldDrawY() ) );
+    SetGridFine( Size( pOptions->GetFieldDivisionX(), pOptions->GetFieldDivisionY() ) );
+    Fraction aFractX(pOptions->GetFieldDrawX(), pOptions->GetFieldDrawX() / ( pOptions->GetFieldDivisionX() ? pOptions->GetFieldDivisionX() : 1 ));
+    Fraction aFractY(pOptions->GetFieldDrawY(), pOptions->GetFieldDrawY() / ( pOptions->GetFieldDivisionY() ? pOptions->GetFieldDivisionY() : 1 ));
+    SetSnapGridWidth(aFractX, aFractY);
+    SetQuickEdit(pOptions->IsQuickEdit());
 
-        SetDragWithCopy(pOptions->IsDragWithCopy());
-        SetDoubleClickTextEdit( pOptions->IsDoubleClickTextEdit() );
-        SetClickChangeRotation( pOptions->IsClickChangeRotation() );
-    }
+    // #i26631#
+    SetMasterPagePaintCaching( pOptions->IsMasterPagePaintCaching() );
+
+    SetDragWithCopy(pOptions->IsDragWithCopy());
+    SetDoubleClickTextEdit( pOptions->IsDoubleClickTextEdit() );
+    SetClickChangeRotation( pOptions->IsClickChangeRotation() );
 }
 
 /**
@@ -319,15 +323,15 @@ void FrameView::Update(SdOptions* pOptions)
  */
 void FrameView::SetViewShEditMode(EditMode eMode)
 {
-    meEditMode = eMode;
+    mePageEditMode = eMode;
 }
 
 /**
  * Return EditMode (Page or MasterPage) of working mode
  */
-EditMode FrameView::GetViewShEditMode()
+EditMode FrameView::GetViewShEditMode() const
 {
-    return meEditMode;
+    return mePageEditMode;
 }
 
 void FrameView::SetViewShEditModeOnLoad (EditMode eMode)
@@ -349,17 +353,17 @@ static OUString createHelpLinesString( const SdrHelpLineList& rHelpLines )
         {
             case SdrHelpLineKind::Point:
                 aLines.append( 'P' );
-                aLines.append( (sal_Int32)rPos.X() );
+                aLines.append( static_cast<sal_Int32>(rPos.X()) );
                 aLines.append( ',' );
-                aLines.append( (sal_Int32)rPos.Y() );
+                aLines.append( static_cast<sal_Int32>(rPos.Y()) );
                 break;
             case SdrHelpLineKind::Vertical:
                 aLines.append( 'V' );
-                aLines.append( (sal_Int32)rPos.X() );
+                aLines.append( static_cast<sal_Int32>(rPos.X()) );
                 break;
             case SdrHelpLineKind::Horizontal:
                 aLines.append( 'H' );
-                aLines.append( (sal_Int32)rPos.Y() );
+                aLines.append( static_cast<sal_Int32>(rPos.Y()) );
                 break;
             default:
                 OSL_FAIL( "Unsupported helpline Kind!" );
@@ -385,18 +389,22 @@ void FrameView::WriteUserDataSequence ( css::uno::Sequence < css::beans::Propert
     aUserData.addValue( sUNO_View_IsPlusHandlesAlwaysVisible, makeAny( IsPlusHandlesAlwaysVisible() ) );
     aUserData.addValue( sUNO_View_IsFrameDragSingles, makeAny( IsFrameDragSingles() ) );
 
-    aUserData.addValue( sUNO_View_EliminatePolyPointLimitAngle, makeAny( (sal_Int32)GetEliminatePolyPointLimitAngle() ) );
+    aUserData.addValue( sUNO_View_EliminatePolyPointLimitAngle, makeAny( static_cast<sal_Int32>(GetEliminatePolyPointLimitAngle()) ) );
     aUserData.addValue( sUNO_View_IsEliminatePolyPoints, makeAny( IsEliminatePolyPoints() ) );
 
-    Any aAny;
-    GetVisibleLayers().QueryValue( aAny );
-    aUserData.addValue( sUNO_View_VisibleLayers, aAny );
+    if ( officecfg::Office::Common::Misc::WriteLayerStateAsConfigItem::get() )
+    {
+        SdrLayerAdmin& rLayerAdmin = getSdrModelFromSdrView().GetLayerAdmin();
+        Any aAny;
+        rLayerAdmin.QueryValue(GetVisibleLayers(), aAny);
+        aUserData.addValue( sUNO_View_VisibleLayers, aAny );
 
-    GetPrintableLayers().QueryValue( aAny );
-    aUserData.addValue( sUNO_View_PrintableLayers, aAny );
+        rLayerAdmin.QueryValue(GetPrintableLayers(), aAny);
+        aUserData.addValue( sUNO_View_PrintableLayers, aAny );
 
-    GetLockedLayers().QueryValue( aAny );
-    aUserData.addValue( sUNO_View_LockedLayers, aAny );
+        rLayerAdmin.QueryValue(GetLockedLayers(), aAny);
+        aUserData.addValue( sUNO_View_LockedLayers, aAny );
+    }
 
     aUserData.addValue( sUNO_View_NoAttribs, makeAny( IsNoAttribs() ) );
     aUserData.addValue( sUNO_View_NoColors, makeAny( IsNoColors() ) );
@@ -411,15 +419,15 @@ void FrameView::WriteUserDataSequence ( css::uno::Sequence < css::beans::Propert
         aUserData.addValue( sUNO_View_SnapLinesHandout, makeAny( createHelpLinesString( GetHandoutHelpLines() ) ) );
 
     aUserData.addValue( sUNO_View_RulerIsVisible, makeAny( HasRuler() ) );
-    aUserData.addValue( sUNO_View_PageKind, makeAny( (sal_Int16)GetPageKind() ) );
-    aUserData.addValue( sUNO_View_SelectedPage, makeAny( (sal_Int16)GetSelectedPage() ) );
+    aUserData.addValue( sUNO_View_PageKind, makeAny( static_cast<sal_Int16>(GetPageKind()) ) );
+    aUserData.addValue( sUNO_View_SelectedPage, makeAny( static_cast<sal_Int16>(GetSelectedPage()) ) );
     aUserData.addValue( sUNO_View_IsLayerMode, makeAny( IsLayerMode() ) );
 
     aUserData.addValue( sUNO_View_IsDoubleClickTextEdit,  makeAny( IsDoubleClickTextEdit() ) );
     aUserData.addValue( sUNO_View_IsClickChangeRotation, makeAny( IsClickChangeRotation() ) );
 
-    aUserData.addValue( sUNO_View_SlidesPerRow, makeAny( (sal_Int16)GetSlidesPerRow() ) );
-    aUserData.addValue( sUNO_View_EditMode, makeAny( (sal_Int32)GetViewShEditMode() ) );
+    aUserData.addValue( sUNO_View_SlidesPerRow, makeAny( static_cast<sal_Int16>(GetSlidesPerRow()) ) );
+    aUserData.addValue( sUNO_View_EditMode, makeAny( static_cast<sal_Int32>(GetViewShEditMode()) ) );
     // aUserData.addValue( sUNO_View_EditModeStandard, makeAny( (sal_Int32)GetViewShEditMode( PageKind::Standard ) ) );
     // aUserData.addValue( sUNO_View_EditModeNotes, makeAny( (sal_Int32)GetViewShEditMode( PageKind::Notes ) ) );
     // aUserData.addValue( sUNO_View_EditModeHandout, makeAny( (sal_Int32)GetViewShEditMode( PageKind::Handout ) ) );
@@ -427,33 +435,33 @@ void FrameView::WriteUserDataSequence ( css::uno::Sequence < css::beans::Propert
     {
         const ::tools::Rectangle aVisArea = GetVisArea();
 
-        aUserData.addValue( sUNO_View_VisibleAreaTop, makeAny( (sal_Int32)aVisArea.Top() ) );
-        aUserData.addValue( sUNO_View_VisibleAreaLeft, makeAny( (sal_Int32)aVisArea.Left() ) );
-        aUserData.addValue( sUNO_View_VisibleAreaWidth, makeAny( (sal_Int32)aVisArea.GetWidth() ) );
-        aUserData.addValue( sUNO_View_VisibleAreaHeight, makeAny( (sal_Int32)aVisArea.GetHeight() ) );
+        aUserData.addValue( sUNO_View_VisibleAreaTop, makeAny( static_cast<sal_Int32>(aVisArea.Top()) ) );
+        aUserData.addValue( sUNO_View_VisibleAreaLeft, makeAny( static_cast<sal_Int32>(aVisArea.Left()) ) );
+        aUserData.addValue( sUNO_View_VisibleAreaWidth, makeAny( static_cast<sal_Int32>(aVisArea.GetWidth()) ) );
+        aUserData.addValue( sUNO_View_VisibleAreaHeight, makeAny( static_cast<sal_Int32>(aVisArea.GetHeight()) ) );
     }
 
-    aUserData.addValue( sUNO_View_GridCoarseWidth, makeAny( (sal_Int32)GetGridCoarse().Width() ) );
-    aUserData.addValue( sUNO_View_GridCoarseHeight, makeAny( (sal_Int32)GetGridCoarse().Height() ) );
-    aUserData.addValue( sUNO_View_GridFineWidth, makeAny( (sal_Int32)GetGridFine().Width() ) );
-    aUserData.addValue( sUNO_View_GridFineHeight, makeAny( (sal_Int32)GetGridFine().Height() ) );
-    aUserData.addValue( sUNO_View_GridSnapWidthXNumerator, makeAny( (sal_Int32)GetSnapGridWidthX().GetNumerator() ) );
-    aUserData.addValue( sUNO_View_GridSnapWidthXDenominator, makeAny( (sal_Int32)GetSnapGridWidthX().GetDenominator() ) );
-    aUserData.addValue( sUNO_View_GridSnapWidthYNumerator, makeAny( (sal_Int32)GetSnapGridWidthY().GetNumerator() ) );
-    aUserData.addValue( sUNO_View_GridSnapWidthYDenominator, makeAny( (sal_Int32)GetSnapGridWidthY().GetDenominator() ) );
+    aUserData.addValue( sUNO_View_GridCoarseWidth, makeAny( static_cast<sal_Int32>(GetGridCoarse().Width()) ) );
+    aUserData.addValue( sUNO_View_GridCoarseHeight, makeAny( static_cast<sal_Int32>(GetGridCoarse().Height()) ) );
+    aUserData.addValue( sUNO_View_GridFineWidth, makeAny( static_cast<sal_Int32>(GetGridFine().Width()) ) );
+    aUserData.addValue( sUNO_View_GridFineHeight, makeAny( static_cast<sal_Int32>(GetGridFine().Height()) ) );
+    aUserData.addValue( sUNO_View_GridSnapWidthXNumerator, makeAny( GetSnapGridWidthX().GetNumerator() ) );
+    aUserData.addValue( sUNO_View_GridSnapWidthXDenominator, makeAny( GetSnapGridWidthX().GetDenominator() ) );
+    aUserData.addValue( sUNO_View_GridSnapWidthYNumerator, makeAny( GetSnapGridWidthY().GetNumerator() ) );
+    aUserData.addValue( sUNO_View_GridSnapWidthYDenominator, makeAny( GetSnapGridWidthY().GetDenominator() ) );
     aUserData.addValue( sUNO_View_IsAngleSnapEnabled, makeAny( IsAngleSnapEnabled() ) );
-    aUserData.addValue( sUNO_View_SnapAngle, makeAny( (sal_Int32)GetSnapAngle() ) );
+    aUserData.addValue( sUNO_View_SnapAngle, makeAny( static_cast<sal_Int32>(GetSnapAngle()) ) );
 
     const sal_Int32 nOldLength = rValues.getLength();
     rValues.realloc( nOldLength + aUserData.size() );
 
     PropertyValue* pValue = &(rValues.getArray()[nOldLength]);
 
-    std::vector< std::pair< OUString, Any > >::iterator aIter( aUserData.begin() );
-    for( ; aIter != aUserData.end(); ++aIter, ++pValue )
+    for( const auto& rItem : aUserData )
     {
-        pValue->Name = (*aIter).first;
-        pValue->Value = (*aIter).second;
+        pValue->Name = rItem.first;
+        pValue->Value = rItem.second;
+        ++pValue;
     }
 }
 #undef addValue
@@ -495,11 +503,11 @@ static void createHelpLinesFromString( const OUString& rLines, SdrHelpLineList& 
 
         if( aNewHelpLine.GetKind() == SdrHelpLineKind::Horizontal )
         {
-            aPoint.Y() = nValue;
+            aPoint.setY( nValue );
         }
         else
         {
-            aPoint.X() = nValue;
+            aPoint.setX( nValue );
 
             if( aNewHelpLine.GetKind() == SdrHelpLineKind::Point )
             {
@@ -511,7 +519,7 @@ static void createHelpLinesFromString( const OUString& rLines, SdrHelpLineList& 
                     sBuffer.append( *pStr++ );
                 }
 
-                aPoint.Y() = sBuffer.makeStringAndClear().toInt32();
+                aPoint.setY( sBuffer.makeStringAndClear().toInt32() );
 
             }
         }
@@ -524,364 +532,363 @@ static void createHelpLinesFromString( const OUString& rLines, SdrHelpLineList& 
 void FrameView::ReadUserDataSequence ( const css::uno::Sequence < css::beans::PropertyValue >& rSequence )
 {
     const sal_Int32 nLength = rSequence.getLength();
-    if (nLength)
+    if (!nLength)
+        return;
+
+    SdDrawDocument* pDrawDocument = dynamic_cast<SdDrawDocument*>(GetModel());
+    const bool bImpress = pDrawDocument && pDrawDocument->GetDocumentType() == DocumentType::Impress;
+
+    bool bBool = false;
+    sal_Int32 nInt32 = 0;
+    sal_Int16 nInt16 = 0;
+    OUString aString;
+
+    sal_Int32 aSnapGridWidthXNum = GetSnapGridWidthX().GetNumerator();
+    sal_Int32 aSnapGridWidthXDom = GetSnapGridWidthX().GetDenominator();
+
+    sal_Int32 aSnapGridWidthYNum = GetSnapGridWidthY().GetNumerator();
+    sal_Int32 aSnapGridWidthYDom = GetSnapGridWidthY().GetDenominator();
+
+    for (const css::beans::PropertyValue& rValue : rSequence)
     {
-        SdDrawDocument* pDrawDocument = dynamic_cast<SdDrawDocument*>(GetModel());
-        const bool bImpress = pDrawDocument && pDrawDocument->GetDocumentType() == DocumentType::Impress;
-
-        bool bBool = false;
-        sal_Int32 nInt32 = 0;
-        sal_Int16 nInt16 = 0;
-        OUString aString;
-
-        sal_Int32 aSnapGridWidthXNum = GetSnapGridWidthX().GetNumerator();
-        sal_Int32 aSnapGridWidthXDom = GetSnapGridWidthX().GetDenominator();
-
-        sal_Int32 aSnapGridWidthYNum = GetSnapGridWidthY().GetNumerator();
-        sal_Int32 aSnapGridWidthYDom = GetSnapGridWidthY().GetDenominator();
-
-        const css::beans::PropertyValue *pValue = rSequence.getConstArray();
-        for (sal_Int32 i = 0 ; i < nLength; i++, pValue++ )
+        if ( rValue.Name == sUNO_View_ViewId )
         {
-            if ( pValue->Name == sUNO_View_ViewId )
+        }
+        else if ( rValue.Name == sUNO_View_SnapLinesDrawing )
+        {
+            if( rValue.Value >>= aString )
             {
+                SdrHelpLineList aHelpLines;
+                createHelpLinesFromString( aString, aHelpLines );
+                SetStandardHelpLines( aHelpLines );
             }
-            else if ( pValue->Name == sUNO_View_SnapLinesDrawing )
+        }
+        else if ( rValue.Name == sUNO_View_SnapLinesNotes )
+        {
+            if( rValue.Value >>= aString )
             {
-                if( pValue->Value >>= aString )
-                {
-                    SdrHelpLineList aHelpLines;
-                    createHelpLinesFromString( aString, aHelpLines );
-                    SetStandardHelpLines( aHelpLines );
-                }
+                SdrHelpLineList aHelpLines;
+                createHelpLinesFromString( aString, aHelpLines );
+                SetNotesHelpLines( aHelpLines );
             }
-            else if ( pValue->Name == sUNO_View_SnapLinesNotes )
+        }
+        else if ( rValue.Name == sUNO_View_SnapLinesHandout )
+        {
+            if( rValue.Value >>= aString )
             {
-                if( pValue->Value >>= aString )
-                {
-                    SdrHelpLineList aHelpLines;
-                    createHelpLinesFromString( aString, aHelpLines );
-                    SetNotesHelpLines( aHelpLines );
-                }
+                SdrHelpLineList aHelpLines;
+                createHelpLinesFromString( aString, aHelpLines );
+                SetHandoutHelpLines( aHelpLines );
             }
-            else if ( pValue->Name == sUNO_View_SnapLinesHandout )
+        }
+        else if ( rValue.Name == sUNO_View_RulerIsVisible )
+        {
+            if( rValue.Value >>= bBool )
             {
-                if( pValue->Value >>= aString )
-                {
-                    SdrHelpLineList aHelpLines;
-                    createHelpLinesFromString( aString, aHelpLines );
-                    SetHandoutHelpLines( aHelpLines );
-                }
+                SetRuler( bBool );
             }
-            else if ( pValue->Name == sUNO_View_RulerIsVisible )
+        }
+        else if ( rValue.Name == sUNO_View_PageKind )
+        {
+            if( rValue.Value >>= nInt16 )
             {
-                if( pValue->Value >>= bBool )
-                {
-                    SetRuler( bBool );
-                }
-            }
-            else if ( pValue->Name == sUNO_View_PageKind )
-            {
-                if( pValue->Value >>= nInt16 )
-                {
-                    SdDrawDocument* pDoc = dynamic_cast< SdDrawDocument* >( GetModel() );
-                    if( pDoc && pDoc->GetDocSh() && ( SfxObjectCreateMode::EMBEDDED == pDoc->GetDocSh()->GetCreateMode() ) )
-                        SetPageKind( (PageKind)nInt16 );
+                SdDrawDocument* pDoc = dynamic_cast< SdDrawDocument* >( GetModel() );
+                if( pDoc && pDoc->GetDocSh() && ( SfxObjectCreateMode::EMBEDDED == pDoc->GetDocSh()->GetCreateMode() ) )
+                    SetPageKind( static_cast<PageKind>(nInt16) );
 
-                    SetPageKindOnLoad( (PageKind)nInt16 );
-                }
+                SetPageKindOnLoad( static_cast<PageKind>(nInt16) );
             }
-            else if ( pValue->Name == sUNO_View_SelectedPage )
+        }
+        else if ( rValue.Name == sUNO_View_SelectedPage )
+        {
+            if( rValue.Value >>= nInt16 )
             {
-                if( pValue->Value >>= nInt16 )
-                {
-                    SdDrawDocument* pDoc = dynamic_cast< SdDrawDocument* >( GetModel() );
-                    if( pDoc && pDoc->GetDocSh() && ( SfxObjectCreateMode::EMBEDDED == pDoc->GetDocSh()->GetCreateMode() ) )
-                        SetSelectedPage( (sal_uInt16)nInt16 );
+                SdDrawDocument* pDoc = dynamic_cast< SdDrawDocument* >( GetModel() );
+                if( pDoc && pDoc->GetDocSh() && ( SfxObjectCreateMode::EMBEDDED == pDoc->GetDocSh()->GetCreateMode() ) )
+                    SetSelectedPage( static_cast<sal_uInt16>(nInt16) );
 
-                    SetSelectedPageOnLoad( (sal_uInt16)nInt16 );
-                }
+                SetSelectedPageOnLoad( static_cast<sal_uInt16>(nInt16) );
             }
-            else if ( pValue->Name == sUNO_View_IsLayerMode )
+        }
+        else if ( rValue.Name == sUNO_View_IsLayerMode )
+        {
+            if( rValue.Value >>= bBool )
             {
-                if( pValue->Value >>= bBool )
-                {
-                    SetLayerMode( bBool );
-                }
+                SetLayerMode( bBool );
             }
-            else if ( pValue->Name == sUNO_View_IsDoubleClickTextEdit )
+        }
+        else if ( rValue.Name == sUNO_View_IsDoubleClickTextEdit )
+        {
+            if( rValue.Value >>= bBool )
             {
-                if( pValue->Value >>= bBool )
-                {
-                    SetDoubleClickTextEdit( bBool );
-                }
+                SetDoubleClickTextEdit( bBool );
             }
-            else if ( pValue->Name == sUNO_View_IsClickChangeRotation )
+        }
+        else if ( rValue.Name == sUNO_View_IsClickChangeRotation )
+        {
+            if( rValue.Value >>= bBool )
             {
-                if( pValue->Value >>= bBool )
-                {
-                    SetClickChangeRotation( bBool );
-                }
+                SetClickChangeRotation( bBool );
             }
-            else if ( pValue->Name == sUNO_View_SlidesPerRow )
+        }
+        else if ( rValue.Name == sUNO_View_SlidesPerRow )
+        {
+            if( rValue.Value >>= nInt16 )
             {
-                if( pValue->Value >>= nInt16 )
-                {
-                    SetSlidesPerRow( (sal_uInt16)nInt16 );
-                }
+                SetSlidesPerRow( static_cast<sal_uInt16>(nInt16) );
             }
-            else if ( pValue->Name == sUNO_View_EditMode )
+        }
+        else if ( rValue.Name == sUNO_View_EditMode )
+        {
+            if( rValue.Value >>= nInt32 )
             {
-                if( pValue->Value >>= nInt32 )
-                {
-                    SdDrawDocument* pDoc = dynamic_cast< SdDrawDocument* >( GetModel() );
-                    if( pDoc && pDoc->GetDocSh() && ( SfxObjectCreateMode::EMBEDDED == pDoc->GetDocSh()->GetCreateMode() ) )
-                        SetViewShEditMode( (EditMode)nInt32 );
-                }
+                SdDrawDocument* pDoc = dynamic_cast< SdDrawDocument* >( GetModel() );
+                if( pDoc && pDoc->GetDocSh() && ( SfxObjectCreateMode::EMBEDDED == pDoc->GetDocSh()->GetCreateMode() ) )
+                    SetViewShEditMode( static_cast<EditMode>(nInt32) );
             }
-            // This one is kept for compatibility. Old value read from sUNO_View_EditModeStandard
-            // is used. New value will be written into sUNO_View_EditMode.
-            // Values from sUNO_View_EditModeNotes and sUNO_View_EditModeHangout will be ignored.
-            else if ( pValue->Name == sUNO_View_EditModeStandard )
+        }
+        // This one is kept for compatibility. Old value read from sUNO_View_EditModeStandard
+        // is used. New value will be written into sUNO_View_EditMode.
+        // Values from sUNO_View_EditModeNotes and sUNO_View_EditModeHangout will be ignored.
+        else if ( rValue.Name == sUNO_View_EditModeStandard )
+        {
+            if( rValue.Value >>= nInt32 )
             {
-                if( pValue->Value >>= nInt32 )
-                {
-                    SdDrawDocument* pDoc = dynamic_cast< SdDrawDocument* >( GetModel() );
-                    if( pDoc && pDoc->GetDocSh() && ( SfxObjectCreateMode::EMBEDDED == pDoc->GetDocSh()->GetCreateMode() ) )
-                        SetViewShEditMode( (EditMode)nInt32 );
-                }
+                SdDrawDocument* pDoc = dynamic_cast< SdDrawDocument* >( GetModel() );
+                if( pDoc && pDoc->GetDocSh() && ( SfxObjectCreateMode::EMBEDDED == pDoc->GetDocSh()->GetCreateMode() ) )
+                    SetViewShEditMode( static_cast<EditMode>(nInt32) );
             }
-            else if ( pValue->Name == sUNO_View_VisibleAreaTop )
+        }
+        else if ( rValue.Name == sUNO_View_VisibleAreaTop )
+        {
+            sal_Int32 nTop = 0;
+            if( rValue.Value >>= nTop )
             {
-                sal_Int32 nTop = 0;
-                if( pValue->Value >>= nTop )
-                {
-                    ::tools::Rectangle aVisArea( GetVisArea() );
-                    aVisArea.Bottom() += nTop - aVisArea.Top();
-                    aVisArea.Top() = nTop;
-                    SetVisArea( aVisArea );
-                }
+                ::tools::Rectangle aVisArea( GetVisArea() );
+                aVisArea.AdjustBottom(nTop - aVisArea.Top() );
+                aVisArea.SetTop( nTop );
+                SetVisArea( aVisArea );
             }
-            else if ( pValue->Name == sUNO_View_VisibleAreaLeft )
+        }
+        else if ( rValue.Name == sUNO_View_VisibleAreaLeft )
+        {
+            sal_Int32 nLeft = 0;
+            if( rValue.Value >>= nLeft )
             {
-                sal_Int32 nLeft = 0;
-                if( pValue->Value >>= nLeft )
-                {
-                    ::tools::Rectangle aVisArea( GetVisArea() );
-                    aVisArea.Right() += nLeft - aVisArea.Left();
-                    aVisArea.Left() = nLeft;
-                    SetVisArea( aVisArea );
-                }
+                ::tools::Rectangle aVisArea( GetVisArea() );
+                aVisArea.AdjustRight(nLeft - aVisArea.Left() );
+                aVisArea.SetLeft( nLeft );
+                SetVisArea( aVisArea );
             }
-            else if ( pValue->Name == sUNO_View_VisibleAreaWidth )
+        }
+        else if ( rValue.Name == sUNO_View_VisibleAreaWidth )
+        {
+            sal_Int32 nWidth = 0;
+            if( rValue.Value >>= nWidth )
             {
-                sal_Int32 nWidth = 0;
-                if( pValue->Value >>= nWidth )
-                {
-                    ::tools::Rectangle aVisArea( GetVisArea() );
-                    aVisArea.Right() = aVisArea.Left() + nWidth - 1;
-                    SetVisArea( aVisArea );
-                }
+                ::tools::Rectangle aVisArea( GetVisArea() );
+                aVisArea.SetRight( aVisArea.Left() + nWidth - 1 );
+                SetVisArea( aVisArea );
             }
-            else if ( pValue->Name == sUNO_View_VisibleAreaHeight )
+        }
+        else if ( rValue.Name == sUNO_View_VisibleAreaHeight )
+        {
+            sal_Int32 nHeight = 0;
+            if( rValue.Value >>= nHeight )
             {
-                sal_Int32 nHeight = 0;
-                if( pValue->Value >>= nHeight )
-                {
-                    ::tools::Rectangle aVisArea( GetVisArea() );
-                    aVisArea.Bottom() = nHeight + aVisArea.Top() - 1;
-                    SetVisArea( aVisArea );
-                }
-            }
-
-            else if ( pValue->Name == sUNO_View_GridIsVisible )
-            {
-                if( pValue->Value >>= bBool )
-                {
-                    SetGridVisible( bBool );
-                }
-            }
-
-            else if ( pValue->Name == sUNO_View_IsSnapToGrid )
-            {
-                if( pValue->Value >>= bBool )
-                {
-                    SetGridSnap( bBool );
-                }
-            }
-            else if ( pValue->Name == sUNO_View_GridIsFront )
-            {
-                if( pValue->Value >>= bBool )
-                {
-                    SetGridFront( bBool );
-                }
-            }
-            else if ( pValue->Name == sUNO_View_IsSnapToPageMargins )
-            {
-                if( pValue->Value >>= bBool )
-                {
-                    SetBordSnap( bBool );
-                }
-            }
-            else if ( pValue->Name == sUNO_View_IsSnapToSnapLines )
-            {
-                if( pValue->Value >>= bBool )
-                {
-                    SetHlplSnap( bBool );
-                }
-            }
-            else if ( pValue->Name == sUNO_View_IsSnapToObjectFrame )
-            {
-                if( pValue->Value >>= bBool )
-                {
-                    SetOFrmSnap( bBool );
-                }
-            }
-            else if ( pValue->Name == sUNO_View_IsSnapToObjectPoints )
-            {
-                if( pValue->Value >>= bBool )
-                {
-                    SetOPntSnap( bBool );
-                }
-            }
-            else if ( pValue->Name == sUNO_View_IsPlusHandlesAlwaysVisible )
-            {
-                if( pValue->Value >>= bBool )
-                {
-                    SetPlusHandlesAlwaysVisible( bBool );
-                }
-            }
-            else if ( pValue->Name == sUNO_View_IsFrameDragSingles )
-            {
-                if( pValue->Value >>= bBool )
-                {
-                    SetFrameDragSingles( bBool );
-                }
-            }
-            else if ( pValue->Name == sUNO_View_EliminatePolyPointLimitAngle )
-            {
-                if( pValue->Value >>= nInt32 )
-                {
-                    SetEliminatePolyPointLimitAngle( nInt32 );
-                }
-            }
-            else if ( pValue->Name == sUNO_View_IsEliminatePolyPoints )
-            {
-                if( pValue->Value >>= bBool )
-                {
-                    SetEliminatePolyPoints( bBool );
-                }
-            }
-            else if ( pValue->Name == sUNO_View_ActiveLayer )
-            {
-                if( pValue->Value >>= aString )
-                {
-                    SetActiveLayer( aString );
-                }
-            }
-            else if ( pValue->Name == sUNO_View_NoAttribs )
-            {
-                if( pValue->Value >>= bBool )
-                {
-                    SetNoAttribs( bBool );
-                }
-            }
-            else if ( pValue->Name == sUNO_View_NoColors )
-            {
-                if( pValue->Value >>= bBool )
-                {
-                    SetNoColors( bBool );
-                }
-            }
-            else if ( pValue->Name == sUNO_View_GridCoarseWidth )
-            {
-                if( pValue->Value >>= nInt32 )
-                {
-                    const Size aCoarse( nInt32, GetGridCoarse().Height() );
-                    SetGridCoarse( aCoarse );
-                }
-            }
-            else if ( pValue->Name == sUNO_View_GridCoarseHeight )
-            {
-                if( pValue->Value >>= nInt32 )
-                {
-                    const Size aCoarse( GetGridCoarse().Width(), nInt32 );
-                    SetGridCoarse( aCoarse );
-                }
-            }
-            else if ( pValue->Name == sUNO_View_GridFineWidth )
-            {
-                if( pValue->Value >>= nInt32 )
-                {
-                    const Size aCoarse( nInt32, GetGridFine().Height() );
-                    SetGridFine( aCoarse );
-                }
-            }
-            else if ( pValue->Name == sUNO_View_GridFineHeight )
-            {
-                if( pValue->Value >>= nInt32 )
-                {
-                    const Size aCoarse( GetGridFine().Width(), nInt32 );
-                    SetGridFine( aCoarse );
-                }
-            }
-            else if ( pValue->Name == sUNO_View_IsAngleSnapEnabled )
-            {
-                if( pValue->Value >>= bBool )
-                {
-                    SetAngleSnapEnabled( bBool );
-                }
-            }
-            else if ( pValue->Name == sUNO_View_SnapAngle )
-            {
-                if( pValue->Value >>= nInt32 )
-                {
-                    SetSnapAngle( nInt32 );
-                }
-            }
-            else if ( pValue->Name == sUNO_View_GridSnapWidthXNumerator )
-            {
-                pValue->Value >>= aSnapGridWidthXNum;
-            }
-            else if ( pValue->Name == sUNO_View_GridSnapWidthXDenominator )
-            {
-                pValue->Value >>= aSnapGridWidthXDom;
-            }
-            else if ( pValue->Name == sUNO_View_GridSnapWidthYNumerator )
-            {
-                pValue->Value >>= aSnapGridWidthYNum;
-            }
-            else if ( pValue->Name == sUNO_View_GridSnapWidthYDenominator )
-            {
-                pValue->Value >>= aSnapGridWidthYDom;
-            }
-            else if (!bImpress && pValue->Name == sUNO_View_VisibleLayers  )
-            {
-                SdrLayerIDSet aSdrLayerIDSets;
-                aSdrLayerIDSets.PutValue( pValue->Value );
-                SetVisibleLayers( aSdrLayerIDSets );
-            }
-            else if (!bImpress && pValue->Name == sUNO_View_PrintableLayers )
-            {
-                SdrLayerIDSet aSdrLayerIDSets;
-                aSdrLayerIDSets.PutValue( pValue->Value );
-                SetPrintableLayers( aSdrLayerIDSets );
-            }
-            else if (!bImpress && pValue->Name == sUNO_View_LockedLayers )
-            {
-                SdrLayerIDSet aSdrLayerIDSets;
-                aSdrLayerIDSets.PutValue( pValue->Value );
-                SetLockedLayers( aSdrLayerIDSets );
+                ::tools::Rectangle aVisArea( GetVisArea() );
+                aVisArea.SetBottom( nHeight + aVisArea.Top() - 1 );
+                SetVisArea( aVisArea );
             }
         }
 
-        SetViewShEditModeOnLoad(EditMode::Page);
+        else if ( rValue.Name == sUNO_View_GridIsVisible )
+        {
+            if( rValue.Value >>= bBool )
+            {
+                SetGridVisible( bBool );
+            }
+        }
 
-        const Fraction aSnapGridWidthX( aSnapGridWidthXNum, aSnapGridWidthXDom );
-        const Fraction aSnapGridWidthY( aSnapGridWidthYNum, aSnapGridWidthYDom );
-
-        SetSnapGridWidth( aSnapGridWidthX, aSnapGridWidthY );
+        else if ( rValue.Name == sUNO_View_IsSnapToGrid )
+        {
+            if( rValue.Value >>= bBool )
+            {
+                SetGridSnap( bBool );
+            }
+        }
+        else if ( rValue.Name == sUNO_View_GridIsFront )
+        {
+            if( rValue.Value >>= bBool )
+            {
+                SetGridFront( bBool );
+            }
+        }
+        else if ( rValue.Name == sUNO_View_IsSnapToPageMargins )
+        {
+            if( rValue.Value >>= bBool )
+            {
+                SetBordSnap( bBool );
+            }
+        }
+        else if ( rValue.Name == sUNO_View_IsSnapToSnapLines )
+        {
+            if( rValue.Value >>= bBool )
+            {
+                SetHlplSnap( bBool );
+            }
+        }
+        else if ( rValue.Name == sUNO_View_IsSnapToObjectFrame )
+        {
+            if( rValue.Value >>= bBool )
+            {
+                SetOFrmSnap( bBool );
+            }
+        }
+        else if ( rValue.Name == sUNO_View_IsSnapToObjectPoints )
+        {
+            if( rValue.Value >>= bBool )
+            {
+                SetOPntSnap( bBool );
+            }
+        }
+        else if ( rValue.Name == sUNO_View_IsPlusHandlesAlwaysVisible )
+        {
+            if( rValue.Value >>= bBool )
+            {
+                SetPlusHandlesAlwaysVisible( bBool );
+            }
+        }
+        else if ( rValue.Name == sUNO_View_IsFrameDragSingles )
+        {
+            if( rValue.Value >>= bBool )
+            {
+                SetFrameDragSingles( bBool );
+            }
+        }
+        else if ( rValue.Name == sUNO_View_EliminatePolyPointLimitAngle )
+        {
+            if( rValue.Value >>= nInt32 )
+            {
+                SetEliminatePolyPointLimitAngle( nInt32 );
+            }
+        }
+        else if ( rValue.Name == sUNO_View_IsEliminatePolyPoints )
+        {
+            if( rValue.Value >>= bBool )
+            {
+                SetEliminatePolyPoints( bBool );
+            }
+        }
+        else if ( rValue.Name == sUNO_View_ActiveLayer )
+        {
+            if( rValue.Value >>= aString )
+            {
+                SetActiveLayer( aString );
+            }
+        }
+        else if ( rValue.Name == sUNO_View_NoAttribs )
+        {
+            if( rValue.Value >>= bBool )
+            {
+                SetNoAttribs( bBool );
+            }
+        }
+        else if ( rValue.Name == sUNO_View_NoColors )
+        {
+            if( rValue.Value >>= bBool )
+            {
+                SetNoColors( bBool );
+            }
+        }
+        else if ( rValue.Name == sUNO_View_GridCoarseWidth )
+        {
+            if( rValue.Value >>= nInt32 )
+            {
+                const Size aCoarse( nInt32, GetGridCoarse().Height() );
+                SetGridCoarse( aCoarse );
+            }
+        }
+        else if ( rValue.Name == sUNO_View_GridCoarseHeight )
+        {
+            if( rValue.Value >>= nInt32 )
+            {
+                const Size aCoarse( GetGridCoarse().Width(), nInt32 );
+                SetGridCoarse( aCoarse );
+            }
+        }
+        else if ( rValue.Name == sUNO_View_GridFineWidth )
+        {
+            if( rValue.Value >>= nInt32 )
+            {
+                const Size aCoarse( nInt32, GetGridFine().Height() );
+                SetGridFine( aCoarse );
+            }
+        }
+        else if ( rValue.Name == sUNO_View_GridFineHeight )
+        {
+            if( rValue.Value >>= nInt32 )
+            {
+                const Size aCoarse( GetGridFine().Width(), nInt32 );
+                SetGridFine( aCoarse );
+            }
+        }
+        else if ( rValue.Name == sUNO_View_IsAngleSnapEnabled )
+        {
+            if( rValue.Value >>= bBool )
+            {
+                SetAngleSnapEnabled( bBool );
+            }
+        }
+        else if ( rValue.Name == sUNO_View_SnapAngle )
+        {
+            if( rValue.Value >>= nInt32 )
+            {
+                SetSnapAngle( nInt32 );
+            }
+        }
+        else if ( rValue.Name == sUNO_View_GridSnapWidthXNumerator )
+        {
+            rValue.Value >>= aSnapGridWidthXNum;
+        }
+        else if ( rValue.Name == sUNO_View_GridSnapWidthXDenominator )
+        {
+            rValue.Value >>= aSnapGridWidthXDom;
+        }
+        else if ( rValue.Name == sUNO_View_GridSnapWidthYNumerator )
+        {
+            rValue.Value >>= aSnapGridWidthYNum;
+        }
+        else if ( rValue.Name == sUNO_View_GridSnapWidthYDenominator )
+        {
+            rValue.Value >>= aSnapGridWidthYDom;
+        }
+        else if (!bImpress && rValue.Name == sUNO_View_VisibleLayers  )
+        {
+            SdrLayerIDSet aSdrLayerIDSets;
+            aSdrLayerIDSets.PutValue( rValue.Value );
+            SetVisibleLayers( aSdrLayerIDSets );
+        }
+        else if (!bImpress && rValue.Name == sUNO_View_PrintableLayers )
+        {
+            SdrLayerIDSet aSdrLayerIDSets;
+            aSdrLayerIDSets.PutValue( rValue.Value );
+            SetPrintableLayers( aSdrLayerIDSets );
+        }
+        else if (!bImpress && rValue.Name == sUNO_View_LockedLayers )
+        {
+            SdrLayerIDSet aSdrLayerIDSets;
+            aSdrLayerIDSets.PutValue( rValue.Value );
+            SetLockedLayers( aSdrLayerIDSets );
+        }
     }
+
+    SetViewShEditModeOnLoad(EditMode::Page);
+
+    const Fraction aSnapGridWidthX( aSnapGridWidthXNum, aSnapGridWidthXDom );
+    const Fraction aSnapGridWidthY( aSnapGridWidthYNum, aSnapGridWidthYDom );
+
+    SetSnapGridWidth( aSnapGridWidthX, aSnapGridWidthY );
 }
 
 void FrameView::SetPreviousViewShellType (ViewShell::ShellType eType)

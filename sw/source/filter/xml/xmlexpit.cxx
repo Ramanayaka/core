@@ -19,24 +19,24 @@
 
 #include "xmlexpit.hxx"
 
+#include <osl/diagnose.h>
 #include <rtl/ustrbuf.hxx>
 #include <sax/tools/converter.hxx>
-#include <svl/itempool.hxx>
 #include <svl/poolitem.hxx>
 #include <svl/itemset.hxx>
 #include <utility>
 #include <xmloff/xmluconv.hxx>
 #include <xmloff/attrlist.hxx>
-#include <xmloff/nmspmap.hxx>
-#include <xmloff/xmlnmspe.hxx>
+#include <xmloff/namespacemap.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <xmloff/prhdlfac.hxx>
 #include <xmloff/xmltypes.hxx>
 #include <editeng/xmlcnitm.hxx>
 #include <xmloff/xmlexp.hxx>
 #include <xmloff/xmlprhdl.hxx>
-#include <editeng/memberids.hrc>
-#include "hintids.hxx"
-#include "unomid.h"
+#include <editeng/memberids.h>
+#include <hintids.hxx>
+#include <unomid.h>
 #include <svx/unomid.hxx>
 #include <editeng/lrspitem.hxx>
 #include <editeng/ulspitem.hxx>
@@ -45,14 +45,14 @@
 #include <editeng/formatbreakitem.hxx>
 #include <editeng/keepitem.hxx>
 #include <editeng/brushitem.hxx>
-#include "fmtpdsc.hxx"
-#include "fmtornt.hxx"
-#include "fmtfsize.hxx"
+#include <editeng/frmdiritem.hxx>
+#include <fmtpdsc.hxx>
+#include <fmtornt.hxx>
+#include <fmtfsize.hxx>
 
-#include "fmtlsplt.hxx"
 #include "xmlithlp.hxx"
 
-#include "fmtrowsplt.hxx"
+#include <fmtrowsplt.hxx>
 
 using ::editeng::SvxBorderLine;
 using namespace ::com::sun::star;
@@ -65,7 +65,6 @@ void SvXMLExportItemMapper::exportXML( const SvXMLExport& rExport,
                                 const SfxItemSet& rSet,
                                 const SvXMLUnitConverter& rUnitConverter,
                                 const SvXMLNamespaceMap& rNamespaceMap,
-                                SvXmlExportFlags nFlags,
                                 std::vector<sal_uInt16> *pIndexArray ) const
 {
     const sal_uInt16 nCount = mrMapEntries->getCount();
@@ -78,8 +77,7 @@ void SvXMLExportItemMapper::exportXML( const SvXMLExport& rExport,
         // we have a valid map entry here, so lets use it...
         if( 0 == (rEntry.nMemberId & MID_SW_FLAG_NO_ITEM_EXPORT) )
         {
-            const SfxPoolItem* pItem = GetItem( rSet, rEntry.nWhichId,
-                                                nFlags );
+            const SfxPoolItem* pItem = GetItem( rSet, rEntry.nWhichId );
             // do we have an item?
             if(pItem)
             {
@@ -106,7 +104,7 @@ void SvXMLExportItemMapper::exportXML( const SvXMLExport& rExport,
     }
 }
 
-void SvXMLExportItemMapper::exportXML( const SvXMLExport& rExport,
+void SvXMLExportItemMapper::exportXML(const SvXMLExport&,
                                  SvXMLAttributeList& rAttrList,
                                  const SfxPoolItem& rItem,
                                  const SvXMLItemMapEntry& rEntry,
@@ -122,13 +120,7 @@ void SvXMLExportItemMapper::exportXML( const SvXMLExport& rExport,
             bool bAddAttribute = true;
             if( rEntry.nNameSpace == XML_NAMESPACE_STYLE )
             {
-                if( !(rExport.getExportFlags() & SvXMLExportFlags::SAVEBACKWARDCOMPATIBLE ) ||
-                    !QueryXMLValue(rItem, aValue,
-                    static_cast< sal_uInt16 >( rEntry.nMemberId & MID_SW_FLAG_MASK ),
-                    rUnitConverter ) )
-                {
-                    bAddAttribute = false;
-                }
+                bAddAttribute = false;
             }
             else
             {
@@ -146,15 +138,13 @@ void SvXMLExportItemMapper::exportXML( const SvXMLExport& rExport,
                 rAttrList.AddAttribute( sName, aValue );
             }
         }
-        if( dynamic_cast<const SvXMLAttrContainerItem*>( &rItem) !=  nullptr )
+
+        if (const SvXMLAttrContainerItem *pUnknown = dynamic_cast<const SvXMLAttrContainerItem*>(&rItem))
         {
-            SvXMLNamespaceMap *pNewNamespaceMap = nullptr;
+            std::unique_ptr<SvXMLNamespaceMap> pNewNamespaceMap;
             const SvXMLNamespaceMap *pNamespaceMap = &rNamespaceMap;
 
-            const SvXMLAttrContainerItem *pUnknown =
-                dynamic_cast<const SvXMLAttrContainerItem*>( &rItem  );
-
-            const sal_uInt16 nCount = pUnknown ? pUnknown->GetAttrCount() : 0;
+            const sal_uInt16 nCount = pUnknown->GetAttrCount();
             for( sal_uInt16 i=0; i < nCount; i++ )
             {
                 const OUString sPrefix( pUnknown->GetAttrPrefix( i ) );
@@ -170,9 +160,9 @@ void SvXMLExportItemMapper::exportXML( const SvXMLExport& rExport,
                     {
                         if( !pNewNamespaceMap )
                         {
-                            pNewNamespaceMap =
-                                        new SvXMLNamespaceMap( rNamespaceMap );
-                            pNamespaceMap = pNewNamespaceMap;
+                            pNewNamespaceMap.reset(
+                                        new SvXMLNamespaceMap( rNamespaceMap ));
+                            pNamespaceMap = pNewNamespaceMap.get();
                         }
                         pNewNamespaceMap->Add( sPrefix, sNamespace );
 
@@ -189,8 +179,6 @@ void SvXMLExportItemMapper::exportXML( const SvXMLExport& rExport,
                                             pUnknown->GetAttrValue(i) );
                 }
             }
-
-            delete pNewNamespaceMap;
         }
         else
         {
@@ -200,25 +188,48 @@ void SvXMLExportItemMapper::exportXML( const SvXMLExport& rExport,
     }
     else if( 0 == (rEntry.nMemberId & MID_SW_FLAG_ELEMENT_ITEM_EXPORT) )
     {
-        OUString aValue;
-        if( QueryXMLValue(rItem, aValue,
-                          static_cast< sal_uInt16 >(
-                                          rEntry.nMemberId & MID_SW_FLAG_MASK ),
-                             rUnitConverter ) )
+        bool bDone = false;
+        switch (rItem.Which())
         {
-            const OUString sName(
-                rNamespaceMap.GetQNameByKey( rEntry.nNameSpace,
-                                             GetXMLToken(rEntry.eLocalName)));
-            rAttrList.AddAttribute( sName, aValue );
+            case RES_FRAMEDIR:
+            {
+                // Write bt-lr to the extension namespace, handle other values
+                // below.
+                auto pDirection = static_cast<const SvxFrameDirectionItem*>(&rItem);
+                if (rEntry.nNameSpace == XML_NAMESPACE_LO_EXT
+                    && pDirection->GetValue() == SvxFrameDirection::Vertical_LR_BT)
+                {
+                    const OUString sName(rNamespaceMap.GetQNameByKey(
+                        XML_NAMESPACE_LO_EXT, GetXMLToken(XML_WRITING_MODE)));
+                    rAttrList.AddAttribute(sName, GetXMLToken(XML_BT_LR));
+                }
+                if (rEntry.nNameSpace == XML_NAMESPACE_LO_EXT
+                    || pDirection->GetValue() == SvxFrameDirection::Vertical_LR_BT)
+                    bDone = true;
+                break;
+            }
+        }
+
+        if (!bDone)
+        {
+            OUString aValue;
+            if( QueryXMLValue(rItem, aValue,
+                              static_cast< sal_uInt16 >(
+                                              rEntry.nMemberId & MID_SW_FLAG_MASK ),
+                                 rUnitConverter ) )
+            {
+                const OUString sName(
+                    rNamespaceMap.GetQNameByKey( rEntry.nNameSpace,
+                                                 GetXMLToken(rEntry.eLocalName)));
+                rAttrList.AddAttribute( sName, aValue );
+            }
         }
     }
 }
 
 void SvXMLExportItemMapper::exportElementItems(
                           SvXMLExport& rExport,
-                          const SvXMLUnitConverter& rUnitConverter,
                           const SfxItemSet &rSet,
-                          SvXmlExportFlags nFlags,
                           const std::vector<sal_uInt16> &rIndexArray ) const
 {
     const size_t nCount = rIndexArray.size();
@@ -231,13 +242,12 @@ void SvXMLExportItemMapper::exportElementItems(
         OSL_ENSURE( 0 != (rEntry.nMemberId & MID_SW_FLAG_ELEMENT_ITEM_EXPORT),
                     "wrong mid flag!" );
 
-        const SfxPoolItem* pItem = GetItem( rSet, rEntry.nWhichId, nFlags );
+        const SfxPoolItem* pItem = GetItem( rSet, rEntry.nWhichId );
         // do we have an item?
         if(pItem)
         {
             rExport.IgnorableWhitespace();
-            handleElementItem( rExport, rEntry, *pItem, rUnitConverter,
-                               rSet, nFlags);
+            handleElementItem( rEntry, *pItem );
             bItemsExported = true;
         }
     }
@@ -247,29 +257,18 @@ void SvXMLExportItemMapper::exportElementItems(
 }
 
 /** returns the item with the given WhichId from the given ItemSet if its
-    set or its default item if it's not set and the SvXmlExportFlags::DEEP
-    is set in the flags
+    set
 */
 const SfxPoolItem* SvXMLExportItemMapper::GetItem( const SfxItemSet& rSet,
-                                                   sal_uInt16 nWhichId,
-                                                   SvXmlExportFlags nFlags )
+                                                   sal_uInt16 nWhichId)
 {
     // first get item from itemset
     const SfxPoolItem* pItem;
-    SfxItemState eState =
-        rSet.GetItemState( nWhichId,
-                           bool( nFlags & SvXmlExportFlags::DEEP ),
-                           &pItem );
+    SfxItemState eState = rSet.GetItemState( nWhichId, false, &pItem );
 
     if( SfxItemState::SET == eState )
     {
         return pItem;
-    }
-    else if( (nFlags & SvXmlExportFlags::DEFAULTS) &&
-              SfxItemPool::IsWhich(nWhichId))
-    {
-        // if it's not set, try the pool if we export defaults
-        return &rSet.GetPool()->GetDefaultItem(nWhichId);
     }
     else
     {
@@ -278,8 +277,8 @@ const SfxPoolItem* SvXMLExportItemMapper::GetItem( const SfxItemSet& rSet,
 }
 
 SvXMLExportItemMapper::SvXMLExportItemMapper( SvXMLItemMapEntriesRef rMapEntries )
+   : mrMapEntries(std::move(rMapEntries))
 {
-    mrMapEntries = std::move(rMapEntries);
 }
 
 SvXMLExportItemMapper::~SvXMLExportItemMapper()
@@ -292,24 +291,17 @@ void SvXMLExportItemMapper::exportXML( SvXMLExport& rExport,
                     XMLTokenEnum ePropToken ) const
 {
     std::vector<sal_uInt16> aIndexArray;
-    const SvXmlExportFlags nFlags = SvXmlExportFlags::IGN_WS;
 
     exportXML( rExport, rExport.GetAttrList(), rSet, rUnitConverter,
-               rExport.GetNamespaceMap(), nFlags, &aIndexArray );
+               rExport.GetNamespaceMap(), &aIndexArray );
 
-    if( rExport.GetAttrList().getLength() > 0L ||
-        (nFlags & SvXmlExportFlags::EMPTY) ||
-        !aIndexArray.empty() )
+    if( rExport.GetAttrList().getLength() > 0 || !aIndexArray.empty() )
     {
-        if( (nFlags & SvXmlExportFlags::IGN_WS) )
-        {
-            rExport.IgnorableWhitespace();
-        }
+        rExport.IgnorableWhitespace();
 
         SvXMLElementExport aElem( rExport, XML_NAMESPACE_STYLE, ePropToken,
                                   false, false );
-        exportElementItems( rExport, rUnitConverter,
-                            rSet, nFlags, aIndexArray );
+        exportElementItems( rExport, rSet, aIndexArray );
     }
 }
 
@@ -328,12 +320,8 @@ void SvXMLExportItemMapper::handleSpecialItem( SvXMLAttributeList& /*rAttrList*/
 /** this method is called for every item that has the
     MID_SW_FLAG_ELEMENT_EXPORT flag set */
 void SvXMLExportItemMapper::handleElementItem(
-                        SvXMLExport& /*rExport*/,
                         const SvXMLItemMapEntry& /*rEntry*/,
-                        const SfxPoolItem& /*rItem*/,
-                        const SvXMLUnitConverter& /*rUnitConverter*/,
-                        const SfxItemSet& /*rSet*/,
-                        SvXmlExportFlags /*nFlags*/ ) const
+                        const SfxPoolItem& /*rItem*/ ) const
 {
     OSL_FAIL( "element item not handled in xml export" );
 }
@@ -416,15 +404,15 @@ bool SvXMLExportItemMapper::QueryXMLValue(
                 case  MID_FIRST_LINE_INDENT:
                     if (!rLRSpace.IsAutoFirst())
                     {
-                        if (rLRSpace.GetPropTextFirstLineOfst() != 100)
+                        if (rLRSpace.GetPropTextFirstLineOffset() != 100)
                         {
                             ::sax::Converter::convertPercent(
-                                aOut, rLRSpace.GetPropTextFirstLineOfst() );
+                                aOut, rLRSpace.GetPropTextFirstLineOffset() );
                         }
                         else
                         {
                             rUnitConverter.convertMeasureToXML(
-                                    aOut, rLRSpace.GetTextFirstLineOfst() );
+                                    aOut, rLRSpace.GetTextFirstLineOffset() );
                         }
                     }
                     else
@@ -509,7 +497,7 @@ bool SvXMLExportItemMapper::QueryXMLValue(
                 nX *= pShadow->GetWidth();
                 nY *= pShadow->GetWidth();
 
-                ::sax::Converter::convertColor(aOut, pShadow->GetColor().GetColor());
+                ::sax::Converter::convertColor(aOut, pShadow->GetColor());
                 aOut.append( ' ' );
                 rUnitConverter.convertMeasureToXML( aOut, nX );
                 aOut.append( ' ' );
@@ -776,7 +764,7 @@ bool SvXMLExportItemMapper::QueryXMLValue(
                                 aOut.append( GetXMLToken( eStyle ) );
                                 aOut.append( ' ' );
                                 ::sax::Converter::convertColor(aOut,
-                                        pLine->GetColor().GetColor());
+                                        pLine->GetColor());
                             }
                         }
                         else
@@ -888,7 +876,7 @@ bool SvXMLExportItemMapper::QueryXMLValue(
             const SvxBrushItem& rBrush = dynamic_cast<const SvxBrushItem&>(rItem);
 
             // note: the graphic is only exported if nMemberId equals
-            //       MID_GRAPHIC..
+            //       MID_GRAPHIC...
             //       If not, only the color or transparency is exported
 
             switch( nMemberId )
@@ -899,21 +887,9 @@ bool SvXMLExportItemMapper::QueryXMLValue(
                     else
                     {
                         ::sax::Converter::convertColor(aOut,
-                                rBrush.GetColor().GetColor());
+                                rBrush.GetColor());
                     }
                     bOk = true;
-                    break;
-
-                case MID_GRAPHIC_LINK:
-                    if (rBrush.GetGraphicPos() != GPOS_NONE)
-                    {
-                        uno::Any aAny;
-                        rBrush.QueryValue( aAny, MID_GRAPHIC_URL );
-                        OUString sTmp;
-                        aAny >>= sTmp;
-                        aOut.append( sTmp );
-                        bOk = true;
-                    }
                     break;
 
                 case MID_GRAPHIC_POSITION:
@@ -973,7 +949,7 @@ bool SvXMLExportItemMapper::QueryXMLValue(
                     SvxGraphicPosition eGraphicPos = rBrush.GetGraphicPos();
                     if( GPOS_AREA == eGraphicPos )
                     {
-                        aOut.append( GetXMLToken(XML_BACKGROUND_STRETCH)  );
+                        aOut.append( GetXMLToken(XML_STRETCH)  );
                         bOk = true;
                     }
                     else if( GPOS_NONE != eGraphicPos && GPOS_TILED != eGraphicPos  )
@@ -1002,11 +978,11 @@ bool SvXMLExportItemMapper::QueryXMLValue(
 
             if( MID_PAGEDESC_PAGENUMOFFSET==nMemberId )
             {
-                ::boost::optional<sal_uInt16> oNumOffset = rPageDesc.GetNumOffset();
-                if (oNumOffset && oNumOffset.get() > 0)
+                ::std::optional<sal_uInt16> oNumOffset = rPageDesc.GetNumOffset();
+                if (oNumOffset && *oNumOffset > 0)
                 {
                     // #i114163# positiveInteger only!
-                    sal_Int32 const number(oNumOffset.get());
+                    sal_Int32 const number(*oNumOffset);
                     aOut.append(number);
                 }
                 else
@@ -1071,11 +1047,11 @@ bool SvXMLExportItemMapper::QueryXMLValue(
                     }
                     break;
                 case MID_FRMSIZE_MIN_HEIGHT:
-                    if( ATT_MIN_SIZE == rFrameSize.GetHeightSizeType() )
+                    if( SwFrameSize::Minimum == rFrameSize.GetHeightSizeType() )
                         bOutHeight = true;
                     break;
                 case MID_FRMSIZE_FIX_HEIGHT:
-                    if( ATT_FIX_SIZE == rFrameSize.GetHeightSizeType() )
+                    if( SwFrameSize::Fixed == rFrameSize.GetHeightSizeType() )
                         bOutHeight = true;
                     break;
             }
@@ -1094,7 +1070,7 @@ bool SvXMLExportItemMapper::QueryXMLValue(
             bOk = rItem.QueryValue( aAny );
             if( bOk )
             {
-                const XMLPropertyHandler* pWritingModeHandler =
+                std::unique_ptr<XMLPropertyHandler> pWritingModeHandler =
                     XMLPropertyHandlerFactory::CreatePropertyHandler(
                         XML_TYPE_TEXT_WRITING_MODE_WITH_DEFAULT );
                 OUString sValue;
@@ -1102,8 +1078,6 @@ bool SvXMLExportItemMapper::QueryXMLValue(
                                                       rUnitConverter );
                 if( bOk )
                     aOut.append( sValue );
-
-                delete pWritingModeHandler;
             }
         }
         break;

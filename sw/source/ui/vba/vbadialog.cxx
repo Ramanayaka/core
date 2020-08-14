@@ -22,13 +22,17 @@
 using namespace ::ooo::vba;
 using namespace ::com::sun::star;
 
+namespace {
+
 struct WordDialogTable
 {
     sal_Int32 wdDialog;
-    const sal_Char* ooDialog;
+    const char* ooDialog;
 };
 
-static const WordDialogTable aWordDialogTable[] =
+}
+
+const WordDialogTable aWordDialogTable[] =
 {
     { word::WdWordDialog::wdDialogFileNew, ".uno:NewDoc" },
     { word::WdWordDialog::wdDialogFileOpen, ".uno:Open" },
@@ -53,18 +57,16 @@ SwVbaDialog::mapIndexToName( sal_Int32 nIndex )
 OUString
 SwVbaDialog::getServiceImplName()
 {
-    return OUString("SwVbaDialog");
+    return "SwVbaDialog";
 }
 
 uno::Sequence< OUString >
 SwVbaDialog::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.word.Dialog";
-    }
+        "ooo.vba.word.Dialog"
+    };
     return aServiceNames;
 }
 

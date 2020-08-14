@@ -20,11 +20,7 @@
 #define INCLUDED_DBACCESS_SOURCE_UI_INC_TABLECONTROLLER_HXX
 
 #include "singledoccontroller.hxx"
-#include "moduledbu.hxx"
-#include <com/sun/star/sdbc/XConnection.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/io/XObjectOutputStream.hpp>
-#include <com/sun/star/io/XObjectInputStream.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include "TypeInfo.hxx"
 #include <com/sun/star/sdbcx/XColumnsSupplier.hpp>
@@ -35,10 +31,9 @@ namespace dbaui
 {
     class OTableRow;
     typedef OSingleDocumentController   OTableController_BASE;
-    class OTableController : public OTableController_BASE
+    class OTableController final : public OTableController_BASE
     {
     private:
-        OModuleClient                                   m_aModuleClient;
         std::vector< std::shared_ptr<OTableRow> > m_vRowList;
         OTypeInfoMap                                    m_aTypeInfo;
         std::vector<OTypeInfoMap::iterator>           m_aTypeInfoIndex;
@@ -50,7 +45,7 @@ namespace dbaui
         OUString        m_sTypeNames;           // these type names are the ones out of the resource file
         TOTypeInfoSP    m_pTypeInfo;            // fall back when type is unknown because database driver has a failure
 
-        bool            m_bAllowAutoIncrementValue; // no : 1 NO BIT , is true when the datasource has a AutoIncrementValue property in their info property
+        bool            m_bAllowAutoIncrementValue; // no : 1 NO BIT , is true when the datasource has an AutoIncrementValue property in their info property
         bool            m_bNew      : 1;        // is true when we create a new table
 
 
@@ -60,8 +55,8 @@ namespace dbaui
         /// @throws css::sdbc::SQLException
         /// @throws css::uno::RuntimeException
         bool checkColumns(bool _bNew);      // check if we have double column names
-        void appendColumns(css::uno::Reference< css::sdbcx::XColumnsSupplier>& _rxColSup, bool _bNew, bool _bKeyColumns = false);
-        void appendPrimaryKey(css::uno::Reference< css::sdbcx::XKeysSupplier>& _rxSup, bool _bNew);
+        void appendColumns(css::uno::Reference< css::sdbcx::XColumnsSupplier> const & _rxColSup, bool _bNew, bool _bKeyColumns = false);
+        void appendPrimaryKey(css::uno::Reference< css::sdbcx::XKeysSupplier> const & _rxSup, bool _bNew);
         void alterColumns();
         void dropPrimaryKey();
         css::uno::Reference< css::container::XNameAccess> getKeyColumns() const;
@@ -87,7 +82,7 @@ namespace dbaui
     public:
         OTableController(const css::uno::Reference< css::uno::XComponentContext >& _rM);
 
-        const css::uno::Reference< css::beans::XPropertySet >&  getTable() { return m_xTable;}
+        const css::uno::Reference< css::beans::XPropertySet >&  getTable() const { return m_xTable;}
 
         bool     isAddAllowed()     const;
         bool     isDropAllowed()    const;
@@ -106,7 +101,7 @@ namespace dbaui
 
         const OTypeInfoMap&          getTypeInfo() const { return m_aTypeInfo; }
 
-        TOTypeInfoSP                 getTypeInfo(sal_Int32 _nPos) const { return m_aTypeInfoIndex[_nPos]->second; }
+        TOTypeInfoSP const &                getTypeInfo(sal_Int32 _nPos) const { return m_aTypeInfoIndex[_nPos]->second; }
         TOTypeInfoSP                        getTypeInfoByType(sal_Int32 _nDataType) const;
 
         const TOTypeInfoSP&                 getTypeInfoFallBack() const { return m_pTypeInfo; }
@@ -124,15 +119,8 @@ namespace dbaui
         // XServiceInfo
         virtual OUString SAL_CALL getImplementationName() override;
         virtual css::uno::Sequence< OUString> SAL_CALL getSupportedServiceNames() override;
-        // need by registration
-        /// @throws css::uno::RuntimeException
-        static OUString getImplementationName_Static();
-        /// @throws css::uno::RuntimeException
-        static css::uno::Sequence< OUString > getSupportedServiceNames_Static();
-        static css::uno::Reference< css::uno::XInterface >
-                SAL_CALL Create(const css::uno::Reference< css::lang::XMultiServiceFactory >&);
 
-    protected:
+    private:
         void startTableListening();
         void stopTableListening();
         virtual void impl_initialize() override;

@@ -18,10 +18,9 @@
  */
 
 #include <memory>
-#include "ftools.hxx"
+#include <ftools.hxx>
 #include <osl/diagnose.h>
 #include <osl/thread.h>
-#include <rtl/strbuf.hxx>
 #include <tools/color.hxx>
 #include <unotools/charclass.hxx>
 #include <svl/itempool.hxx>
@@ -30,13 +29,12 @@
 #include <sot/storage.hxx>
 
 #include <math.h>
-#include "global.hxx"
-#include "document.hxx"
-#include "stlpool.hxx"
-#include "stlsheet.hxx"
-#include "compiler.hxx"
+#include <global.hxx>
+#include <stlpool.hxx>
+#include <stlsheet.hxx>
+#include <compiler.hxx>
 
-#include "orcusfiltersimpl.hxx"
+#include <orcusfiltersimpl.hxx>
 
 
 // ScFilterTools::ReadLongDouble()
@@ -67,25 +65,25 @@ SEEEEEEE EEEEEEEE IMMMMMMM MMMMMMMM MMMMMMMM MMMMMMMM MMMMMMMM MMMMMMMM MMMMMMMM
 */
 
     long double lfDouble;
-    long double lfFakt = 256.0;
+    long double lfFactor = 256.0;
     sal_uInt8 pDouble10[ 10 ];
 
     rStrm.ReadBytes(pDouble10, 10);            // Intel-10 in pDouble10
 
     lfDouble  = static_cast< long double >( pDouble10[ 7 ] );   // Byte 7
-    lfDouble *= lfFakt;
+    lfDouble *= lfFactor;
     lfDouble += static_cast< long double >( pDouble10[ 6 ] );   // Byte 6
-    lfDouble *= lfFakt;
+    lfDouble *= lfFactor;
     lfDouble += static_cast< long double >( pDouble10[ 5 ] );   // Byte 5
-    lfDouble *= lfFakt;
+    lfDouble *= lfFactor;
     lfDouble += static_cast< long double >( pDouble10[ 4 ] );   // Byte 4
-    lfDouble *= lfFakt;
+    lfDouble *= lfFactor;
     lfDouble += static_cast< long double >( pDouble10[ 3 ] );   // Byte 3
-    lfDouble *= lfFakt;
+    lfDouble *= lfFactor;
     lfDouble += static_cast< long double >( pDouble10[ 2 ] );   // Byte 2
-    lfDouble *= lfFakt;
+    lfDouble *= lfFactor;
     lfDouble += static_cast< long double >( pDouble10[ 1 ] );   // Byte 1
-    lfDouble *= lfFakt;
+    lfDouble *= lfFactor;
     lfDouble += static_cast< long double >( pDouble10[ 0 ] );   // Byte 0
 
     //  For value 0.0 all bits are zero; pow(2.0,-16446) does not work with CSet compilers
@@ -118,13 +116,11 @@ rtl_TextEncoding ScfTools::GetSystemTextEncoding()
 
 OUString ScfTools::GetHexStr( sal_uInt16 nValue )
 {
-    const sal_Char pHex[] = "0123456789ABCDEF";
-    OUString aStr;
-
-    aStr += OUString( pHex[ nValue >> 12 ] );
-    aStr += OUString( pHex[ (nValue >> 8) & 0x000F ] );
-    aStr += OUString( pHex[ (nValue >> 4) & 0x000F ] );
-    aStr += OUString( pHex[ nValue & 0x000F ] );
+    const char pHex[] = "0123456789ABCDEF";
+    OUString aStr = OUStringChar( pHex[ nValue >> 12 ] )
+                  + OUStringChar( pHex[ (nValue >> 8) & 0x000F ] )
+                  + OUStringChar( pHex[ (nValue >> 4) & 0x000F ] )
+                  + OUStringChar( pHex[ nValue & 0x000F ] );
     return aStr;
 }
 
@@ -215,8 +211,7 @@ void ScfTools::PutItem( SfxItemSet& rItemSet, const SfxPoolItem& rItem, sal_uInt
 {
     if( !bSkipPoolDef || (rItem != rItemSet.GetPool()->GetDefaultItem( nWhichId )) )
     {
-        std::unique_ptr<SfxPoolItem> pNewItem(rItem.CloneSetWhich(nWhichId));
-        rItemSet.Put( *pNewItem );
+        rItemSet.Put( rItem.CloneSetWhich(nWhichId) );
     }
 }
 
@@ -250,7 +245,7 @@ ScStyleSheet& lclMakeStyleSheet( ScStyleSheetPool& rPool, const OUString& rStyle
     }
 
     // create new style sheet
-    return static_cast< ScStyleSheet& >( rPool.Make( aNewName, eFamily, SFXSTYLEBIT_USERDEF ) );
+    return static_cast< ScStyleSheet& >( rPool.Make( aNewName, eFamily, SfxStyleSearchBits::UserDefined ) );
 }
 
 } // namespace
@@ -317,9 +312,7 @@ OUString ScfTools::GetNameFromHTMLIndex( sal_uInt32 nIndex )
 
 OUString ScfTools::GetNameFromHTMLName( const OUString& rTabName )
 {
-    OUString aName( GetHTMLNamePrefix() );
-    aName += rTabName;
-    return aName;
+    return GetHTMLNamePrefix() + rTabName;
 }
 
 bool ScfTools::IsHTMLDocName( const OUString& rSource )
@@ -349,15 +342,18 @@ bool ScfTools::GetHTMLNameFromName( const OUString& rSource, OUString& rName )
     return !rName.isEmpty();
 }
 
-ScOrcusFilters* ScFormatFilterPlugin::GetOrcusFilters()
+ScFormatFilterPluginImpl::ScFormatFilterPluginImpl() {}
+ScFormatFilterPluginImpl::~ScFormatFilterPluginImpl() {}
+
+ScOrcusFilters* ScFormatFilterPluginImpl::GetOrcusFilters()
 {
     static ScOrcusFiltersImpl aImpl;
     return &aImpl;
 }
 
-ScFormatFilterPlugin * SAL_CALL ScFilterCreate()
+ScFormatFilterPlugin * ScFilterCreate()
 {
-    return new ScFormatFilterPlugin();
+    return new ScFormatFilterPluginImpl();
 }
 
 // implementation class inside the filters

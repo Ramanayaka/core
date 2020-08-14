@@ -18,7 +18,6 @@
 class ScDocument;
 class ScColumn;
 class ScMarkData;
-class ScRange;
 class ScRangeList;
 
 namespace sc {
@@ -60,13 +59,11 @@ private:
         ColumnType(SCROW nStart, SCROW nEnd, bool bInit);
     };
 
-    typedef std::vector<ColumnType*> TableType;
-    typedef std::vector<TableType*> DocType;
+    typedef std::vector<std::unique_ptr<ColumnType>> TableType;
 
-    DocType maDoc;
-    bool mbInit;
+    std::vector<std::unique_ptr<TableType>> maTables;
 
-    ColumnType& getColumn(SCTAB nTab, SCCOL nCol);
+    ColumnType& getColumn(const ScDocument& rDoc, SCTAB nTab, SCCOL nCol);
 
 public:
     class Action
@@ -86,16 +83,16 @@ public:
         virtual void executeSum(SCROW, SCROW, bool, double& )  { return; } ;
     };
 
-    ColumnSpanSet(bool bInit);
+    ColumnSpanSet();
     ColumnSpanSet(const ColumnSpanSet&) = delete;
     const ColumnSpanSet& operator=(const ColumnSpanSet&) = delete;
     ~ColumnSpanSet();
 
-    void set(SCTAB nTab, SCCOL nCol, SCROW nRow, bool bVal);
-    void set(SCTAB nTab, SCCOL nCol, SCROW nRow1, SCROW nRow2, bool bVal);
-    void set(const ScRange& rRange, bool bVal);
+    void set(const ScDocument& rDoc, SCTAB nTab, SCCOL nCol, SCROW nRow, bool bVal);
+    void set(const ScDocument& rDoc, SCTAB nTab, SCCOL nCol, SCROW nRow1, SCROW nRow2, bool bVal);
+    void set(const ScDocument& rDoc, const ScRange& rRange, bool bVal);
 
-    void set( SCTAB nTab, SCCOL nCol, const SingleColumnSpanSet& rSingleSet, bool bVal );
+    void set(const ScDocument& rDoc, SCTAB nTab, SCCOL nCol, const SingleColumnSpanSet& rSingleSet, bool bVal );
 
     /**
      * Scan specified range in a specified sheet and mark all non-empty cells
@@ -105,7 +102,6 @@ public:
 
     void executeAction(Action& ac) const;
     void executeColumnAction(ScDocument& rDoc, ColumnAction& ac) const;
-    void executeColumnAction(ScDocument& rDoc, ColumnAction& ac, double& fMem) const;
 };
 
 /**
@@ -155,6 +151,21 @@ public:
 private:
     ColumnSpansType maSpans;
 };
+
+/**
+ * Optimized ColumnSpanSet version that operates on a single ScRange.
+ */
+class RangeColumnSpanSet
+{
+public:
+    RangeColumnSpanSet( const ScRange& spanRange )
+         : range( spanRange ) {}
+    void executeColumnAction(ScDocument& rDoc, sc::ColumnSpanSet::ColumnAction& ac) const;
+    void executeColumnAction(ScDocument& rDoc, sc::ColumnSpanSet::ColumnAction& ac, double& fMem) const;
+private:
+    ScRange range;
+};
+
 
 }
 

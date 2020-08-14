@@ -23,6 +23,8 @@
 using namespace ::ooo::vba;
 using namespace ::com::sun::star;
 
+namespace {
+
 class ListGalleriesEnumWrapper : public EnumerationHelper_BASE
 {
     SwVbaListGalleries* pListGalleries;
@@ -42,6 +44,8 @@ public:
     }
 };
 
+}
+
 SwVbaListGalleries::SwVbaListGalleries( const uno::Reference< XHelperInterface >& xParent, const uno::Reference< uno::XComponentContext > & xContext, const uno::Reference< text::XTextDocument >& xTextDoc ) : SwVbaListGalleries_BASE( xParent, xContext, uno::Reference< container::XIndexAccess >() ),  mxTextDocument( xTextDoc )
 {
 }
@@ -55,7 +59,7 @@ SwVbaListGalleries::SwVbaListGalleries( const uno::Reference< XHelperInterface >
 uno::Any SAL_CALL SwVbaListGalleries::Item( const uno::Any& Index1, const uno::Any& /*not processed in this base class*/ )
 {
     sal_Int32 nIndex = 0;
-    if( ( Index1 >>= nIndex ) )
+    if( Index1 >>= nIndex )
     {
         if( nIndex == word::WdListGalleryType::wdBulletGallery
             || nIndex == word::WdListGalleryType::wdNumberGallery
@@ -87,18 +91,16 @@ SwVbaListGalleries::createCollectionObject( const css::uno::Any& aSource )
 OUString
 SwVbaListGalleries::getServiceImplName()
 {
-    return OUString("SwVbaListGalleries");
+    return "SwVbaListGalleries";
 }
 
 css::uno::Sequence<OUString>
 SwVbaListGalleries::getServiceNames()
 {
-    static uno::Sequence< OUString > sNames;
-    if ( sNames.getLength() == 0 )
+    static uno::Sequence< OUString > const sNames
     {
-        sNames.realloc( 1 );
-        sNames[0] = "ooo.vba.word.ListGalleries";
-    }
+        "ooo.vba.word.ListGalleries"
+    };
     return sNames;
 }
 

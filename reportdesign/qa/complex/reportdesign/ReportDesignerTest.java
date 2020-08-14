@@ -95,11 +95,11 @@ class PropertySetHelper
 class PropertyHelper
 {
     /**
-       Create a PropertyValue[] from a ArrayList
+       Create a PropertyValue[] from an ArrayList
     */
     public static PropertyValue[] createPropertyValueArrayFormArrayList(ArrayList<PropertyValue> _aPropertyList)
         {
-            // copy the whole PropertyValue List to an PropertyValue Array
+            // copy the whole PropertyValue List to a PropertyValue Array
             PropertyValue[] aSaveProperties = null;
 
             if (_aPropertyList == null)
@@ -382,7 +382,7 @@ public class ReportDesignerTest
             aOverwrite.Value = Boolean.TRUE;
             aPropertyList.add(aOverwrite);
 
-            // store the document in an other directory
+            // store the document in another directory
             XStorable aStorable = UnoRuntime.queryInterface(XStorable.class, _xComponent);
             if (aStorable != null)
             {

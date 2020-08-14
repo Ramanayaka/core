@@ -17,7 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <svx/svdmodel.hxx>
+#include <sal/config.h>
+
+#include <o3tl/safeint.hxx>
 #include <svx/svdpage.hxx>
 #include <drawdoc.hxx>
 #include <fmtpdsc.hxx>
@@ -26,18 +28,19 @@
 #include <pagefrm.hxx>
 #include <dflyobj.hxx>
 #include <frmtool.hxx>
-#include <virtoutp.hxx>
-#include <blink.hxx>
-#include <sectfrm.hxx>
+#include "virtoutp.hxx"
 #include <notxtfrm.hxx>
 #include <pagedesc.hxx>
-#include "viewimp.hxx"
+#include <viewimp.hxx>
 #include <hints.hxx>
 #include <viewopt.hxx>
 #include <set>
+#include <IDocumentDrawModelAccess.hxx>
 #include <IDocumentSettingAccess.hxx>
 #include <IDocumentFieldsAccess.hxx>
 #include <DocumentLayoutManager.hxx>
+#include <DocumentRedlineManager.hxx>
+#include <ndindex.hxx>
 
 SwLayVout     *SwRootFrame::s_pVout = nullptr;
 bool           SwRootFrame::s_isInPaint = false;
@@ -45,300 +48,247 @@ bool           SwRootFrame::s_isNoVirDev = false;
 
 SwCache *SwFrame::mpCache = nullptr;
 
-long FirstMinusSecond( long nFirst, long nSecond )
+static long FirstMinusSecond( long nFirst, long nSecond )
     { return nFirst - nSecond; }
-long SecondMinusFirst( long nFirst, long nSecond )
+static long SecondMinusFirst( long nFirst, long nSecond )
     { return nSecond - nFirst; }
-long SwIncrement( long nA, long nAdd )
+static long SwIncrement( long nA, long nAdd )
     { return nA + nAdd; }
-long SwDecrement( long nA, long nSub )
+static long SwDecrement( long nA, long nSub )
     { return nA - nSub; }
 
 static SwRectFnCollection aHorizontal = {
-    /* fnRectGet      */
-    &SwRect::Top_,
-    &SwRect::Bottom_,
-    &SwRect::Left_,
-    &SwRect::Rigth_,
-    &SwRect::Width_,
-    &SwRect::Height_,
-    &SwRect::TopLeft,
-    &SwRect::Size_,
-    /* fnRectSet      */
-    &SwRect::Top_,
-    &SwRect::Bottom_,
-    &SwRect::Left_,
-    &SwRect::Rigth_,
-    &SwRect::Width_,
-    &SwRect::Height_,
+    /*.fnGetTop =*/&SwRect::Top_,
+    /*.fnGetBottom =*/&SwRect::Bottom_,
+    /*.fnGetLeft =*/&SwRect::Left_,
+    /*.fnGetRight =*/&SwRect::Right_,
+    /*.fnGetWidth =*/&SwRect::Width_,
+    /*.fnGetHeight =*/&SwRect::Height_,
+    /*.fnGetPos =*/&SwRect::TopLeft,
+    /*.fnGetSize =*/&SwRect::Size_,
 
-    &SwRect::SubTop,
-    &SwRect::AddBottom,
-    &SwRect::SubLeft,
-    &SwRect::AddRight,
-    &SwRect::AddWidth,
-    &SwRect::AddHeight,
+    /*.fnSetTop =*/&SwRect::Top_,
+    /*.fnSetBottom =*/&SwRect::Bottom_,
+    /*.fnSetLeft =*/&SwRect::Left_,
+    /*.fnSetRight =*/&SwRect::Right_,
+    /*.fnSetWidth =*/&SwRect::Width_,
+    /*.fnSetHeight =*/&SwRect::Height_,
 
-    &SwRect::SetPosX,
-    &SwRect::SetPosY,
+    /*.fnSubTop =*/&SwRect::SubTop,
+    /*.fnAddBottom =*/&SwRect::AddBottom,
+    /*.fnSubLeft =*/&SwRect::SubLeft,
+    /*.fnAddRight =*/&SwRect::AddRight,
+    /*.fnAddWidth =*/&SwRect::AddWidth,
+    /*.fnAddHeight =*/&SwRect::AddHeight,
 
-    &SwFrame::GetTopMargin,
-    &SwFrame::GetBottomMargin,
-    &SwFrame::GetLeftMargin,
-    &SwFrame::GetRightMargin,
-    &SwFrame::SetLeftRightMargins,
-    &SwFrame::SetTopBottomMargins,
-    &SwFrame::GetPrtTop,
-    &SwFrame::GetPrtBottom,
-    &SwFrame::GetPrtLeft,
-    &SwFrame::GetPrtRight,
-    &SwRect::GetTopDistance,
-    &SwRect::GetBottomDistance,
-    &SwRect::GetLeftDistance,
-    &SwRect::GetRightDistance,
-    &SwFrame::SetMaxBottom,
-    &SwRect::OverStepBottom,
+    /*.fnSetPosX =*/&SwRect::SetPosX,
+    /*.fnSetPosY =*/&SwRect::SetPosY,
 
-    &SwRect::SetUpperLeftCorner,
-    &SwFrame::MakeBelowPos,
-    &FirstMinusSecond,
-    &FirstMinusSecond,
-    &SwIncrement,
-    &SwIncrement,
-    &SwRect::SetLeftAndWidth,
-    &SwRect::SetTopAndHeight
+    /*.fnGetTopMargin =*/&SwFrame::GetTopMargin,
+    /*.fnGetBottomMargin =*/&SwFrame::GetBottomMargin,
+    /*.fnGetLeftMargin =*/&SwFrame::GetLeftMargin,
+    /*.fnGetRightMargin =*/&SwFrame::GetRightMargin,
+    /*.fnSetXMargins =*/&SwFrame::SetLeftRightMargins,
+    /*.fnSetYMargins =*/&SwFrame::SetTopBottomMargins,
+    /*.fnGetPrtTop =*/&SwFrame::GetPrtTop,
+    /*.fnGetPrtBottom =*/&SwFrame::GetPrtBottom,
+    /*.fnGetPrtLeft =*/&SwFrame::GetPrtLeft,
+    /*.fnGetPrtRight =*/&SwFrame::GetPrtRight,
+    /*.fnTopDist =*/&SwRect::GetTopDistance,
+    /*.fnBottomDist =*/&SwRect::GetBottomDistance,
+    /*.fnLeftDist =*/&SwRect::GetLeftDistance,
+    /*.fnRightDist =*/&SwRect::GetRightDistance,
+    /*.fnSetLimit =*/&SwFrame::SetMaxBottom,
+    /*.fnOverStep =*/&SwRect::OverStepBottom,
+
+    /*.fnSetPos =*/&SwRect::SetUpperLeftCorner,
+    /*.fnMakePos =*/&SwFrame::MakeBelowPos,
+    /*.fnXDiff =*/&FirstMinusSecond,
+    /*.fnYDiff =*/&FirstMinusSecond,
+    /*.fnXInc =*/&SwIncrement,
+    /*.fnYInc =*/&o3tl::saturating_add<long>,
+
+    /*.fnSetLeftAndWidth =*/&SwRect::SetLeftAndWidth,
+    /*.fnSetTopAndHeight =*/&SwRect::SetTopAndHeight
 };
 
 static SwRectFnCollection aVertical = {
-    /* fnRectGet      */
-    &SwRect::Rigth_,
-    &SwRect::Left_,
-    &SwRect::Top_,
-    &SwRect::Bottom_,
-    &SwRect::Height_,
-    &SwRect::Width_,
-    &SwRect::TopRight,
-    &SwRect::SwappedSize,
-    /* fnRectSet      */
-    &SwRect::Rigth_,
-    &SwRect::Left_,
-    &SwRect::Top_,
-    &SwRect::Bottom_,
-    &SwRect::Height_,
-    &SwRect::Width_,
+    /*.fnGetTop =*/&SwRect::Right_,
+    /*.fnGetBottom =*/&SwRect::Left_,
+    /*.fnGetLeft =*/&SwRect::Top_,
+    /*.fnGetRight =*/&SwRect::Bottom_,
+    /*.fnGetWidth =*/&SwRect::Height_,
+    /*.fnGetHeight =*/&SwRect::Width_,
+    /*.fnGetPos =*/&SwRect::TopRight,
+    /*.fnGetSize =*/&SwRect::SwappedSize,
 
-    &SwRect::AddRight,
-    &SwRect::SubLeft,
-    &SwRect::SubTop,
-    &SwRect::AddBottom,
-    &SwRect::AddHeight,
-    &SwRect::AddWidth,
+    /*.fnSetTop =*/&SwRect::Right_,
+    /*.fnSetBottom =*/&SwRect::Left_,
+    /*.fnSetLeft =*/&SwRect::Top_,
+    /*.fnSetRight =*/&SwRect::Bottom_,
+    /*.fnSetWidth =*/&SwRect::Height_,
+    /*.fnSetHeight =*/&SwRect::Width_,
 
-    &SwRect::SetPosY,
-    &SwRect::SetPosX,
+    /*.fnSubTop =*/&SwRect::AddRight,
+    /*.fnAddBottom =*/&SwRect::SubLeft,
+    /*.fnSubLeft =*/&SwRect::SubTop,
+    /*.fnAddRight =*/&SwRect::AddBottom,
+    /*.fnAddWidth =*/&SwRect::AddHeight,
+    /*.fnAddHeight =*/&SwRect::AddWidth,
 
-    &SwFrame::GetRightMargin,
-    &SwFrame::GetLeftMargin,
-    &SwFrame::GetTopMargin,
-    &SwFrame::GetBottomMargin,
-    &SwFrame::SetTopBottomMargins,
-    &SwFrame::SetRightLeftMargins,
-    &SwFrame::GetPrtRight,
-    &SwFrame::GetPrtLeft,
-    &SwFrame::GetPrtTop,
-    &SwFrame::GetPrtBottom,
-    &SwRect::GetRightDistance,
-    &SwRect::GetLeftDistance,
-    &SwRect::GetTopDistance,
-    &SwRect::GetBottomDistance,
-    &SwFrame::SetMinLeft,
-    &SwRect::OverStepLeft,
+    /*.fnSetPosX =*/&SwRect::SetPosY,
+    /*.fnSetPosY =*/&SwRect::SetPosX,
 
-    &SwRect::SetUpperRightCorner,
-    &SwFrame::MakeLeftPos,
-    &FirstMinusSecond,
-    &SecondMinusFirst,
-    &SwIncrement,
-    &SwDecrement,
-    &SwRect::SetTopAndHeight,
-    &SwRect::SetRightAndWidth
-};
+    /*.fnGetTopMargin =*/&SwFrame::GetRightMargin,
+    /*.fnGetBottomMargin =*/&SwFrame::GetLeftMargin,
+    /*.fnGetLeftMargin =*/&SwFrame::GetTopMargin,
+    /*.fnGetRightMargin =*/&SwFrame::GetBottomMargin,
+    /*.fnSetXMargins =*/&SwFrame::SetTopBottomMargins,
+    /*.fnSetYMargins =*/&SwFrame::SetRightLeftMargins,
+    /*.fnGetPrtTop =*/&SwFrame::GetPrtRight,
+    /*.fnGetPrtBottom =*/&SwFrame::GetPrtLeft,
+    /*.fnGetPrtLeft =*/&SwFrame::GetPrtTop,
+    /*.fnGetPrtRight =*/&SwFrame::GetPrtBottom,
+    /*.fnTopDist =*/&SwRect::GetRightDistance,
+    /*.fnBottomDist =*/&SwRect::GetLeftDistance,
+    /*.fnLeftDist =*/&SwRect::GetTopDistance,
+    /*.fnRightDist =*/&SwRect::GetBottomDistance,
+    /*.fnSetLimit =*/&SwFrame::SetMinLeft,
+    /*.fnOverStep =*/&SwRect::OverStepLeft,
 
-static SwRectFnCollection aBottomToTop = {
-    /* fnRectGet      */
-    &SwRect::Bottom_,
-    &SwRect::Top_,
-    &SwRect::Left_,
-    &SwRect::Rigth_,
-    &SwRect::Width_,
-    &SwRect::Height_,
-    &SwRect::BottomLeft,
-    &SwRect::Size_,
-    /* fnRectSet      */
-    &SwRect::Bottom_,
-    &SwRect::Top_,
-    &SwRect::Left_,
-    &SwRect::Rigth_,
-    &SwRect::Width_,
-    &SwRect::Height_,
+    /*.fnSetPos =*/&SwRect::SetUpperRightCorner,
+    /*.fnMakePos =*/&SwFrame::MakeLeftPos,
+    /*.fnXDiff =*/&FirstMinusSecond,
+    /*.fnYDiff =*/&SecondMinusFirst,
+    /*.fnXInc =*/&SwIncrement,
+    /*.fnYInc =*/&SwDecrement,
 
-    &SwRect::AddBottom,
-    &SwRect::SubTop,
-    &SwRect::SubLeft,
-    &SwRect::AddRight,
-    &SwRect::AddWidth,
-    &SwRect::AddHeight,
-
-    &SwRect::SetPosX,
-    &SwRect::SetPosY,
-
-    &SwFrame::GetBottomMargin,
-    &SwFrame::GetTopMargin,
-    &SwFrame::GetLeftMargin,
-    &SwFrame::GetRightMargin,
-    &SwFrame::SetLeftRightMargins,
-    &SwFrame::SetBottomTopMargins,
-    &SwFrame::GetPrtBottom,
-    &SwFrame::GetPrtTop,
-    &SwFrame::GetPrtLeft,
-    &SwFrame::GetPrtRight,
-    &SwRect::GetBottomDistance,
-    &SwRect::GetTopDistance,
-    &SwRect::GetLeftDistance,
-    &SwRect::GetRightDistance,
-    &SwFrame::SetMinTop,
-    &SwRect::OverStepTop,
-
-    &SwRect::SetLowerLeftCorner,
-    &SwFrame::MakeUpperPos,
-    &FirstMinusSecond,
-    &SecondMinusFirst,
-    &SwIncrement,
-    &SwDecrement,
-    &SwRect::SetLeftAndWidth,
-    &SwRect::SetBottomAndHeight
-};
-
-static SwRectFnCollection aVerticalRightToLeft = {
-    /* fnRectGet      */
-    &SwRect::Left_,
-    &SwRect::Rigth_,
-    &SwRect::Top_,
-    &SwRect::Bottom_,
-    &SwRect::Height_,
-    &SwRect::Width_,
-    &SwRect::BottomRight,
-    &SwRect::SwappedSize,
-    /* fnRectSet      */
-    &SwRect::Left_,
-    &SwRect::Rigth_,
-    &SwRect::Top_,
-    &SwRect::Bottom_,
-    &SwRect::Height_,
-    &SwRect::Width_,
-
-    &SwRect::SubLeft,
-    &SwRect::AddRight,
-    &SwRect::SubTop,
-    &SwRect::AddBottom,
-    &SwRect::AddHeight,
-    &SwRect::AddWidth,
-
-    &SwRect::SetPosY,
-    &SwRect::SetPosX,
-
-    &SwFrame::GetLeftMargin,
-    &SwFrame::GetRightMargin,
-    &SwFrame::GetTopMargin,
-    &SwFrame::GetBottomMargin,
-    &SwFrame::SetTopBottomMargins,
-    &SwFrame::SetLeftRightMargins,
-    &SwFrame::GetPrtLeft,
-    &SwFrame::GetPrtRight,
-    &SwFrame::GetPrtBottom,
-    &SwFrame::GetPrtTop,
-    &SwRect::GetLeftDistance,
-    &SwRect::GetRightDistance,
-    &SwRect::GetBottomDistance,
-    &SwRect::GetTopDistance,
-    &SwFrame::SetMaxRight,
-    &SwRect::OverStepRight,
-
-    &SwRect::SetLowerLeftCorner,
-    &SwFrame::MakeRightPos,
-    &FirstMinusSecond,
-    &FirstMinusSecond,
-    &SwDecrement,
-    &SwIncrement,
-    &SwRect::SetBottomAndHeight,
-    &SwRect::SetLeftAndWidth
+    /*.fnSetLeftAndWidth =*/&SwRect::SetTopAndHeight,
+    /*.fnSetTopAndHeight =*/&SwRect::SetRightAndWidth
 };
 
 static SwRectFnCollection aVerticalLeftToRight = {
-    /* fnRectGet      */
-    &SwRect::Left_,
-    &SwRect::Rigth_,
-    &SwRect::Top_,
-    &SwRect::Bottom_,
-    &SwRect::Height_,
-    &SwRect::Width_,
-    &SwRect::TopLeft,
-    &SwRect::SwappedSize,
-    /* fnRectSet      */
-    &SwRect::Left_,
-    &SwRect::Rigth_,
-    &SwRect::Top_,
-    &SwRect::Bottom_,
-    &SwRect::Height_,
-    &SwRect::Width_,
+    /*.fnGetTop =*/&SwRect::Left_,
+    /*.fnGetBottom =*/&SwRect::Right_,
+    /*.fnGetLeft =*/&SwRect::Top_,
+    /*.fnGetRight =*/&SwRect::Bottom_,
+    /*.fnGetWidth =*/&SwRect::Height_,
+    /*.fnGetHeight =*/&SwRect::Width_,
+    /*.fnGetPos =*/&SwRect::TopLeft,
+    /*.fnGetSize =*/&SwRect::SwappedSize,
 
-    &SwRect::SubLeft,
-    &SwRect::AddRight,
-    &SwRect::SubTop,
-    &SwRect::AddBottom,
-    &SwRect::AddHeight,
-    &SwRect::AddWidth,
+    /*.fnSetTop =*/&SwRect::Left_,
+    /*.fnSetBottom =*/&SwRect::Right_,
+    /*.fnSetLeft =*/&SwRect::Top_,
+    /*.fnSetRight =*/&SwRect::Bottom_,
+    /*.fnSetWidth =*/&SwRect::Height_,
+    /*.fnSetHeight =*/&SwRect::Width_,
 
-    &SwRect::SetPosY,
-    &SwRect::SetPosX,
+    /*.fnSubTop =*/&SwRect::SubLeft,
+    /*.fnAddBottom =*/&SwRect::AddRight,
+    /*.fnSubLeft =*/&SwRect::SubTop,
+    /*.fnAddRight =*/&SwRect::AddBottom,
+    /*.fnAddWidth =*/&SwRect::AddHeight,
+    /*.fnAddHeight =*/&SwRect::AddWidth,
 
-    &SwFrame::GetLeftMargin,
-    &SwFrame::GetRightMargin,
-    &SwFrame::GetTopMargin,
-    &SwFrame::GetBottomMargin,
-    &SwFrame::SetTopBottomMargins,
-    &SwFrame::SetLeftRightMargins,
-    &SwFrame::GetPrtLeft,
-    &SwFrame::GetPrtRight,
-    &SwFrame::GetPrtTop,
-    &SwFrame::GetPrtBottom,
-    &SwRect::GetLeftDistance,
-    &SwRect::GetRightDistance,
-    &SwRect::GetTopDistance,
-    &SwRect::GetBottomDistance,
-    &SwFrame::SetMaxRight,
-    &SwRect::OverStepRight,
+    /*.fnSetPosX =*/&SwRect::SetPosY,
+    /*.fnSetPosY =*/&SwRect::SetPosX,
 
-    &SwRect::SetUpperLeftCorner,
-    &SwFrame::MakeRightPos,
-    &FirstMinusSecond,
-    &FirstMinusSecond,
-    &SwIncrement,
-    &SwIncrement,
-    &SwRect::SetTopAndHeight,
-    &SwRect::SetLeftAndWidth
+    /*.fnGetTopMargin =*/&SwFrame::GetLeftMargin,
+    /*.fnGetBottomMargin =*/&SwFrame::GetRightMargin,
+    /*.fnGetLeftMargin =*/&SwFrame::GetTopMargin,
+    /*.fnGetRightMargin =*/&SwFrame::GetBottomMargin,
+    /*.fnSetXMargins =*/&SwFrame::SetTopBottomMargins,
+    /*.fnSetYMargins =*/&SwFrame::SetLeftRightMargins,
+    /*.fnGetPrtTop =*/&SwFrame::GetPrtLeft,
+    /*.fnGetPrtBottom =*/&SwFrame::GetPrtRight,
+    /*.fnGetPrtLeft =*/&SwFrame::GetPrtTop,
+    /*.fnGetPrtRight =*/&SwFrame::GetPrtBottom,
+    /*.fnTopDist =*/&SwRect::GetLeftDistance,
+    /*.fnBottomDist =*/&SwRect::GetRightDistance,
+    /*.fnLeftDist =*/&SwRect::GetTopDistance,
+    /*.fnRightDist =*/&SwRect::GetBottomDistance,
+    /*.fnSetLimit =*/&SwFrame::SetMaxRight,
+    /*.fnOverStep =*/&SwRect::OverStepRight,
+
+    /*.fnSetPos =*/&SwRect::SetUpperLeftCorner,
+    /*.fnMakePos =*/&SwFrame::MakeRightPos,
+    /*.fnXDiff =*/&FirstMinusSecond,
+    /*.fnYDiff =*/&FirstMinusSecond,
+    /*.fnXInc =*/&SwIncrement,
+    /*.fnYInc =*/&SwIncrement,
+
+    /*.fnSetLeftAndWidth =*/&SwRect::SetTopAndHeight,
+    /*.fnSetTopAndHeight =*/&SwRect::SetLeftAndWidth
+};
+
+/**
+ * This is the same as horizontal, but rotated counter-clockwise by 90 degrees.
+ * This means logical top is physical left, bottom is right, left is bottom,
+ * finally right is top. Values map from logical to physical.
+ */
+static SwRectFnCollection aVerticalLeftToRightBottomToTop = {
+    /*.fnGetTop =*/&SwRect::Left_,
+    /*.fnGetBottom =*/&SwRect::Right_,
+    /*.fnGetLeft =*/&SwRect::Bottom_,
+    /*.fnGetRight =*/&SwRect::Top_,
+    /*.fnGetWidth =*/&SwRect::Height_,
+    /*.fnGetHeight =*/&SwRect::Width_,
+    /*.fnGetPos =*/&SwRect::BottomLeft,
+    /*.fnGetSize =*/&SwRect::SwappedSize,
+
+    /*.fnSetTop =*/&SwRect::Left_,
+    /*.fnSetBottom =*/&SwRect::Right_,
+    /*.fnSetLeft =*/&SwRect::Bottom_,
+    /*.fnSetRight =*/&SwRect::Top_,
+    /*.fnSetWidth =*/&SwRect::Height_,
+    /*.fnSetHeight =*/&SwRect::Width_,
+
+    /*.fnSubTop =*/&SwRect::SubLeft,
+    /*.fnAddBottom =*/&SwRect::AddRight,
+    /*.fnSubLeft =*/&SwRect::AddBottom,
+    /*.fnAddRight =*/&SwRect::SubTop,
+    /*.fnAddWidth =*/&SwRect::AddHeight,
+    /*.fnAddHeight =*/&SwRect::AddWidth,
+
+    /*.fnSetPosX =*/&SwRect::SetPosY,
+    /*.fnSetPosY =*/&SwRect::SetPosX,
+
+    /*.fnGetTopMargin =*/&SwFrame::GetLeftMargin,
+    /*.fnGetBottomMargin =*/&SwFrame::GetRightMargin,
+    /*.fnGetLeftMargin =*/&SwFrame::GetBottomMargin,
+    /*.fnGetRightMargin =*/&SwFrame::GetTopMargin,
+    /*.fnSetXMargins =*/&SwFrame::SetTopBottomMargins,
+    /*.fnSetYMargins =*/&SwFrame::SetLeftRightMargins,
+    /*.fnGetPrtTop =*/&SwFrame::GetPrtLeft,
+    /*.fnGetPrtBottom =*/&SwFrame::GetPrtRight,
+    /*.fnGetPrtLeft =*/&SwFrame::GetPrtBottom,
+    /*.fnGetPrtRight =*/&SwFrame::GetPrtTop,
+    /*.fnTopDist =*/&SwRect::GetLeftDistance,
+    /*.fnBottomDist =*/&SwRect::GetRightDistance,
+    /*.fnLeftDist =*/&SwRect::GetBottomDistance,
+    /*.fnRightDist =*/&SwRect::GetTopDistance,
+    /*.fnSetLimit =*/&SwFrame::SetMaxRight,
+    /*.fnOverStep =*/&SwRect::OverStepRight,
+
+    /*.fnSetPos =*/&SwRect::SetLowerLeftCorner,
+    /*.fnMakePos =*/&SwFrame::MakeRightPos,
+    /*.fnXDiff =*/&SecondMinusFirst,
+    /*.fnYDiff =*/&FirstMinusSecond,
+    /*.fnXInc =*/&SwDecrement,
+    /*.fnYInc =*/&SwIncrement,
+
+    /*.fnSetLeftAndWidth =*/&SwRect::SetBottomAndHeight,
+    /*.fnSetTopAndHeight =*/&SwRect::SetLeftAndWidth
 };
 
 SwRectFn fnRectHori = &aHorizontal;
 SwRectFn fnRectVert = &aVertical;
-
 SwRectFn fnRectVertL2R = &aVerticalLeftToRight;
-
-SwRectFn fnRectB2T = &aBottomToTop;
-SwRectFn fnRectVL2R = &aVerticalRightToLeft;
+SwRectFn fnRectVertL2RB2T = &aVerticalLeftToRightBottomToTop;
 
 // #i65250#
-sal_uInt32 SwFrame::mnLastFrameId=0;
+sal_uInt32 SwFrameAreaDefinition::mnLastFrameId=0;
 
 
 void FrameInit()
@@ -428,9 +378,8 @@ void SwRootFrame::DeRegisterShell( SwViewShell *pSh )
         mpWaitingCurrShell = nullptr;
 
     // Remove references
-    for ( SwCurrShells::iterator it = mpCurrShells->begin(); it != mpCurrShells->end(); ++it )
+    for ( CurrShell *pC : *mpCurrShells )
     {
-        CurrShell *pC = *it;
         if (pC->pPrev == pSh)
             pC->pPrev = nullptr;
     }
@@ -438,7 +387,7 @@ void SwRootFrame::DeRegisterShell( SwViewShell *pSh )
 
 void InitCurrShells( SwRootFrame *pRoot )
 {
-    pRoot->mpCurrShells = new SwCurrShells;
+    pRoot->mpCurrShells.reset( new SwCurrShells );
 }
 
 /*
@@ -464,14 +413,13 @@ SwRootFrame::SwRootFrame( SwFrameFormat *pFormat, SwViewShell * pSh ) :
     mbIsNewLayout( true ),
     mbCallbackActionEnabled ( false ),
     mbLayoutFreezed ( false ),
+    mbHideRedlines(pFormat->GetDoc()->GetDocumentRedlineManager().IsHideRedlines()),
     mnBrowseWidth(MIN_BROWSE_WIDTH),
     mpTurbo( nullptr ),
     mpLastPage( nullptr ),
     mpCurrShell( pSh ),
     mpWaitingCurrShell( nullptr ),
-    mpCurrShells(nullptr),
     mpDrawPage( nullptr ),
-    mpDestroy( nullptr ),
     mnPhyPageNums( 0 ),
     mnAccessibleShells( 0 )
 {
@@ -489,7 +437,7 @@ void SwRootFrame::Init( SwFrameFormat* pFormat )
     const IDocumentSettingAccess& rSettingAccess = pFormat->getIDocumentSettingAccess();
     rTimerAccess.StopIdling();
     // For creating the Flys by MakeFrames()
-    rLayoutAccess.SetCurrentViewShell( this->GetCurrShell() );
+    rLayoutAccess.SetCurrentViewShell( GetCurrShell() );
     mbCallbackActionEnabled = false; // needs to be set to true before leaving!
 
     SwDrawModel* pMd = pFormat->getIDocumentDrawModelAccess().GetDrawModel();
@@ -498,7 +446,7 @@ void SwRootFrame::Init( SwFrameFormat* pFormat )
         // Disable "multiple layout"
         mpDrawPage = pMd->GetPage(0);
 
-        mpDrawPage->SetSize( Frame().SSize() );
+        mpDrawPage->SetSize( getFrameArea().SSize() );
     }
 
     // Initialize the layout: create pages, link content with Content etc.
@@ -513,7 +461,7 @@ void SwRootFrame::Init( SwFrameFormat* pFormat )
 
     // Get hold of PageDesc (either via FrameFormat of the first node or the initial one).
     SwPageDesc *pDesc = nullptr;
-    ::boost::optional<sal_uInt16> oPgNum;
+    ::std::optional<sal_uInt16> oPgNum;
 
     if ( pTableNd )
     {
@@ -537,11 +485,10 @@ void SwRootFrame::Init( SwFrameFormat* pFormat )
         mbIsVirtPageNum = false;
     if ( !pDesc )
         pDesc = &pDoc->GetPageDesc( 0 );
-    const bool bOdd = !oPgNum || 0 != ( oPgNum.get() % 2 );
-    bool bFirst = !oPgNum || 1 == oPgNum.get();
 
     // Create a page and put it in the layout
-    SwPageFrame *pPage = ::InsertNewPage( *pDesc, this, bOdd, bFirst, false, false, nullptr );
+    // The first page is always a right-page and always a first-page
+    SwPageFrame *pPage = ::InsertNewPage(*pDesc, this, true, true, false, false, nullptr);
 
     // Find the first page in the Bodytext section.
     SwLayoutFrame *pLay = pPage->FindBodyCont();
@@ -557,7 +504,7 @@ void SwRootFrame::Init( SwFrameFormat* pFormat )
     //b6433357: Update page fields after loading
     if ( !mpCurrShell || !mpCurrShell->Imp()->IsUpdateExpFields() )
     {
-        SwDocPosUpdate aMsgHint( pPage->Frame().Top() );
+        SwDocPosUpdate aMsgHint( pPage->getFrameArea().Top() );
         rFieldsAccess.UpdatePageFields( &aMsgHint );
     }
 
@@ -574,9 +521,7 @@ void SwRootFrame::DestroyImpl()
     mbTurboAllowed = false;
     mpTurbo = nullptr;
 
-    if(pBlink)
-        pBlink->FrameDelete( this );
-    SwFrameFormat *pRegisteredInNonConst = static_cast<SwFrameFormat*>(GetRegisteredInNonConst());
+    SwFrameFormat *pRegisteredInNonConst = static_cast<SwFrameFormat*>(GetDep());
     if ( pRegisteredInNonConst )
     {
         SwDoc *pDoc = pRegisteredInNonConst->GetDoc();
@@ -586,15 +531,13 @@ void SwRootFrame::DestroyImpl()
         pDoc->GetDocumentLayoutManager().ClearSwLayouterEntries();
     }
 
-    delete mpDestroy;
-    mpDestroy = nullptr;
+    mpDestroy.reset();
 
     // Remove references
-    for ( SwCurrShells::iterator it = mpCurrShells->begin(); it != mpCurrShells->end(); ++it )
-        (*it)->pRoot = nullptr;
+    for ( auto& rpCurrShell : *mpCurrShells )
+        rpCurrShell->pRoot = nullptr;
 
-    delete mpCurrShells;
-    mpCurrShells = nullptr;
+    mpCurrShells.reset();
 
     // Some accessible shells are left => problems on second SwFrame::Destroy call
     assert(0 == mnAccessibleShells);
@@ -631,12 +574,12 @@ void SwRootFrame::RemoveMasterObjs( SdrPage *pPg )
 void SwRootFrame::AllCheckPageDescs() const
 {
     if ( !IsLayoutFreezed() )
-        CheckPageDescs( const_cast<SwPageFrame*>(static_cast<const SwPageFrame*>(this->Lower())) );
+        CheckPageDescs( const_cast<SwPageFrame*>(static_cast<const SwPageFrame*>(Lower())) );
 }
 
 void SwRootFrame::AllInvalidateAutoCompleteWords() const
 {
-    SwPageFrame *pPage = const_cast<SwPageFrame*>(static_cast<const SwPageFrame*>(this->Lower()));
+    SwPageFrame *pPage = const_cast<SwPageFrame*>(static_cast<const SwPageFrame*>(Lower()));
     while ( pPage )
     {
         pPage->InvalidateAutoCompleteWords();
@@ -646,7 +589,7 @@ void SwRootFrame::AllInvalidateAutoCompleteWords() const
 
 void SwRootFrame::AllAddPaintRect() const
 {
-    GetCurrShell()->AddPaintRect( this->Frame() );
+    GetCurrShell()->AddPaintRect( getFrameArea() );
 }
 
 void SwRootFrame::AllRemoveFootnotes()
@@ -656,7 +599,7 @@ void SwRootFrame::AllRemoveFootnotes()
 
 void SwRootFrame::AllInvalidateSmartTagsOrSpelling(bool bSmartTags) const
 {
-    SwPageFrame *pPage = const_cast<SwPageFrame*>(static_cast<const SwPageFrame*>(this->Lower()));
+    SwPageFrame *pPage = const_cast<SwPageFrame*>(static_cast<const SwPageFrame*>(Lower()));
     while ( pPage )
     {
         if ( bSmartTags )

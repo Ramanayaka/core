@@ -21,18 +21,18 @@
 #define INCLUDED_SVX_XOUTBMP_HXX
 
 #include <vcl/graph.hxx>
+#include <vcl/errcode.hxx>
 #include <com/sun/star/uno/Sequence.h>
 #include <com/sun/star/beans/PropertyValue.hpp>
 #include <svx/svxdllapi.h>
 #include <o3tl/typed_flags_set.hxx>
+#include <vcl/salctype.hxx>
+
 
 enum class XOutFlags {
     NONE                 = 0x00000000,
     MirrorHorz           = 0x00000001,
     MirrorVert           = 0x00000010,
-    ContourHorz          = 0x00000001,
-    ContourVert          = 0x00000002,
-    ContourEdgeDetect    = 0x00000004,
     DontAddExtension     = 0x00000008,
     DontExpandFilename   = 0x00010000,
     UseGifIfPossible     = 0x00020000,
@@ -40,7 +40,7 @@ enum class XOutFlags {
     UseNativeIfPossible  = 0x00080000,
 };
 namespace o3tl {
-    template<> struct typed_flags<XOutFlags> : is_typed_flags<XOutFlags, 0x000f001f> {};
+    template<> struct typed_flags<XOutFlags> : is_typed_flags<XOutFlags, 0x000f0019> {};
 }
 
 class GraphicFilter;
@@ -50,7 +50,7 @@ namespace tools {
     class Polygon;
 }
 
-class SVX_DLLPUBLIC XOutBitmap
+class SVXCORE_DLLPUBLIC XOutBitmap
 {
 public:
 
@@ -60,21 +60,16 @@ public:
     static Animation    MirrorAnimation( const Animation& rAnimation, bool bHMirr, bool bVMirr );
     static ErrCode      WriteGraphic( const Graphic& rGraphic, OUString& rFileName,
                                       const OUString& rFilterName, const XOutFlags nFlags,
-                                      const Size* pMtfSize_100TH_MM = nullptr );
-    static bool         GraphicToBase64(const Graphic& rGraphic, OUString& rOUString);
+                                      const Size* pMtfSize_100TH_MM = nullptr,
+                                      const css::uno::Sequence< css::beans::PropertyValue >* pFilterData = nullptr);
+    static bool GraphicToBase64(const Graphic& rGraphic, OUString& rOUString,
+                                bool bAddPrefix = true,
+                                ConvertDataFormat aTargetFormat = ConvertDataFormat::Unknown);
 
     static ErrCode      ExportGraphic( const Graphic& rGraphic, const INetURLObject& rURL,
                                        GraphicFilter& rFilter, const sal_uInt16 nFormat,
-                                       const css::uno::Sequence< css::beans::PropertyValue >* pFilterData = nullptr );
-
-    static Bitmap       DetectEdges( const Bitmap& rBmp, const sal_uInt8 cThreshold );
-
-    static tools::Polygon GetContour( const Bitmap& rBmp, const XOutFlags nContourFlags,
-                                       const sal_uInt8 cEdgeDetectThreshold,
-                                       const tools::Rectangle* pWorkRect );
+                                       const css::uno::Sequence< css::beans::PropertyValue >* pFilterData );
 };
-
-SVX_DLLPUBLIC bool DitherBitmap( Bitmap& rBitmap );
 
 #endif // INCLUDED_SVX_XOUTBMP_HXX
 

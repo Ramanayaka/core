@@ -19,35 +19,35 @@
 
 #include <config_features.h>
 #include <rtl/character.hxx>
-#include <vcl/wrkwin.hxx>
-#include <svl/rectitem.hxx>
+#include <rtl/malformeduriexception.hxx>
+#include <rtl/uri.hxx>
+#include <sot/exchange.hxx>
 #include <svl/eitem.hxx>
-#include <svl/intitem.hxx>
 #include <basic/sbstar.hxx>
 #include <svl/stritem.hxx>
 #include <svl/svdde.hxx>
 #include <sfx2/lnkbase.hxx>
 #include <sfx2/linkmgr.hxx>
 
+#include <tools/debug.hxx>
 #include <tools/urlobj.hxx>
 #include <tools/diagnose_ex.h>
 #include <unotools/pathoptions.hxx>
+#include <vcl/svapp.hxx>
 
 #include <sfx2/app.hxx>
-#include "appdata.hxx"
+#include <appdata.hxx>
 #include <sfx2/objsh.hxx>
 #include <sfx2/viewfrm.hxx>
 #include <sfx2/dispatch.hxx>
-#include "sfxtypes.hxx"
 #include <sfx2/sfxsids.hrc>
-#include "helper.hxx"
 #include <sfx2/docfile.hxx>
+#include <ucbhelper/content.hxx>
 #include <comphelper/processfactory.hxx>
-#include <com/sun/star/ucb/IllegalIdentifierException.hpp>
 
 #if defined(_WIN32)
 
-OUString SfxDdeServiceName_Impl( const OUString& sIn )
+static OUString SfxDdeServiceName_Impl( const OUString& sIn )
 {
     OUStringBuffer sReturn(sIn.getLength());
 
@@ -60,6 +60,8 @@ OUString SfxDdeServiceName_Impl( const OUString& sIn )
 
     return sReturn.makeStringAndClear();
 }
+
+namespace {
 
 class ImplDdeService : public DdeService
 {
@@ -74,9 +76,6 @@ public:
     virtual bool SysTopicExecute( const OUString* pStr );
 };
 
-
-namespace
-{
     bool lcl_IsDocument( const OUString& rContent )
     {
         using namespace com::sun::star;
@@ -90,21 +89,9 @@ namespace
             ::ucbhelper::Content aCnt( aObj.GetMainURL( INetURLObject::DecodeMechanism::NONE ), uno::Reference< ucb::XCommandEnvironment >(), comphelper::getProcessComponentContext() );
             bRet = aCnt.isDocument();
         }
-        catch( const ucb::CommandAbortedException& )
-        {
-            SAL_INFO( "sfx.appl", "CommandAbortedException" );
-        }
-        catch( const ucb::IllegalIdentifierException& )
-        {
-            SAL_INFO( "sfx.appl", "IllegalIdentifierException" );
-        }
-        catch( const ucb::ContentCreationException& )
-        {
-            SAL_INFO( "sfx.appl", "IllegalIdentifierException" );
-        }
         catch( const uno::Exception& )
         {
-            SAL_WARN( "sfx.appl", "Any other exception" );
+            TOOLS_WARN_EXCEPTION( "sfx.appl", "" );
         }
 
         return bRet;
@@ -138,13 +125,18 @@ bool ImplDdeService::MakeTopic( const OUString& rNm )
 
     if( !bRet )
     {
-        INetURLObject aWorkPath( SvtPathOptions().GetWorkPath() );
-        INetURLObject aFile;
-        if ( aWorkPath.GetNewAbsURL( rNm, &aFile ) &&
-             lcl_IsDocument( aFile.GetMainURL( INetURLObject::DecodeMechanism::NONE ) ) )
+        bool abs;
+        OUString url;
+        try {
+            url = rtl::Uri::convertRelToAbs(SvtPathOptions().GetWorkPath(), rNm);
+            abs = true;
+        } catch (rtl::MalformedUriException &) {
+            abs = false;
+        }
+        if ( abs && lcl_IsDocument( url ) )
         {
             // File exists? then try to load it:
-            SfxStringItem aName( SID_FILE_NAME, aFile.GetMainURL( INetURLObject::DecodeMechanism::NONE ) );
+            SfxStringItem aName( SID_FILE_NAME, url );
             SfxBoolItem aNewView(SID_OPEN_NEW_VIEW, true);
 
             SfxBoolItem aSilent(SID_SILENT, true);
@@ -153,7 +145,7 @@ bool ImplDdeService::MakeTopic( const OUString& rNm )
                     SfxCallMode::SYNCHRON,
                     { &aName, &aNewView, &aSilent });
 
-            if( pRet && dynamic_cast< const SfxViewFrameItem *>( pRet ) !=  nullptr &&
+            if( dynamic_cast< const SfxViewFrameItem *>( pRet ) &&
                 static_cast<SfxViewFrameItem const *>(pRet)->GetFrame() &&
                 nullptr != ( pShell = static_cast<SfxViewFrameItem const *>(pRet)
                     ->GetFrame()->GetObjectShell() ) )
@@ -193,18 +185,6 @@ bool ImplDdeService::SysTopicExecute( const OUString* pStr )
     return SfxApplication::DdeExecute( *pStr );
 }
 #endif
-
-class SfxDdeTriggerTopic_Impl : public DdeTopic
-{
-#if defined(_WIN32)
-public:
-    SfxDdeTriggerTopic_Impl()
-        : DdeTopic( "TRIGGER" )
-        {}
-
-    virtual bool Execute( const OUString* ) override { return true; }
-#endif
-};
 
 class SfxDdeDocTopic_Impl : public DdeTopic
 {
@@ -426,11 +406,11 @@ bool SfxApplication::InitializeDde()
     DBG_ASSERT( !pImpl->pDdeService,
                 "Dde can not be initialized multiple times" );
 
-    pImpl->pDdeService = new ImplDdeService( Application::GetAppName() );
+    pImpl->pDdeService.reset(new ImplDdeService( Application::GetAppName() ));
     nError = pImpl->pDdeService->GetError();
     if( !nError )
     {
-        pImpl->pDocTopics = new SfxDdeDocTopics_Impl;
+        pImpl->pDocTopics.reset(new SfxDdeDocTopics_Impl);
 
         // we certainly want to support RTF!
         pImpl->pDdeService->AddFormat( SotClipboardFormatId::RTF );
@@ -442,8 +422,8 @@ bool SfxApplication::InitializeDde()
         OUString aService( SfxDdeServiceName_Impl(
                     aOfficeLockFile.GetMainURL(INetURLObject::DecodeMechanism::ToIUri) ) );
         aService = aService.toAsciiUpperCase();
-        pImpl->pDdeService2 = new ImplDdeService( aService );
-        pImpl->pTriggerTopic = new SfxDdeTriggerTopic_Impl;
+        pImpl->pDdeService2.reset( new ImplDdeService( aService ));
+        pImpl->pTriggerTopic.reset(new SfxDdeTriggerTopic_Impl);
         pImpl->pDdeService2->AddTopic( *pImpl->pTriggerTopic );
     }
 #endif
@@ -452,10 +432,10 @@ bool SfxApplication::InitializeDde()
 
 void SfxAppData_Impl::DeInitDDE()
 {
-    DELETEZ( pTriggerTopic );
-    DELETEZ( pDdeService2 );
-    DELETEZ( pDocTopics );
-    DELETEZ( pDdeService );
+    pTriggerTopic.reset();
+    pDdeService2.reset();
+    pDocTopics.reset();
+    pDdeService.reset();
 }
 
 #if defined(_WIN32)
@@ -490,7 +470,7 @@ void SfxApplication::AddDdeTopic( SfxObjectShell* pSh )
 }
 #endif
 
-void SfxApplication::RemoveDdeTopic( SfxObjectShell* pSh )
+void SfxApplication::RemoveDdeTopic( SfxObjectShell const * pSh )
 {
 #if defined(_WIN32)
     //OV: DDE is disconnected in server mode!
@@ -514,12 +494,12 @@ void SfxApplication::RemoveDdeTopic( SfxObjectShell* pSh )
 
 const DdeService* SfxApplication::GetDdeService() const
 {
-    return pImpl->pDdeService;
+    return pImpl->pDdeService.get();
 }
 
 DdeService* SfxApplication::GetDdeService()
 {
-    return pImpl->pDdeService;
+    return pImpl->pDdeService.get();
 }
 
 #if defined(_WIN32)
@@ -576,7 +556,7 @@ bool SfxDdeDocTopic_Impl::StartAdviseLoop()
         // then we also establish a corresponding SvBaseLink
         OUString sNm, sTmp( Application::GetAppName() );
         ::sfx2::MakeLnkName( sNm, &sTmp, pSh->GetTitle(SFX_TITLE_FULLNAME), GetCurItem() );
-        new ::sfx2::SvBaseLink( sNm, OBJECT_DDE_EXTERN, pNewObj );
+        new ::sfx2::SvBaseLink( sNm, sfx2::SvBaseLinkObjectType::DdeExternal, pNewObj );
         bRet = true;
     }
     return bRet;
